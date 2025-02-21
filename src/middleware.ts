@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 // パスの定義
-const PROTECTED_PATHS = ['/dashboard', '/profile', '/meals']
+const PROTECTED_PATHS = ['/dashboard', '/profile', '/meals', '/home']
 const AUTH_PATHS = ['/auth/login', '/auth/register']
 const PUBLIC_PATHS = ['/', '/terms']
 const CALLBACK_PATH = '/auth/callback'
@@ -60,18 +60,18 @@ export async function middleware(req: NextRequest) {
             // 認証ページまたはパブリックページへのアクセスをチェック
             if ([...AUTH_PATHS, ...PUBLIC_PATHS].includes(path)) {
                 return NextResponse.redirect(
-                    new URL(profile ? '/dashboard' : '/profile', req.url)
+                    new URL(profile ? '/home' : '/profile', req.url)
                 )
             }
 
-            // プロフィール未設定でダッシュボードにアクセスしようとした場合
-            if (!profile && path.startsWith('/dashboard')) {
+            // プロフィール未設定でホームまたはダッシュボードにアクセスしようとした場合
+            if (!profile && (path === '/home' || path.startsWith('/dashboard'))) {
                 return NextResponse.redirect(new URL('/profile', req.url))
             }
 
             // プロフィール設定済みでプロフィールページにアクセスしようとした場合
             if (profile && path === '/profile') {
-                return NextResponse.redirect(new URL('/dashboard', req.url))
+                return NextResponse.redirect(new URL('/home', req.url))
             }
 
             return res

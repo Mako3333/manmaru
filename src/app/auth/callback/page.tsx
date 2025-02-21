@@ -28,8 +28,8 @@ export default function AuthCallbackPage() {
                     // 新規ユーザーの場合はプロフィール登録ページへ
                     router.push('/profile')
                 } else {
-                    // 既存ユーザーの場合はダッシュボードへ
-                    router.push('/dashboard')
+                    // 既存ユーザーの場合はホームページへ
+                    router.push('/home')
                 }
             } catch (error) {
                 console.error('Error in auth callback:', error)
@@ -55,7 +55,7 @@ export default function AuthCallbackPage() {
     }, [])
 
     return (
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">
             <div className="text-center">
                 <h2 className="text-xl font-semibold text-green-700 mb-2">
                     認証中...
