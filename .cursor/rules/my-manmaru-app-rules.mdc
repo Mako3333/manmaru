@@ -1,0 +1,199 @@
+---
+description: まんまる - 妊婦向け栄養管理アプリ開発ガイドライン
+globs: 
+---
+### 1. 開発の基本方針
+- **モバイルファースト**: すべてのUIコンポーネントはモバイル表示を最優先
+- **シンプルな操作性**: 妊婦さんが疲れた状態でも簡単に操作できるUI設計
+- **App Router採用**: Next.js 15.1.7のApp Routerを活用した最新のルーティング設計
+- **型安全性**: TypeScriptによる厳格な型チェック
+
+技術スタック：
+- Next.js 15.1.7 (App Router)
+- TypeScript
+- shadcn/ui
+- Supabase
+- TailwindCSS
+
+カラースキーム:
+- shadcn/uiのbase color zinc (green基調)
+- 使用しているshadcn/uiコンポーネント一覧
+  -button
+  -card
+  -dialog
+  -input
+  -label
+
+### 2. ディレクトリ構造
+```
+.manmaru
+|-- README.md                              # プロジェクトの概要、セットアップ手順、使用技術の説明
+|-- components.json                        # UI コンポーネントの設定ファイル
+|-- eslint.config.mjs                      # ESLint の設定ファイル
+|-- next-env.d.ts                          # Next.js の型定義ファイル
+|-- next.config.ts                         # Next.js の設定ファイル
+|-- package-lock.json                      # npm パッケージの依存関係ロックファイル
+|-- package.json                           # プロジェクトの依存関係とスクリプト定義
+|-- page.tsx                               # ルートページのコンポーネント
+|-- postcss.config.mjs                     # PostCSS の設定ファイル
+|-- src
+|   |-- app
+|   |   |-- api
+|   |   |   |-- analyze-meal
+|   |   |   |   `-- route.ts               # 食事画像を分析するAPIエンドポイント
+|   |   |   |                              # Gemini VisionモデルでAI画像分析し、食品リストと栄養情報を返す
+|   |   |   |-- recommend-recipes
+|   |   |   |   `-- route.ts               # 不足栄養素に基づいてレシピを推奨するAPIエンドポイント
+|   |   |   |                              # Gemini Flashモデルを使用した最適なレシピ提案
+|   |   |   `-- update-nutrition-log
+|   |   |       `-- route.ts               # 栄養ログを更新するAPIエンドポイント
+|   |   |                                  # ユーザーの食事データから栄養情報を集計し、日次ログを作成・更新する
+|   |   |-- auth
+|   |   |   |-- callback
+|   |   |   |   `-- page.tsx               # 認証コールバックページ
+|   |   |   |-- login
+|   |   |   |   `-- page.tsx               # ログインページ
+|   |   |   `-- register
+|   |   |       `-- page.tsx               # ユーザー登録ページ
+|   |   |-- dashboard
+|   |   |   |-- layout.tsx                 # ダッシュボード用のレイアウト
+|   |   |   `-- page.tsx                   # ダッシュボードのメインページ
+|   |   |-- favicon.ico                    # サイトのファビコン
+|   |   |-- globals.css                    # グローバルスタイル定義
+|   |   |-- home
+|   |   |   `-- page.tsx                   # ホームページ
+|   |   |-- layout.tsx                     # アプリ全体のレイアウト
+|   |   |-- meals
+|   |   |   |-- log
+|   |   |   |   `-- page.tsx               # 食事ログ記録ページ
+|   |   |   `-- recommend
+|   |   |       `-- page.tsx               # 推奨レシピ表示ページ
+|   |   |-- page.tsx                       # アプリのルートページ
+|   |   |-- profile
+|   |   |   `-- page.tsx                   # ユーザープロフィールページ
+|   |   |-- settings
+|   |   |   `-- page.tsx                   # 設定ページ
+|   |   `-- terms
+|   |       `-- page.tsx                   # 利用規約ページ
+|   |-- components
+|   |   |-- auth
+|   |   |   |-- login-form.tsx             # ログインフォームコンポーネント
+|   |   |   `-- register-form.tsx          # 登録フォームコンポーネント
+|   |   |-- common
+|   |   |   |-- bottom-nav.tsx             # 下部ナビゲーションコンポーネント
+|   |   |   `-- header.tsx                 # ヘッダーコンポーネント
+|   |   |-- dashboard
+|   |   |   |-- meal-summary.tsx           # 食事サマリーコンポーネント
+|   |   |   `-- nutrition-chart.tsx        # 栄養チャートコンポーネント
+|   |   |-- meals
+|   |   |   |-- meal-card.tsx              # 食事カードコンポーネント
+|   |   |   `-- meal-input.tsx             # 食事入力コンポーネント
+|   |   `-- ui
+|   |       |-- button.tsx                 # ボタンUIコンポーネント
+|   |       |-- card.tsx                   # カードUIコンポーネント
+|   |       |-- dialog.tsx                 # ダイアログUIコンポーネント
+|   |       |-- input.tsx                  # 入力フィールドUIコンポーネント
+|   |       `-- label.tsx                  # ラベルUIコンポーネント
+|   |-- data
+|   |   `-- nutrition_data.json            # 食品の栄養データを含むJSONファイル
+|   |                                      # 食品名と対応する栄養素情報のデータベース
+|   |-- hooks
+|   |   |-- useAuth.ts                     # 認証機能を提供するカスタムフック
+|   |   |-- useMeals.ts                    # 食事データを取得・操作するためのReactフック
+|   |   |                                  # 食事の記録、編集、削除などの機能を提供
+|   |   `-- useNutrition.ts                # 栄養データを取得・操作するためのReactフック
+|   |                                      # 栄養ログの取得や更新機能を提供
+|   |-- lib
+|   |   |-- config
+|   |   |   `-- env.ts                     # 環境変数の設定と取得のためのユーティリティ
+|   |   |-- langchain
+|   |   |   `-- langchain.ts               # LangChainとGemini APIの連携設定
+|   |   |                                  # モデル作成、画像処理などの共通機能
+|   |   |-- nutrition
+|   |   |   `-- nutritionUtils.ts          # 栄養計算に関する共通ユーティリティ関数
+|   |   |                                  # 食品の量から栄養素を推定する関数や型定義を含む
+|   |   |-- supabase
+|   |   |   |-- client.ts                  # Supabaseクライアント設定
+|   |   |   `-- types.ts                   # Supabase関連の型定義
+|   |   |-- utils
+|   |   |   |-- date.ts                    # 日付操作ユーティリティ
+|   |   |   |-- nutrition.ts               # 栄養関連のユーティリティ関数
+|   |   |   `-- profile.ts                 # プロフィール関連のユーティリティ関数
+|   |   `-- utils.ts                       # 共通ユーティリティ関数
+|   |-- middleware.ts                      # Next.jsミドルウェア（認証チェックなど）
+|   `-- types
+|       |-- meal.ts                        # 食事関連の型定義
+|       |-- nutrition.ts                   # 栄養関連の型定義
+|       `-- user.ts                        # ユーザー関連の型定義
+|-- tailwind.config.ts                     # Tailwind CSS の設定ファイル
+`-- tsconfig.json                          # TypeScript の設定ファイル
+```
+
+### 3. コンポーネント設計方針
+#### 3.1 認証関連（auth/）
+- ログイン/登録フォームは最小限の入力項目
+- Supabase Authを活用したシンプルな認証フロー
+- エラーメッセージは分かりやすい日本語で表示
+
+#### 3.2 食事記録（meals/）
+- カメラ/写真アップロード機能を優先実装
+- 食事記録の手動修正UIを分かりやすく
+- オフライン対応を考慮したデータ保存
+
+#### 3.3 ダッシュボード（dashboard/）
+- 重要な栄養情報を一目で把握できるグラフ表示
+- 色分けによる直感的な過不足表示
+- レスポンシブな表示対応
+
+### 4. AI機能実装のベストプラクティス
+- **画像解析**: 
+  - 撮影→解析→結果表示の流れをスムーズに
+  - エラー時は手動入力へのフォールバック実装
+- **栄養アドバイス**:
+  - 専門用語を避けた分かりやすい文言
+  - 妊娠週数に応じた適切なアドバイス
+
+### 5. PWA対応指針
+- **最優先**
+　- manifest.json と icons を用意し、ホーム画面追加ができるようにする。
+　- next-pwaなどで最低限のキャッシュを有効化（デフォルト設定でも十分）。
+- **余裕があれば**
+　- 特定パスや特定ファイルだけはオフラインキャッシュするルールを設定。
+　- たとえば「トップページやメインのJS/CSSはキャッシュするが、食事画像のアップロード機能はオンライン必須」など。
+- **プッシュ通知**
+　- 2週間MVPでは優先度低め。実装のためのService Workerのコードが増え、デバッグも必要。
+
+
+### 6. コーディング規約
+#### 6.1 命名規則
+- コンポーネント: PascalCase（例: `MealCard`）
+- フック: camelCaseで`use`プレフィックス（例: `useMealLog`）
+- 関数: camelCase（例: `calculateNutrition`）
+
+
+### 7. エラーハンドリング
+- ユーザーエラーは日本語で分かりやすく表示
+- AI解析エラーは手動入力への切り替えを提案
+- ネットワークエラーはオフラインモードを活用
+
+### 8. パフォーマンス最適化
+- 画像アップロードは圧縮して転送
+- APIレスポンスは適切にキャッシュ
+- 不要な再レンダリングを防ぐmemo化
+
+### 9. セキュリティ考慮事項
+- Supabase RLSによるデータアクセス制御
+- センシティブなデータの暗号化
+- JWT認証トークンの適切な管理
+
+### 10. テスト方針
+- クリティカルなフローの単体テスト
+- 画像解析機能の統合テスト
+- モバイル表示のビジュアルレグレッションテスト
+
+### コードレビューのチェックポイント
+1. モバイル表示は適切か
+2. エラーハンドリングは親切か
+3. オフライン動作は考慮されているか
+4. パフォーマンスへの影響は最小限か
+5. TypeScriptの型は適切か

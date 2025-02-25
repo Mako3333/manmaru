@@ -6,7 +6,7 @@
 ## 実装スケジュール
 
 ### Day 1: データベース構築とLLM連携基盤
-- Supabaseで簡易DB（`meals`と`daily_nutrition_logs`テーブル）の作成
+- Supabaseで簡易DB（`meals`と`daily_nutrition_logs`テーブル）の作成(完了)
 - LangChain.js + Gemini APIの設定
 - 基本的な食品栄養データの準備（JSON形式）
 - APIとNext.jsの連携テスト
