@@ -2,9 +2,6 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { HumanMessage } from "@langchain/core/messages";
 import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 
-// dotenvの設定を削除（Next.jsでは不要）
-// dotenv.config();
-
 // GEMINI APIキーの取得
 const getGeminiApiKey = (): string => {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;

@@ -243,6 +243,8 @@ Object.entries(nutritionData.summary).forEach(([key, value]) => {
 - クライアントコンポーネントの分離による最適化
 - サンプルレシピデータの表示
 
+**実際のレシピ取得はwebから取得する**
+
 ```typescript
 // レシピ一覧ページ（サーバーコンポーネント）
 export default async function RecipesPage() {
@@ -306,7 +308,7 @@ src/app/
 
 1. **データフェッチング実装**:
    - サンプルデータからSupabaseへの実データ取得への移行
-   - レシピデータのAPI連携
+   - レシピ提案の実装がまだできてない。エラーが出ている
 
 2. **UI/UX改善**:
    - レシピカードのデザイン最適化
@@ -315,6 +317,10 @@ src/app/
 3. **テスト実装**:
    - 各ページの単体テスト
    - エンドツーエンドテスト
+
+4. **栄養データベースの拡充**
+　 - `src/data/nutrition_data.json`が不十分
+　 - 要検討領域
 
 ## 6. 次のステップ
 
