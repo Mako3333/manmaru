@@ -1,7 +1,22 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/lib/supabase/types'
 
-export type Profile = Database['public']['Tables']['profiles']['Row']
+export interface Profile {
+    id: string;
+    user_id: string;
+    name?: string;
+    age: number | null;
+    pregnancy_week: number | null;
+    height: number | null;
+    weight: number | null;
+    adult_family_members: number | null;
+    child_family_members: number | null;
+    created_at: string;
+    updated_at: string;
+    full_name?: string;
+    due_date?: string;
+    dietary_restrictions?: string[];
+}
 
 export async function getProfile(userId: string): Promise<Profile | null> {
     const supabase = createClientComponentClient<Database>()

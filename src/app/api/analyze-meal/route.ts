@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { StructuredOutputParser } from "langchain/output_parsers";
 import { z } from "zod";
-import { createGeminiModel, GeminiModel, createImageContent } from "@/lib/langchain/langchain";
+import { createGeminiModel, GeminiModel, createImageContent, createMultiModalMessage } from "@/lib/langchain/langchain";
 import {
     DetectedFoodsSchema,
     FoodItem,
@@ -22,14 +22,24 @@ interface NutritionDbItem {
 
 export async function POST(req: Request) {
     try {
-        const { imageBase64, mealType } = await req.json();
+        const { imageBase64, mealType, apiKey } = await req.json();
+
+        // リクエストからAPIキーを取得（テスト用）
+        const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
+
+        if (!geminiApiKey) {
+            return Response.json(
+                { error: '食事分析中にエラーが発生しました', details: 'GEMINI_API_KEY環境変数が設定されていません' },
+                { status: 500 }
+            );
+        }
 
         if (!imageBase64) {
             return Response.json({ error: '画像データが必要です' }, { status: 400 });
         }
 
         // 1. Gemini Visionモデルの初期化
-        const model = createGeminiModel(GeminiModel.VISION, {
+        const model = createGeminiModel("gemini-2.0-flash-001", {
             maxOutputTokens: 2048,
             temperature: 0.2, // 低い温度で決定的な結果に
         });
@@ -54,15 +64,8 @@ export async function POST(req: Request) {
     `;
 
         // 4. 画像から食品を検出
-        const response = await model.invoke([
-            {
-                role: "user",
-                content: [
-                    { type: "text", text: prompt },
-                    createImageContent(imageBase64)
-                ]
-            }
-        ]);
+        const message = createMultiModalMessage(prompt, imageBase64);
+        const response = await model.invoke([message]);
 
         // 5. 検出結果を構造化
         const detectedFoods = await foodParser.parse(

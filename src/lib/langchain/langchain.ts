@@ -1,16 +1,15 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { HumanMessage } from "@langchain/core/messages";
 import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
-import dotenv from 'dotenv';
 
-// dotenvの設定を読み込む
-dotenv.config();
+// dotenvの設定を削除（Next.jsでは不要）
+// dotenv.config();
 
 // GEMINI APIキーの取得
 const getGeminiApiKey = (): string => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) {
-        throw new Error("GEMINI_API_KEY環境変数が設定されていません");
+        throw new Error("GEMINI_API_KEYまたはGOOGLE_API_KEY環境変数が設定されていません");
     }
     return apiKey;
 };
@@ -30,36 +29,12 @@ export interface GeminiModelOptions {
     topP?: number;
 }
 
-// LangChain Geminiモデルを作成
-export const createGeminiModel = (
-    modelName: GeminiModel,
-    options: GeminiModelOptions = {}
-) => {
+// Geminiモデルの作成
+export const createGeminiModel = (modelName: string = "gemini-2.0-flash-001", options = {}) => {
     return new ChatGoogleGenerativeAI({
         apiKey: getGeminiApiKey(),
-        modelName: modelName,
-        maxOutputTokens: options.maxOutputTokens,
-        temperature: options.temperature,
-        topK: options.topK,
-        topP: options.topP,
-        safetySettings: [
-            {
-                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-        ],
+        model: modelName,
+        ...options
     });
 };
 
@@ -77,12 +52,25 @@ export async function imageToBase64(file: File): Promise<string> {
     });
 }
 
-// 画像コンテンツの作成ヘルパー関数
+// 画像コンテンツの作成
 export const createImageContent = (base64Image: string) => {
+    // データURLプレフィックスがない場合は追加
+    const dataUrl = base64Image.startsWith('data:')
+        ? base64Image
+        : `data:image/jpeg;base64,${base64Image}`;
+
     return {
         type: "image_url",
-        image_url: {
-            url: `data:image/jpeg;base64,${base64Image}`
-        }
+        image_url: { url: dataUrl }
     };
+};
+
+// マルチモーダルメッセージの作成
+export const createMultiModalMessage = (text: string, base64Image: string) => {
+    return new HumanMessage({
+        content: [
+            { type: "text", text },
+            createImageContent(base64Image)
+        ]
+    });
 };

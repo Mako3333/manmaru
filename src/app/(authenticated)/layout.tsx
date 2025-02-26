@@ -3,8 +3,9 @@
 import { useEffect } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
+import { BottomNavigation } from '@/components/layout/bottom-navigation'
 
-export default function DashboardLayout({
+export default function AuthenticatedLayout({
     children,
 }: {
     children: React.ReactNode
@@ -21,18 +22,14 @@ export default function DashboardLayout({
         }
 
         checkSession()
-    }, [])
+    }, [router])
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <header className="bg-white shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <h1 className="text-xl font-semibold text-green-700">manmaru</h1>
-                </div>
-            </header>
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+            <main className="flex-grow pb-16">
                 {children}
             </main>
+            <BottomNavigation />
         </div>
     )
-}
+} 
