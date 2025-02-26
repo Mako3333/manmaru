@@ -70,11 +70,15 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="flex-1 max-w-md">
-              <div className="relative aspect-[9/16] w-full max-w-[300px] mx-auto rounded-[2.5rem] border-8 border-zinc-800 shadow-xl overflow-hidden">
-                {/* ここに実際のアプリスクリーンショットを表示。現在はダミーの色ブロックで代用 */}
-                <div className="absolute inset-0 bg-green-100 flex items-center justify-center">
-                  <span className="text-green-500 text-lg">アプリ画面イメージ</span>
-                </div>
+              <div className="relative w-full max-w-[300px] mx-auto">
+                <Image
+                  src="/images/home_image.png"
+                  alt="manmaruアプリのホーム画面"
+                  width={300}
+                  height={600}
+                  priority
+                  className="w-full h-auto"
+                />
               </div>
             </div>
           </div>
@@ -226,13 +230,6 @@ export default function LandingPage() {
           <div className="max-w-4xl mx-auto flex flex-col md:flex-row gap-8 items-center">
             <div className="md:w-1/2">
               <div className="aspect-[9/16] w-full max-w-[250px] mx-auto rounded-[2rem] border-8 border-zinc-800 shadow-xl overflow-hidden">
-                {/* ここに各機能のスクリーンショット/イメージを表示 */}
-                <div className="absolute inset-0 bg-green-100 flex items-center justify-center">
-                  {activeTab === 'record' && <span className="text-green-700">食事記録画面</span>}
-                  {activeTab === 'nutrition' && <span className="text-green-700">栄養管理画面</span>}
-                  {activeTab === 'recipes' && <span className="text-green-700">レシピ提案画面</span>}
-                  {activeTab === 'growth' && <span className="text-green-700">成長記録画面</span>}
-                </div>
               </div>
             </div>
 
