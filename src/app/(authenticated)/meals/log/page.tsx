@@ -347,6 +347,7 @@ export default function MealLogPage() {
                             <RecognitionEditor
                                 initialData={recognitionData}
                                 onSave={handleSaveRecognition}
+                                mealType={mealType}
                             />
                         )}
 

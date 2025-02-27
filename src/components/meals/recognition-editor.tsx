@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Trash2, Plus, Save } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 // 食品アイテムの型定義
 interface FoodItem {
@@ -50,12 +51,18 @@ interface RecognitionEditorProps {
     initialData: RecognitionData;
     onSave: (data: RecognitionData) => void;
     className?: string;
+    mealType: string;
+    mealDate?: string;
+    photoUrl?: string;
 }
 
 export function RecognitionEditor({
     initialData,
     onSave,
     className,
+    mealType,
+    mealDate,
+    photoUrl,
 }: RecognitionEditorProps) {
     // 食品リストの状態
     const [foods, setFoods] = useState<FoodItem[]>([]);
@@ -63,6 +70,12 @@ export function RecognitionEditor({
     const [nutrition, setNutrition] = useState<Nutrition>(initialData.nutrition);
     // バリデーションエラーの状態
     const [errors, setErrors] = useState<Record<string, string>>({});
+    // 保存中の状態
+    const [saving, setSaving] = useState(false);
+    // エラーの状態
+    const [error, setError] = useState<string | null>(null);
+    // ルーターの状態
+    const router = useRouter();
 
     // initialDataが変更されたら状態を更新
     useEffect(() => {
@@ -126,7 +139,7 @@ export function RecognitionEditor({
     };
 
     // 保存処理
-    const handleSave = () => {
+    const handleSave = async () => {
         // バリデーションチェック
         let hasErrors = false;
         const newErrors: Record<string, string> = {};
@@ -150,7 +163,51 @@ export function RecognitionEditor({
             nutrition
         };
 
-        onSave(dataToSave);
+        try {
+            // 状態更新
+            setSaving(true);
+
+            // ここで適切にエラーハンドリングを行うようにする
+            const response = await fetch('/api/meals', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    meal_type: mealType,
+                    meal_date: mealDate || new Date().toISOString().split('T')[0],
+                    photo_url: photoUrl,
+                    // データベース構造に合わせてフォーマットする
+                    food_description: {
+                        items: dataToSave.foods.map(food => ({
+                            name: food.name,
+                            quantity: food.quantity
+                        }))
+                    },
+                    // データベース構造に合わせて栄養データをフォーマット
+                    nutrition_data: dataToSave.nutrition,
+                    servings: 1
+                }),
+            });
+
+            if (!response.ok) {
+                // レスポンスのエラー内容を詳細に取得
+                const errorData = await response.json();
+                console.error('食事保存APIレスポンス:', errorData);
+                throw new Error(errorData.error || '食事の保存に失敗しました');
+            }
+
+            const result = await response.json();
+            console.log('食事保存成功:', result);
+
+            // 保存成功時の処理
+            router.push('/meals/log');
+        } catch (error) {
+            console.error('食事保存エラーの詳細:', error);
+            setError(error instanceof Error ? error.message : '食事の保存に失敗しました');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -275,7 +332,7 @@ export function RecognitionEditor({
                 <Button
                     onClick={handleSave}
                     className="w-full sm:w-auto"
-                    disabled={Object.keys(errors).length > 0}
+                    disabled={Object.keys(errors).length > 0 || saving}
                 >
                     <Save className="mr-2 h-4 w-4" />
                     保存する

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/utils/profile'
-import { NutritionData, DailyNutritionLog, nutrientNameMap } from '@/lib/types/nutrition'
+import { NutritionData, DailyNutritionLog, nutrientNameMap } from '@/types/nutrition'
 
 export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)

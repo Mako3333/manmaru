@@ -9,7 +9,7 @@ import { NutritionSummary } from '@/components/home/nutrition-summary'
 import { RecipePreview } from '@/components/home/recipe-preview'
 import { DailyRecordCard } from '@/components/home/daily-record-card'
 import type { Profile } from '@/lib/utils/profile'
-import { DailyNutritionLog, nutrientNameMap } from '@/lib/types/nutrition'
+import { DailyNutritionLog, nutrientNameMap } from '@/types/nutrition'
 
 interface NutritionSummaryData {
     deficient_nutrients: string[];
