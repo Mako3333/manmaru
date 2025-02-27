@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Trash2, Plus, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 // 食品アイテムの型定義
 interface FoodItem {
@@ -140,34 +141,31 @@ export function RecognitionEditor({
 
     // 保存処理
     const handleSave = async () => {
-        // バリデーションチェック
-        let hasErrors = false;
-        const newErrors: Record<string, string> = {};
-
-        foods.forEach(food => {
-            if (!food.name.trim()) {
-                newErrors[food.id] = '食品名を入力してください';
-                hasErrors = true;
-            }
-        });
-
-        setErrors(newErrors);
-
-        if (hasErrors) {
-            return; // エラーがある場合は保存しない
-        }
-
-        // 保存用のデータを作成（IDは除外）
-        const dataToSave: RecognitionData = {
-            foods: foods.map(({ id, ...rest }) => rest as ApiFood),
-            nutrition
-        };
-
+        setSaving(true);
         try {
-            // 状態更新
-            setSaving(true);
+            // バリデーションチェック
+            let hasErrors = false;
+            const newErrors: Record<string, string> = {};
 
-            // ここで適切にエラーハンドリングを行うようにする
+            foods.forEach(food => {
+                if (!food.name.trim()) {
+                    newErrors[food.id] = '食品名を入力してください';
+                    hasErrors = true;
+                }
+            });
+
+            setErrors(newErrors);
+
+            if (hasErrors) {
+                return; // エラーがある場合は保存しない
+            }
+
+            // 保存用のデータを作成（IDは除外）
+            const dataToSave: RecognitionData = {
+                foods: foods.map(({ id, ...rest }) => rest as ApiFood),
+                nutrition
+            };
+
             const response = await fetch('/api/meals', {
                 method: 'POST',
                 headers: {
@@ -200,11 +198,25 @@ export function RecognitionEditor({
             const result = await response.json();
             console.log('食事保存成功:', result);
 
-            // 保存成功時の処理
-            router.push('/meals/log');
+            // 成功時のトースト通知
+            toast.success("食事を記録しました", {
+                description: "栄養情報が更新されました",
+                duration: 3000,
+            });
+
+            // リダイレクト処理
+            setTimeout(() => {
+                router.refresh();
+                router.push('/home');
+            }, 1500); // 1.5秒遅延
         } catch (error) {
             console.error('食事保存エラーの詳細:', error);
             setError(error instanceof Error ? error.message : '食事の保存に失敗しました');
+
+            // エラー時のトースト通知
+            toast.error("保存に失敗しました", {
+                description: error instanceof Error ? error.message : "もう一度お試しください",
+            });
         } finally {
             setSaving(false);
         }
