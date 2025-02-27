@@ -65,7 +65,7 @@ CREATE TABLE daily_nutrition_logs (
 │ age           │          │ meal_type     │          │ user_id       │◄──┐
 │ pregnancy_week│          │ meal_date     │          │ log_date      │   │
 │ height        │          │ photo_url     │          │ nutrition_data│   │
-│ weight        │          │ food_description          │ ai_comment    │   │
+│ weight        │          │ food_description         │ ai_comment    │   │
 │ adult_members │          │ nutrition_data│          │ created_at    │   │
 │ child_members │          │ servings      │          │ updated_at    │   │
 │ created_at    │          │ created_at    │          └───────────────┘   │
