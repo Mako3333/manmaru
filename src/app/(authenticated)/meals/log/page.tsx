@@ -1,8 +1,10 @@
 'use client'
-
+// ライブラリのインポート
 import { useState, useEffect, FormEvent } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
+
+// UIコンポーネントのインポート
 import { Button } from '@/components/ui/button'
 import { MealTypeSelector, type MealType } from '@/components/meals/meal-type-selector'
 import { MealPhotoInput } from '@/components/meals/meal-photo-input'
@@ -14,6 +16,7 @@ import { Loader2, Camera, Type, Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+
 
 // 入力モードの型定義
 type InputMode = 'photo' | 'text';
@@ -37,11 +40,14 @@ const initialNutrition = {
 };
 
 export default function MealLogPage() {
+    // ユーザープロフィール関連の状態
     const [profile, setProfile] = useState<any | null>(null)
     const [loading, setLoading] = useState(true)
+
+    // 食事タイプの状態(朝食・昼食・夕食・間食)
     const [mealType, setMealType] = useState<MealType>('breakfast')
 
-    // 入力モード状態
+    // 入力モードの状態(写真モード・テキストモード)
     const [inputMode, setInputMode] = useState<InputMode>('photo')
 
     // 画像解析関連の状態
@@ -59,15 +65,19 @@ export default function MealLogPage() {
     // 保存関連の状態
     const [saving, setSaving] = useState(false)
 
+    // ルーティング関連
     const router = useRouter()
     const supabase = createClientComponentClient()
 
+    // ユーザープロフィールの取得
     useEffect(() => {
         const fetchProfile = async () => {
             try {
+                // セッションの取得
                 const { data: { session } } = await supabase.auth.getSession()
                 if (!session) return
 
+                // ユーザープロフィールの取得
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('*')
@@ -75,16 +85,16 @@ export default function MealLogPage() {
                     .single()
 
                 if (error) throw error
-                setProfile(data)
+                setProfile(data)// プロフィールデータをセット
             } catch (error) {
                 console.error('Error fetching profile:', error)
             } finally {
-                setLoading(false)
+                setLoading(false)// ローディングを終了
             }
         }
 
         fetchProfile()
-    }, [])
+    }, [])//
 
     // 写真が選択されたときの処理
     const handlePhotoCapture = async (file: File, base64: string) => {
@@ -192,27 +202,109 @@ export default function MealLogPage() {
         );
     };
 
-    // テキスト入力の保存処理
+    // ここに enhanceFoodItems 関数を追加
+    const enhanceFoodItems = async (foods: FoodItem[]): Promise<FoodItem[]> => {
+        try {
+            // ローディング通知（sonnerスタイル）
+            toast.loading("食品データを分析中...", {
+                id: "enhance-foods",
+                description: "AIが入力内容を解析しています"
+            });
+
+            // APIリクエスト
+            const response = await fetch('/api/analyze-text-input', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ foods }),
+            });
+
+            // ローディング通知を閉じる
+            toast.dismiss("enhance-foods");
+
+            // エラーハンドリング
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || '食品解析に失敗しました');
+            }
+
+            // 結果の取得
+            const result = await response.json();
+
+            if (!result.enhancedFoods || !Array.isArray(result.enhancedFoods)) {
+                throw new Error('不正な応答フォーマット');
+            }
+
+            // IDを保持しつつデータを更新
+            const enhancedFoodsWithIds = result.enhancedFoods.map((item: any, index: number) => ({
+                id: foods[index]?.id || crypto.randomUUID(),
+                name: item.name,
+                quantity: item.quantity,
+                confidence: item.confidence || 1.0
+            }));
+
+            // 成功通知
+            toast.success("分析完了", {
+                description: "食品データを最適化しました"
+            });
+
+            return enhancedFoodsWithIds;
+        } catch (error) {
+            console.error('食品解析エラー:', error);
+
+            // エラー通知
+            toast.error("分析エラー", {
+                description: "食品データの解析に失敗しました。元のデータを使用します。"
+            });
+
+            // エラー時は元のデータを返す
+            return foods;
+        }
+    };
+
+    // handleSaveTextInput 関数を修正
     const handleSaveTextInput = async () => {
-        // バリデーション
+        // 入力チェック
         if (foodItems.length === 0) {
-            toast.error('少なくとも1つの食品を追加してください');
+            toast.error("入力エラー", {
+                description: "少なくとも1つの食品を追加してください"
+            });
             return;
         }
 
         setSaving(true);
 
         try {
-            const { data: { session } } = await supabase.auth.getSession()
+            // AIを使って食品データを強化
+            const enhancedFoods = await enhanceFoodItems(foodItems);
+            // AIの結果で状態を更新
+            setFoodItems(enhancedFoods);
+
+            // 認証状態を確認
+            const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                toast.error('ログインセッションが無効です。再ログインしてください。');
+                toast.error("認証エラー", {
+                    description: "ログインセッションが無効です。再ログインしてください。"
+                });
                 return;
             }
 
-            // APIに送信するデータ形式に変換（IDを除外）
-            const foodsData = foodItems.map(({ id, ...rest }) => rest);
+            // 保存用のデータ準備
+            const foodsData = enhancedFoods.map(({ id, ...rest }) => rest);
 
-            // 食事データを保存
+            // 栄養計算APIを呼び出す
+            const nutritionResponse = await fetch('/api/calculate-nutrition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ foods: foodsData }),
+            });
+
+            if (!nutritionResponse.ok) {
+                throw new Error('栄養計算に失敗しました');
+            }
+
+            const { nutrition } = await nutritionResponse.json();
+
+            // Supabaseに保存
             const { error } = await supabase
                 .from('meals')
                 .insert({
@@ -221,19 +313,23 @@ export default function MealLogPage() {
                     food_description: {
                         items: foodsData
                     },
-                    nutrition_data: initialNutrition, // テキスト入力では栄養情報は計算されない
+                    nutrition_data: nutrition,
                 });
 
             if (error) throw error;
 
-            // 成功メッセージを表示
-            toast.success('食事を記録しました！');
+            // 成功通知
+            toast.success("保存完了", {
+                description: "食事を記録しました！"
+            });
 
             // ホームページにリダイレクト
             router.push('/home');
         } catch (error) {
             console.error('食事保存エラー:', error);
-            toast.error('食事の記録に失敗しました。もう一度お試しください。');
+            toast.error("保存エラー", {
+                description: "食事の記録に失敗しました。もう一度お試しください。"
+            });
         } finally {
             setSaving(false);
         }
@@ -245,7 +341,7 @@ export default function MealLogPage() {
             // 食事タイプが変更されたら再解析
             analyzePhoto(base64Image);
         }
-    }, [mealType]);
+    }, [mealType, base64Image, recognitionData, inputMode, analyzePhoto]);
 
     // 入力モードが変更されたときの処理
     const handleInputModeChange = (mode: InputMode) => {

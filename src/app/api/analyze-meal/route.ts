@@ -1,6 +1,10 @@
+// Next.jsのAPI Route機能を使うためのもの
 import { NextResponse } from "next/server";
+// 構造化出力パーサー
 import { StructuredOutputParser } from "langchain/output_parsers";
+// 型検証ライブラリ
 import { z } from "zod";
+// プロジェクト内の自作ユーティリティーをインポート
 import { createGeminiModel, GeminiModel, createImageContent, createMultiModalMessage } from "@/lib/langchain/langchain";
 import {
     DetectedFoodsSchema,
@@ -20,8 +24,10 @@ interface NutritionDbItem {
     standard_quantity: string;
 }
 
+// 食事分析APIのエンドポイント
 export async function POST(req: Request) {
     try {
+        // リクエストボディから画像データと食事タイプを取得
         const { imageBase64, mealType, apiKey } = await req.json();
 
         // リクエストからAPIキーを取得（テスト用）

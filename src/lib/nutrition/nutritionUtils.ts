@@ -15,7 +15,8 @@ export type Nutrition = z.infer<typeof NutritionSchema>;
 // 食品項目のスキーマ定義
 export const FoodItemSchema = z.object({
     name: z.string(),
-    quantity: z.string()
+    quantity: z.string(),
+    confidence: z.number().optional()
 });
 
 export type FoodItem = z.infer<typeof FoodItemSchema>;
