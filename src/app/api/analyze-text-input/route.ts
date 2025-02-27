@@ -17,10 +17,21 @@ const RequestSchema = z.object({
 });
 
 // テキスト入力解析のAPIエンドポイント
-export async function POST(req: Request) {
+export async function POST(request: Request) {
     try {
+        console.log('テキスト解析リクエスト受信');
+        const body = await request.json();
+        console.log('リクエストボディ:', body);
+
+        // 環境変数確認
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('OPENAI_API_KEY環境変数が設定されていません');
+            return new Response(JSON.stringify({
+                error: 'API設定エラー'
+            }), { status: 500 });
+        }
+
         // リクエストデータの検証
-        const body = await req.json();
         const { foods } = RequestSchema.parse(body);
 
         // 食品データがない場合はエラー
@@ -141,20 +152,10 @@ JSONデータのみを出力してください。説明文などは不要です�
         }
 
     } catch (error) {
-        console.error('テキスト解析エラー:', error);
-
-        // Zodエラーの場合
-        if (error instanceof z.ZodError) {
-            return Response.json({
-                error: 'リクエストデータが不正です',
-                details: error.errors
-            }, { status: 400 });
-        }
-
-        // その他のエラー
-        return Response.json({
+        console.error('テキスト解析エラー詳細:', error);
+        return new Response(JSON.stringify({
             error: 'テキスト解析中にエラーが発生しました',
             details: (error as Error).message
-        }, { status: 500 });
+        }), { status: 500 });
     }
 }

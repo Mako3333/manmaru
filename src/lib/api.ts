@@ -1,3 +1,5 @@
+import { createClient } from '@supabase/supabase-js';
+
 // APIクライアント関数
 export async function getRecipes(userId = 'current-user-id') {
     // サーバーサイドでの実行時はフルURLが必要
@@ -84,5 +86,60 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
     } catch (error) {
         console.error('画像解析エラー:', error);
         throw error;
+    }
+}
+
+/**
+ * Supabase REST APIへのリクエストを実行する関数
+ * @param endpoint エンドポイントパス (例: 'daily_nutrition_logs')
+ * @param method HTTPメソッド (GET, POST, PUT, DELETE)
+ * @param data リクエストボディ (GETでは不要)
+ * @param options 追加オプション
+ * @returns レスポンスデータまたはエラー
+ */
+export async function fetchFromSupabase(
+    endpoint: string,
+    method: string = 'GET',
+    data: any = null,
+    options: any = {}
+) {
+    try {
+        // Supabase認証情報取得
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        );
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session || !session.access_token) {
+            console.error('認証状態が無効です。再ログインが必要です。');
+            return { error: '認証エラー' };
+        }
+
+        // Supabaseリクエスト用のヘッダ設定
+        const headers = {
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+
+        // ベースURLを取得
+        const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+
+        // fetchリクエストの実行
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+            method: method,
+            headers: headers,
+            body: method !== 'GET' ? JSON.stringify(data) : undefined,
+            ...options
+        });
+
+        const result = await response.json();
+        return response.ok ? result : { error: result, status: response.status };
+
+    } catch (error) {
+        console.error('Supabase API エラー:', error);
+        return { error: (error as Error).message || '不明なエラー' };
     }
 } 
