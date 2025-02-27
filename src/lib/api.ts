@@ -62,54 +62,27 @@ export async function getNutritionSummary(userId: string) {
  * @param mealType 食事タイプ（breakfast, lunch, dinner, snack）
  * @returns 解析結果（食品リストと栄養情報）
  */
-export async function analyzeMealPhoto(base64Image: string, mealType: string): Promise<{
-    foods: Array<{ name: string, quantity: string, confidence: number }>,
-    nutrition: {
-        calories: number,
-        protein: number,
-        iron: number,
-        folic_acid: number,
-        calcium: number,
-        confidence_score: number
-    }
-}> {
+export async function analyzeMealPhoto(base64Image: string, mealType: string) {
     try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-        // APIエンドポイントにPOSTリクエストを送信
-        const response = await fetch(`${baseUrl}/api/analyze-meal`, {
+        const response = await fetch('/api/analyze-meal', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
-                image: base64Image,
-                mealType: mealType
+                imageBase64: base64Image,
+                mealType: mealType,
             }),
-            cache: 'no-store'
         });
 
-        // レスポンスのステータスコードをチェック
         if (!response.ok) {
-            // エラーレスポンスからメッセージを取得
-            let errorMessage = '食事画像の解析に失敗しました';
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.message || errorMessage;
-            } catch (e) {
-                // JSONパースに失敗した場合はステータステキストを使用
-                errorMessage = `${errorMessage}: ${response.statusText}`;
-            }
-
-            throw new Error(errorMessage);
+            const errorData = await response.json();
+            throw new Error(errorData.error || '食事画像の解析に失敗しました');
         }
 
-        // 正常なレスポンスをJSONとしてパース
-        const data = await response.json();
-        return data;
+        return await response.json();
     } catch (error) {
-        // ネットワークエラーなどの例外をキャッチ
-        console.error('食事画像解析API呼び出しエラー:', error);
-        throw error instanceof Error
-            ? error
-            : new Error('食事画像の解析中に予期しないエラーが発生しました');
+        console.error('画像解析エラー:', error);
+        throw error;
     }
 } 
