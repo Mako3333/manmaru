@@ -7,6 +7,50 @@ MVPでは、シンプルで拡張性のあるデータベース設計を採用�
 
 ### 1. profiles（既存）
 ユーザープロファイル情報を管理するテーブル。
+```sql
+[
+  {
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "column_name": "age",
+    "data_type": "smallint"
+  },
+  {
+    "column_name": "pregnancy_week",
+    "data_type": "smallint"
+  },
+  {
+    "column_name": "height",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "weight",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "adult_family_members",
+    "data_type": "smallint"
+  },
+  {
+    "column_name": "child_family_members",
+    "data_type": "smallint"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "user_id",
+    "data_type": "uuid"
+  }
+]
+```
 
 ```sql
 CREATE TABLE profiles (
@@ -26,6 +70,50 @@ CREATE TABLE profiles (
 ### 2. meals（新規）
 食事記録を管理するテーブル。
 
+```
+[
+  {
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "column_name": "meal_type",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "meal_date",
+    "data_type": "date"
+  },
+  {
+    "column_name": "photo_url",
+    "data_type": "text"
+  },
+  {
+    "column_name": "food_description",
+    "data_type": "jsonb"
+  },
+  {
+    "column_name": "nutrition_data",
+    "data_type": "jsonb"
+  },
+  {
+    "column_name": "servings",
+    "data_type": "smallint"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  }
+]
+```
 ```sql
 CREATE TABLE meals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -42,6 +130,38 @@ CREATE TABLE meals (
 
 ### 3. daily_nutrition_logs（新規）
 日次の栄養摂取状況を集計するテーブル。
+```
+[
+  {
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "column_name": "log_date",
+    "data_type": "date"
+  },
+  {
+    "column_name": "nutrition_data",
+    "data_type": "jsonb"
+  },
+  {
+    "column_name": "ai_comment",
+    "data_type": "text"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  }
+]
+```
 
 ```sql
 CREATE TABLE daily_nutrition_logs (
