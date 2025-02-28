@@ -107,17 +107,20 @@ export default function MealLogPage() {
 
     // 画像解析処理
     const analyzePhoto = async (base64Image: string) => {
+        console.log('analyzePhoto開始: データ長', base64Image.length);
         setAnalyzing(true);
         setRecognitionData(null);
 
         try {
-            // 画像解析APIを呼び出し
+            console.log('mealType:', mealType);
             const result = await analyzeMealPhoto(base64Image, mealType);
+            console.log('API応答:', result);
             setRecognitionData(result);
         } catch (error) {
-            console.error('画像解析エラー:', error);
+            console.error('画像解析エラー詳細:', error);
             toast.error('画像の解析に失敗しました。もう一度お試しください。');
         } finally {
+            console.log('analyzePhoto完了, analyzing:', analyzing);
             setAnalyzing(false);
         }
     };
@@ -337,11 +340,11 @@ export default function MealLogPage() {
 
     // 食事タイプが変更されたときに画像解析をリセット
     useEffect(() => {
-        if (base64Image && recognitionData && inputMode === 'photo') {
-            // 食事タイプが変更されたら再解析
+        if (base64Image && inputMode === 'photo') {
+            // 食事タイプが変更されたときのみ再解析
             analyzePhoto(base64Image);
         }
-    }, [mealType, base64Image, recognitionData, inputMode, analyzePhoto]);
+    }, [mealType, inputMode, base64Image]);
 
     // 入力モードが変更されたときの処理
     const handleInputModeChange = (mode: InputMode) => {
@@ -440,11 +443,14 @@ export default function MealLogPage() {
 
                         {/* 認識結果エディタ */}
                         {!analyzing && recognitionData && (
-                            <RecognitionEditor
-                                initialData={recognitionData}
-                                onSave={handleSaveRecognition}
-                                mealType={mealType}
-                            />
+                            <div>
+                                <p className="mb-2 text-sm text-green-600">解析結果が表示されています</p>
+                                <RecognitionEditor
+                                    initialData={recognitionData}
+                                    onSave={handleSaveRecognition}
+                                    mealType={mealType}
+                                />
+                            </div>
                         )}
 
                         {/* 初期状態のガイダンス */}

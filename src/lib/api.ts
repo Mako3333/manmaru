@@ -66,12 +66,15 @@ export async function getNutritionSummary(userId: string) {
  */
 export async function analyzeMealPhoto(base64Image: string, mealType: string) {
     try {
+        console.log('API呼び出し開始: mealType=', mealType);
+
         // 画像データのバリデーション
         if (!base64Image) {
             console.error('画像データが空です');
             throw new Error('画像データが含まれていません');
         }
 
+        console.log('APIエンドポイント呼び出し...');
         const response = await fetch('/api/analyze-meal', {
             method: 'POST',
             headers: {
@@ -83,18 +86,63 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
             }),
         });
 
+        console.log('APIレスポンス受信: ステータス', response.status);
+
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: '不明なエラー' }));
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: errorText || '不明なエラー' };
+            }
             console.error('APIレスポンスエラー:', errorData);
             throw new Error(errorData.error || '画像の分析に失敗しました');
         }
 
-        return await response.json();
+        const result = await response.json();
+        console.log('API結果構造:', Object.keys(result));
+
+        // 結果の検証
+        if (!validateApiResponse(result)) {
+            throw new Error('APIからの応答形式が不正です');
+        }
+
+        return result;
     } catch (error) {
         console.error('画像解析エラー:', error);
         throw error;
     }
 }
+
+/**
+ * API応答の構造を検証する
+ * @param data API応答データ
+ * @returns 検証結果（true: 有効、false: 無効）
+ */
+const validateApiResponse = (data: any): boolean => {
+    if (!data) {
+        console.error('APIレスポンスが空です');
+        return false;
+    }
+
+    // foods配列のチェック
+    if (!Array.isArray(data.foods)) {
+        console.error('foods配列が不正:', data.foods);
+        return false;
+    }
+
+    // nutrition オブジェクトのチェック
+    const nutrition = data.nutrition;
+    if (!nutrition ||
+        typeof nutrition.calories !== 'number' ||
+        typeof nutrition.protein !== 'number') {
+        console.error('nutrition構造が不正:', nutrition);
+        return false;
+    }
+
+    return true;
+};
 
 /**
  * Supabase REST APIへのリクエストを実行する関数
