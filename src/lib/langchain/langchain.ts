@@ -30,7 +30,7 @@ export interface GeminiModelOptions {
 export const createGeminiModel = (modelName: string = "gemini-2.0-flash-001", options = {}) => {
     return new ChatGoogleGenerativeAI({
         apiKey: getGeminiApiKey(),
-        model: modelName,
+        modelName: modelName,
         ...options
     });
 };
