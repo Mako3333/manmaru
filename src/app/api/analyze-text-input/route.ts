@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-    FoodItemSchema,
-    DetectedFoodsSchema
-} from "@/lib/nutrition/nutritionUtils";
+    FoodItem,
+    DetectedFoods
+} from "@/types/nutrition";
 import { createGeminiModel } from "@/lib/langchain/langchain";
+import { AIResponseParser } from "@/lib/ai/response-parser";
+import { FoodAnalysisError, ErrorCode, createErrorResponse } from "@/lib/errors/food-analysis-error";
+import { NutritionDatabase } from "@/lib/nutrition/database";
 
 // リクエスト用のZodスキーマ
 const RequestSchema = z.object({
@@ -23,12 +26,14 @@ export async function POST(request: Request) {
         const body = await request.json();
         console.log('リクエストボディ:', body);
 
-        // 環境変数確認
-        if (!process.env.OPENAI_API_KEY) {
-            console.error('OPENAI_API_KEY環境変数が設定されていません');
-            return new Response(JSON.stringify({
-                error: 'API設定エラー'
-            }), { status: 500 });
+        // APIキーの取得と検証
+        const geminiApiKey = process.env.GEMINI_API_KEY;
+        if (!geminiApiKey) {
+            throw new FoodAnalysisError(
+                'API設定エラー',
+                ErrorCode.MISSING_API_KEY,
+                'GEMINI_API_KEY環境変数が設定されていません'
+            );
         }
 
         // リクエストデータの検証
@@ -36,15 +41,10 @@ export async function POST(request: Request) {
 
         // 食品データがない場合はエラー
         if (!foods || foods.length === 0) {
-            return Response.json({ error: '食品データが必要です' }, { status: 400 });
-        }
-
-        // APIキーの取得
-        const geminiApiKey = process.env.GEMINI_API_KEY;
-        if (!geminiApiKey) {
-            return Response.json(
-                { error: '設定エラー', details: 'GEMINI_API_KEY環境変数が設定されていません' },
-                { status: 500 }
+            throw new FoodAnalysisError(
+                '食品データが必要です',
+                ErrorCode.MISSING_TEXT,
+                '入力データが空です'
             );
         }
 
@@ -85,16 +85,6 @@ ${foodsText}
   ]
 }
 
-## 例
-入力: 「・りんご 半分, ・サラダ 少し」
-出力: 
-{
-  "enhancedFoods": [
-    {"name": "りんご", "quantity": "80g", "confidence": 0.95},
-    {"name": "グリーンサラダ", "quantity": "50g", "confidence": 0.8}
-  ]
-}
-
 JSONデータのみを出力してください。説明文などは不要です。
 `;
 
@@ -102,60 +92,40 @@ JSONデータのみを出力してください。説明文などは不要です�
         const response = await model.invoke(prompt);
         const responseText = response.content.toString();
 
-        // AIの回答からJSONを抽出
-        try {
-            // JSON形式を検出（マークダウンコードブロックも処理）
-            let jsonStr = responseText;
+        // AIの回答を解析
+        const parsedData = AIResponseParser.parseResponse(responseText);
+        const enhancedData = AIResponseParser.validateAndEnhanceFoodData(parsedData);
 
-            // マークダウンのコードブロックからJSON部分を抽出
-            const jsonBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-            if (jsonBlockMatch && jsonBlockMatch[1]) {
-                jsonStr = jsonBlockMatch[1];
-            } else {
-                // 単純なJSONオブジェクトを探す
-                const jsonMatch = responseText.match(/(\{[\s\S]*\})/);
-                if (jsonMatch && jsonMatch[1]) {
-                    jsonStr = jsonMatch[1];
-                }
-            }
+        // 栄養データベースのインスタンスを取得
+        const nutritionDb = NutritionDatabase.getInstance();
 
-            // JSONパース
-            const jsonData = JSON.parse(jsonStr);
+        // 栄養素を計算
+        const nutritionData = await nutritionDb.calculateNutrition(enhancedData.enhancedFoods);
 
-            // enhancedFoodsの存在確認
-            if (!jsonData.enhancedFoods || !Array.isArray(jsonData.enhancedFoods)) {
-                throw new Error('AIからの応答に有効な食品データがありません');
-            }
-
-            // 元のIDを保持して結果を構築
-            const result = {
-                enhancedFoods: jsonData.enhancedFoods.map((item: any, index: number) => ({
-                    id: foods[index]?.id || `food-${index}`,
-                    name: item.name,
-                    quantity: item.quantity,
-                    confidence: item.confidence || 0.8
-                }))
-            };
-
-            // 結果を返却
-            return NextResponse.json(result);
-
-        } catch (error) {
-            console.error('JSON解析エラー:', error);
-            console.error('AIレスポンス:', responseText);
-
-            return Response.json({
-                error: 'AIの応答を解析できませんでした',
-                details: 'JSON形式の解析に失敗しました',
-                aiResponse: responseText
-            }, { status: 500 });
-        }
+        // 結果を返却
+        return NextResponse.json({
+            enhancedFoods: enhancedData.enhancedFoods,
+            nutrition: nutritionData
+        });
 
     } catch (error) {
         console.error('テキスト解析エラー詳細:', error);
-        return new Response(JSON.stringify({
-            error: 'テキスト解析中にエラーが発生しました',
-            details: (error as Error).message
-        }), { status: 500 });
+
+        if (error instanceof FoodAnalysisError) {
+            return NextResponse.json(
+                createErrorResponse(error),
+                { status: 500 }
+            );
+        }
+
+        // その他のエラー
+        return NextResponse.json(
+            createErrorResponse(new FoodAnalysisError(
+                'テキスト解析中にエラーが発生しました',
+                ErrorCode.AI_ERROR,
+                error
+            )),
+            { status: 500 }
+        );
     }
 }
