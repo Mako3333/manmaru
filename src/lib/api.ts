@@ -66,20 +66,27 @@ export async function getNutritionSummary(userId: string) {
  */
 export async function analyzeMealPhoto(base64Image: string, mealType: string) {
     try {
+        // 画像データのバリデーション
+        if (!base64Image) {
+            console.error('画像データが空です');
+            throw new Error('画像データが含まれていません');
+        }
+
         const response = await fetch('/api/analyze-meal', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                imageBase64: base64Image,
-                mealType: mealType,
+                image: base64Image,
+                mealType
             }),
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || '食事画像の解析に失敗しました');
+            const errorData = await response.json().catch(() => ({ error: '不明なエラー' }));
+            console.error('APIレスポンスエラー:', errorData);
+            throw new Error(errorData.error || '画像の分析に失敗しました');
         }
 
         return await response.json();

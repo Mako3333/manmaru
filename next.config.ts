@@ -12,6 +12,11 @@ const nextConfig = withPWA({
   images: {
     domains: [],
   },
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
 })
 
 module.exports = nextConfig
