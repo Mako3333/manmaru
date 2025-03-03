@@ -252,7 +252,7 @@ export default function MealLogPage() {
     };
 
     // ここに enhanceFoodItems 関数を追加
-    const enhanceFoodItems = async (foods: FoodItem[]): Promise<FoodItem[]> => {
+    const enhanceFoodItems = async (foods: FoodItem[], suppressErrorToast: boolean = false): Promise<FoodItem[]> => {
         try {
             // ローディング通知（sonnerスタイル）
             toast.loading("食品データを分析中...", {
@@ -280,6 +280,7 @@ export default function MealLogPage() {
             const result = await response.json();
 
             if (!result.enhancedFoods || !Array.isArray(result.enhancedFoods)) {
+                console.error('APIレスポンス:', result);
                 throw new Error('不正な応答フォーマット');
             }
 
@@ -300,10 +301,12 @@ export default function MealLogPage() {
         } catch (error) {
             console.error('食品解析エラー:', error);
 
-            // エラー通知
-            toast.error("分析エラー", {
-                description: "食品データの解析に失敗しました。元のデータを使用します。"
-            });
+            if (!suppressErrorToast) {
+                // エラー通知
+                toast.error("分析エラー", {
+                    description: "食品データの解析に失敗しました。元のデータを使用します。"
+                });
+            }
 
             // エラー時は元のデータを返す
             return foods;
@@ -324,7 +327,7 @@ export default function MealLogPage() {
 
         try {
             // AIを使って食品データを強化
-            const enhancedFoods = await enhanceFoodItems(foodItems);
+            const enhancedFoods = await enhanceFoodItems(foodItems, true);
             // AIの結果で状態を更新
             setFoodItems(enhancedFoods);
 

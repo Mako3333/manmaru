@@ -89,8 +89,8 @@ JSONデータのみを出力してください。説明文などは不要です�
 `;
 
         // AIに解析リクエスト
-        const response = await model.invoke(prompt);
-        const responseText = response.toString();
+        const aiResponse = await model.invoke(prompt);
+        const responseText = aiResponse.toString();
 
         // AIの回答を解析
         const parsedData = AIResponseParser.parseResponse(responseText);
@@ -102,11 +102,15 @@ JSONデータのみを出力してください。説明文などは不要です�
         // 栄養素を計算
         const nutritionData = await nutritionDb.calculateNutrition(enhancedData.foods);
 
-        // 結果を返却
-        return NextResponse.json({
-            foods: enhancedData.foods,
+        // レスポンスデータの準備
+        const responseData = {
+            enhancedFoods: enhancedData.foods,
             nutrition: nutritionData
-        });
+        };
+        console.log('API応答:', responseData);
+
+        // 結果を返却
+        return NextResponse.json(responseData);
 
     } catch (error) {
         console.error('テキスト解析エラー詳細:', error);
