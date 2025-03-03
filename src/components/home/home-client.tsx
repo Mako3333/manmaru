@@ -219,13 +219,39 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </CardContent>
                 </Card>
 
-                {/* 3. アドバイスカード */}
+                {/* 3. アドバイスカード - 修正版 */}
                 <Card className="w-full overflow-hidden">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-lg sm:text-xl font-bold">今日のアドバイス</CardTitle>
+                        <CardTitle className="text-lg sm:text-xl font-bold">本日の栄養アドバイス</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <NutritionAdvice date={currentDate} />
+                        {/* NutritionAdviceコンポーネントを直接使用せず、内容を直接表示 */}
+                        <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100">
+                            {nutritionData && nutritionData.deficient_nutrients && nutritionData.deficient_nutrients.length > 0 ? (
+                                <>
+                                    <p className="font-medium text-green-800 mb-2">
+                                        今日は以下の栄養素が不足しています：
+                                    </p>
+                                    <ul className="list-disc pl-5 text-green-700 space-y-1">
+                                        {deficientNutrients.map((nutrient, index) => (
+                                            <li key={index}>
+                                                <span className="font-medium">{nutrient.name}</span>：
+                                                {nutrient.percent < 50
+                                                    ? "かなり不足しています。積極的に摂取しましょう。"
+                                                    : "やや不足しています。意識して摂取しましょう。"}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <p className="mt-3 text-green-700">
+                                        バランスの良い食事を心がけ、特に不足している栄養素を意識して摂取しましょう。
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="text-green-700">
+                                    今日の栄養バランスは良好です。このまま栄養バランスの良い食事を続けましょう。
+                                </p>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 

@@ -206,6 +206,7 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
                             style={{
                                 background: 'linear-gradient(to right, #f0f9ff, #e0f2fe, #bae6fd)',
                             }}
+                            indicatorClassName="bg-green-500"
                         />
                     </div>
 
