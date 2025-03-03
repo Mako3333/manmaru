@@ -3,13 +3,22 @@
 import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import type { Profile } from '@/lib/utils/profile'
 import { NutritionData, DailyNutritionLog, nutrientNameMap } from '@/types/nutrition'
+import type { BasicNutritionData } from '@/types/nutrition'
+
+// 新しいダッシュボードコンポーネントをインポート
+import NutritionChart from '@/components/dashboard/nutrition-chart';
+import PregnancyWeekInfo from '@/components/dashboard/pregnancy-week-info';
+import NutritionAdvice from '@/components/dashboard/nutrition-advice';
 
 export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
     const [nutritionData, setNutritionData] = useState<NutritionData | null>(null)
+    const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const router = useRouter()
     const supabase = createClientComponentClient()
 
@@ -55,10 +64,10 @@ export default function DashboardPage() {
 
                     // nutritionDataの構造も確認
                     console.log('nutritionData:', nutritionData)
-                    console.log('summary:', nutritionData?.summary)
+                    console.log('calories:', nutritionData?.calories, 'protein:', nutritionData?.protein)
 
                     // achievement_ratesが存在するか確認
-                    if (nutritionData && nutritionData.summary) {
+                    if (nutritionData) {
                         // 達成率を計算（仮の実装）
                         const achievementRates: Record<string, number> = {};
                         const targets = {
@@ -70,8 +79,10 @@ export default function DashboardPage() {
                         };
 
                         // 各栄養素の達成率を計算
-                        Object.entries(nutritionData.summary).forEach(([key, value]) => {
-                            achievementRates[key as keyof typeof nutritionData.summary] = Math.min(100, Math.round((value / targets[key as keyof typeof targets]) * 100)) || 0;
+                        const nutrientKeys = ['calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'];
+                        nutrientKeys.forEach(key => {
+                            const value = Number(nutritionData[key as keyof NutritionData] || 0);
+                            achievementRates[key] = Math.min(100, Math.round((value / targets[key as keyof typeof targets]) * 100)) || 0;
                         });
 
                         // 日々の記録を変換
@@ -79,8 +90,10 @@ export default function DashboardPage() {
                             const data = log.nutrition_data;
                             // 各日の達成率を計算
                             const dailyRates: Record<string, number> = {};
-                            Object.entries(data.summary).forEach(([key, value]) => {
-                                dailyRates[key as keyof typeof data.summary] = Math.min(100, Math.round((value / targets[key as keyof typeof targets]) * 100)) || 0;
+                            const dailyNutrientKeys = ['calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'];
+                            dailyNutrientKeys.forEach(key => {
+                                const value = Number(data[key as keyof NutritionData] || 0);
+                                dailyRates[key] = Math.min(100, Math.round((value / targets[key as keyof typeof targets]) * 100)) || 0;
                             });
 
                             // 全体スコアを計算
@@ -91,8 +104,8 @@ export default function DashboardPage() {
 
                             return {
                                 date: log.log_date,
-                                calories: data.summary.calories || 0,
-                                protein: data.summary.protein || 0,
+                                calories: data.calories || 0,
+                                protein: data.protein || 0,
                                 fat: 0, // データにない場合は0
                                 carbs: 0, // データにない場合は0
                                 score: score
@@ -106,6 +119,12 @@ export default function DashboardPage() {
                         );
 
                         setNutritionData({
+                            calories: nutritionData.calories,
+                            protein: nutritionData.protein,
+                            iron: nutritionData.iron,
+                            folic_acid: nutritionData.folic_acid,
+                            calcium: nutritionData.calcium,
+                            vitamin_d: nutritionData.vitamin_d,
                             overall_score: overallScore,
                             deficient_nutrients: nutritionData.deficient_nutrients || [],
                             sufficient_nutrients: Object.keys(achievementRates)
@@ -116,6 +135,12 @@ export default function DashboardPage() {
                     } else {
                         // デフォルト値を設定
                         setNutritionData({
+                            calories: 1800,
+                            protein: 70,
+                            iron: 15,
+                            folic_acid: 400,
+                            calcium: 800,
+                            vitamin_d: 10,
                             overall_score: 75,
                             deficient_nutrients: ['鉄分', '葉酸', 'カルシウム'],
                             sufficient_nutrients: ['タンパク質', 'ビタミンC', '食物繊維'],
@@ -141,6 +166,10 @@ export default function DashboardPage() {
         fetchData()
     }, [])
 
+    const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setCurrentDate(e.target.value);
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[50vh]">
@@ -155,16 +184,46 @@ export default function DashboardPage() {
     }
 
     return (
-        <>
-            {/* ヘッダー */}
-            <header className="bg-white shadow-sm">
-                <div className="container mx-auto px-4 py-4">
-                    <h1 className="text-xl font-bold text-green-600">栄養分析</h1>
+        <div className="container mx-auto px-4 py-6 space-y-6">
+            {/* 日付選択 */}
+            <div className="mb-6">
+                <label htmlFor="date-selector" className="block text-sm font-medium mb-2">
+                    日付を選択:
+                </label>
+                <input
+                    id="date-selector"
+                    type="date"
+                    value={currentDate}
+                    onChange={handleDateChange}
+                    className="px-4 py-2 border rounded-md"
+                />
+                <div className="text-lg mt-2">
+                    {currentDate && (
+                        <time dateTime={currentDate} className="font-medium">
+                            {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
+                        </time>
+                    )}
                 </div>
-            </header>
+            </div>
 
-            {/* メインコンテンツ */}
-            <div className="container mx-auto px-4 py-6 space-y-6">
+            {/* 新しいダッシュボードコンポーネント */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                {/* 左側エリア: 妊娠週情報 */}
+                <div className="md:col-span-4">
+                    <PregnancyWeekInfo className="mb-6" />
+                    <NutritionAdvice date={currentDate} />
+                </div>
+
+                {/* 右側エリア: 栄養チャート */}
+                <div className="md:col-span-8">
+                    <NutritionChart date={currentDate} />
+                </div>
+            </div>
+
+            <h1 className="text-xl font-bold text-green-600 mt-8 mb-4">週間栄養サマリー</h1>
+
+            {/* 既存のダッシュボードコンポーネント */}
+            <div className="space-y-6">
                 {/* 栄養スコア */}
                 <section className="bg-white rounded-xl shadow-sm p-4">
                     <h2 className="text-lg font-semibold text-gray-800 mb-3">栄養バランススコア</h2>
@@ -255,7 +314,7 @@ export default function DashboardPage() {
                                     <span>{record.protein} g</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div className="bg-red-500 h-2 rounded-full" style={{ width: '80%' }}></div>
+                                    <div className="bg-green-500 h-2 rounded-full" style={{ width: '80%' }}></div>
                                 </div>
                             </div>
 
@@ -265,7 +324,7 @@ export default function DashboardPage() {
                                     <span>{record.fat} g</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '70%' }}></div>
+                                    <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '65%' }}></div>
                                 </div>
                             </div>
 
@@ -275,13 +334,13 @@ export default function DashboardPage() {
                                     <span>{record.carbs} g</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div className="bg-green-500 h-2 rounded-full" style={{ width: '85%' }}></div>
+                                    <div className="bg-purple-500 h-2 rounded-full" style={{ width: '70%' }}></div>
                                 </div>
                             </div>
                         </div>
                     ))}
                 </section>
             </div>
-        </>
+        </div>
     )
 } 

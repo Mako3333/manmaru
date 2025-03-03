@@ -10,7 +10,7 @@ alwaysApply: false
 - **型安全性**: TypeScriptによる厳格な型チェック
 
 技術スタック：
-- Next.js 15.1.7 (App Router)
+- Next.js 15.2.0 (App Router)
 - TypeScript
 - shadcn/ui
 - Supabase
@@ -24,131 +24,153 @@ alwaysApply: false
   -dialog
   -input
   -label
+  -radio-group
+  -sonner
+  -checkbox
 
 ### 2. ディレクトリ構造
 ```
 .
-|-- README.md                          # プロジェクト概要と使用方法の説明
-|-- check-env.js                       # 環境変数の検証スクリプト
-|-- components.json                    # UIコンポーネント設定ファイル
-|-- encode-image.js                    # 画像をBase64エンコードするユーティリティ
-|-- encoded_image.txt                  # エンコードされた画像データの保存ファイル
-|-- eslint.config.mjs                  # ESLint設定ファイル
-|-- next-env.d.ts                      # Next.jsの型定義ファイル
-|-- next.config.ts                     # Next.js設定ファイル
-|-- package-lock.json                  # npm依存関係のロックファイル
-|-- package.json                       # プロジェクト依存関係と設定
-|-- postcss.config.mjs                 # PostCSS設定ファイル
-|-- reports                            # 開発レポートディレクトリ
-|   `-- 2025-2-26.md                   # 2025年2月26日の開発レポート
-|-- src                                # ソースコードのルートディレクトリ
-|   |-- app                            # Next.js App Routerのルートディレクトリ
-|   |   |-- (authenticated)            # 認証が必要なページのグループ（URLには影響しない）
-|   |   |   |-- dashboard              # ダッシュボードページ（栄養摂取状況の概要表示）
-|   |   |   |   `-- page.tsx           # ダッシュボードのページコンポーネント
-|   |   |   |-- home                   # ホームページ（ログイン後のメインページ）
-|   |   |   |   `-- page.tsx           # ホームのページコンポーネント
-|   |   |   |-- layout.tsx             # 認証済みページ共通のレイアウト（ナビゲーションなど）
-|   |   |   |-- meals                  # 食事記録関連のページ
-|   |   |   |   `-- log                # 食事ログページ
-|   |   |   |       `-- page.tsx       # 食事ログのページコンポーネント
-|   |   |   |-- profile                # プロフィール設定ページ（最近(authenticated)に移動）
-|   |   |   |   `-- page.tsx           # プロフィール設定のページコンポーネント
-|   |   |   |-- recipes                # レシピ一覧・詳細ページ（最近(authenticated)に移動）
-|   |   |   |   |-- [id]               # 動的ルートによるレシピ詳細ページ
-|   |   |   |   |   |-- page.tsx       # レシピ詳細のページコンポーネント
-|   |   |   |   |   `-- recipes-client.tsx # レシピ詳細のクライアントコンポーネント
-|   |   |   |   |-- page.tsx           # レシピ一覧のページコンポーネント
-|   |   |   |   `-- recipes-client.tsx # レシピ一覧のクライアントコンポーネント
-|   |   |   `-- settings               # アプリ設定ページ
-|   |   |       `-- page.tsx           # 設定のページコンポーネント
-|   |   |-- api                        # APIエンドポイントディレクトリ
-|   |   |   |-- analyze-meal           # 食事画像分析API
-|   |   |   |   `-- route.ts           # 食事画像からAIで栄養素を分析するAPI
-|   |   |   |-- recommend-recipes      # レシピ推奨API
-|   |   |   |   `-- route.ts           # 不足栄養素に基づくレシピ推奨API
-|   |   |   `-- update-nutrition-log   # 栄養ログ更新API
-|   |   |       `-- route.ts           # 日次の栄養摂取データを更新するAPI
-|   |   |-- auth                       # 認証関連ページ
-|   |   |   |-- callback               # OAuth認証コールバックページ
-|   |   |   |   `-- page.tsx           # 認証後のリダイレクト処理
-|   |   |   |-- login                  # ログインページ
-|   |   |   |   `-- page.tsx           # ログインフォームのページ
-|   |   |   `-- register               # ユーザー登録ページ
-|   |   |       `-- page.tsx           # 登録フォームのページ
-|   |   |-- favicon.ico                # サイトのファビコン
-|   |   |-- globals.css                # グローバルCSSスタイル
-|   |   |-- layout.tsx                 # アプリ全体のレイアウト
-|   |   |-- page.tsx                   # ランディングページ（未ログイン時のトップページ）
-|   |   `-- terms                      # 利用規約ページ
-|   |       `-- page.tsx               # 利用規約のページコンポーネント
-|   |-- components                     # 再利用可能なコンポーネント
-|   |   |-- auth                       # 認証関連コンポーネント
-|   |   |   |-- login-form.tsx         # ログインフォームコンポーネント
-|   |   |   `-- register-form.tsx      # 登録フォームコンポーネント
-|   |   |-- common                     # 共通コンポーネント
-|   |   |   |-- bottom-nav.tsx         # 下部ナビゲーションバー
-|   |   |   `-- header.tsx             # ヘッダーコンポーネント
-|   |   |-- dashboard                  # ダッシュボード用コンポーネント
-|   |   |   |-- meal-summary.tsx       # 食事サマリーコンポーネント
-|   |   |   `-- nutrition-chart.tsx    # 栄養摂取チャートコンポーネント
-|   |   |-- home                       # ホーム画面用コンポーネント
-|   |   |   |-- daily-record-card.tsx  # 日次記録カード
-|   |   |   |-- home-client.tsx        # ホーム画面のクライアントコンポーネント
-|   |   |   |-- nutrition-summary.tsx  # 栄養摂取サマリー
-|   |   |   |-- progress-card.tsx      # 進捗カード
-|   |   |   `-- recipe-preview.tsx     # レシピプレビュー
-|   |   |-- layout                     # レイアウト関連コンポーネント
-|   |   |   `-- bottom-navigation.tsx  # 下部ナビゲーション（モバイル用）
-|   |   |-- meals                      # 食事関連コンポーネント
-|   |   |   |-- meal-card.tsx          # 食事カードコンポーネント
-|   |   |   `-- meal-input.tsx         # 食事入力フォーム
-|   |   |-- recipes                    # レシピ関連コンポーネント
-|   |   |   `-- recipe-card.tsx        # レシピカードコンポーネント
-|   |   `-- ui                         # 基本UIコンポーネント
-|   |       |-- button.tsx             # ボタンコンポーネント
-|   |       |-- card.tsx               # カードコンポーネント
-|   |       |-- dialog.tsx             # ダイアログコンポーネント
-|   |       |-- input.tsx              # 入力フィールドコンポーネント
-|   |       `-- label.tsx              # ラベルコンポーネント
-|   |-- data                           # 静的データファイル
-|   |   `-- nutrition_data.json        # 食品の栄養データ
-|   |-- hooks                          # カスタムReactフック
-|   |   |-- useAuth.ts                 # 認証関連フック
-|   |   |-- useMeals.ts                # 食事データ操作フック
-|   |   `-- useNutrition.ts            # 栄養データ操作フック
-|   |-- lib                            # ユーティリティライブラリ
-|   |   |-- api.ts                     # API呼び出し関数
-|   |   |-- config                     # 設定ファイル
-|   |   |   `-- env.ts                 # 環境変数の型安全な取得
-|   |   |-- langchain                  # LangChain関連（AI処理）
-|   |   |   `-- langchain.ts           # Gemini APIとの連携設定
-|   |   |-- nutrition                  # 栄養関連ユーティリティ
-|   |   |   `-- nutritionUtils.ts      # 栄養計算ユーティリティ
-|   |   |-- supabase                   # Supabase関連
-|   |   |   |-- client.ts              # Supabaseクライアント設定
-|   |   |   `-- types.ts               # Supabaseデータの型定義
-|   |   |-- types                      # 型定義
-|   |   |   `-- nutrition.ts           # 栄養関連の型定義
-|   |   |-- utils                      # 一般ユーティリティ
-|   |   |   |-- date.ts                # 日付操作ユーティリティ
-|   |   |   |-- nutrition.ts           # 栄養計算ユーティリティ
-|   |   |   `-- profile.ts             # プロフィール関連ユーティリティ
-|   |   `-- utils.ts                   # 汎用ユーティリティ関数
-|   |-- middleware.ts                  # Next.js ミドルウェア（認証チェックなど）
-|   |-- scripts                        # スクリプトファイル
-|   |   `-- api-test.js                # API テスト用スクリプト
-|   `-- types                          # グローバル型定義
-|       |-- meal.ts                    # 食事データの型定義
-|       |-- nutrition.ts               # 栄養データの型定義
-|       `-- user.ts                    # ユーザーデータの型定義
-|-- tailwind.config.ts                 # Tailwind CSS設定
-|-- test-api-direct.js                 # API直接テスト用スクリプト
-|-- test-api.js                        # 食事分析APIテスト用スクリプト
-|-- test-nutrition-api.js              # 栄養ログ更新APIテスト用スクリプト
-|-- test-recipe-api.js                 # レシピ推奨APIテスト用スクリプト
-`-- tsconfig.json                      # TypeScript設定ファイル
-```
+|-- README.md
+|-- check-env.js
+|-- components.json
+|-- encode-image.js
+|-- encoded_image.txt
+|-- eslint.config.mjs
+|-- next-env.d.ts
+|-- next.config.ts
+|-- package-lock.json
+|-- package.json
+|-- postcss.config.mjs
+|-- src
+|   |-- app
+|   |   |-- (authenticated)
+|   |   |   |-- dashboard
+|   |   |   |   `-- page.tsx
+|   |   |   |-- home
+|   |   |   |   `-- page.tsx
+|   |   |   |-- layout.tsx
+|   |   |   |-- meals
+|   |   |   |   `-- log
+|   |   |   |       `-- page.tsx
+|   |   |   |-- profile
+|   |   |   |   `-- page.tsx
+|   |   |   |-- recipes
+|   |   |   |   |-- [id]
+|   |   |   |   |   |-- page.tsx
+|   |   |   |   |   `-- recipes-client.tsx
+|   |   |   |   |-- page.tsx
+|   |   |   |   `-- recipes-client.tsx
+|   |   |   `-- settings
+|   |   |       `-- page.tsx
+|   |   |-- api
+|   |   |   |-- analyze-meal
+|   |   |   |   `-- route.ts
+|   |   |   |-- analyze-meal-langchain
+|   |   |   |   `-- route.ts
+|   |   |   |-- analyze-text-input
+|   |   |   |   `-- route.ts
+|   |   |   |-- calculate-nutrition
+|   |   |   |   `-- route.ts
+|   |   |   |-- meals
+|   |   |   |   |-- [date]
+|   |   |   |   |   `-- route.ts
+|   |   |   |   |-- range
+|   |   |   |   |   `-- route.ts
+|   |   |   |   |-- route.ts
+|   |   |   |   `-- summary
+|   |   |   |       `-- route.ts
+|   |   |   |-- recommend-recipes
+|   |   |   |   `-- route.ts
+|   |   |   `-- update-nutrition-log
+|   |   |       `-- route.ts
+|   |   |-- auth
+|   |   |   |-- callback
+|   |   |   |   `-- page.tsx
+|   |   |   |-- login
+|   |   |   |   `-- page.tsx
+|   |   |   `-- register
+|   |   |       `-- page.tsx
+|   |   |-- dashboard
+|   |   |-- favicon.ico
+|   |   |-- globals.css
+|   |   |-- layout.tsx
+|   |   |-- meals
+|   |   |   |-- 2025-2-27
+|   |   |   |-- [date]
+|   |   |   `-- add
+|   |   |-- page.tsx
+|   |   `-- terms
+|   |       `-- page.tsx
+|   |-- components
+|   |   |-- auth
+|   |   |   |-- login-form.tsx
+|   |   |   `-- register-form.tsx
+|   |   |-- common
+|   |   |   |-- bottom-nav.tsx
+|   |   |   `-- header.tsx
+|   |   |-- dashboard
+|   |   |   |-- meal-summary.tsx
+|   |   |   `-- nutrition-chart.tsx
+|   |   |-- home
+|   |   |   |-- daily-record-card.tsx
+|   |   |   |-- home-client.tsx
+|   |   |   |-- nutrition-summary.tsx
+|   |   |   |-- progress-card.tsx
+|   |   |   `-- recipe-preview.tsx
+|   |   |-- layout
+|   |   |   `-- bottom-navigation.tsx
+|   |   |-- meals
+|   |   |   |-- meal-card.tsx
+|   |   |   |-- meal-input.tsx
+|   |   |   |-- meal-photo-input.tsx
+|   |   |   |-- meal-type-selector.tsx
+|   |   |   `-- recognition-editor.tsx
+|   |   |-- nutrition
+|   |   |-- recipes
+|   |   |   `-- recipe-card.tsx
+|   |   `-- ui
+|   |       |-- button.tsx
+|   |       |-- card.tsx
+|   |       |-- checkbox.tsx
+|   |       |-- dialog.tsx
+|   |       |-- input.tsx
+|   |       |-- label.tsx
+|   |       |-- radio-group.tsx
+|   |       `-- sonner.tsx
+|   |-- data
+|   |   `-- nutrition_data.json
+|   |-- hooks
+|   |   |-- useAuth.ts
+|   |   |-- useMeals.ts
+|   |   `-- useNutrition.ts
+|   |-- lib
+|   |   |-- api.ts
+|   |   |-- langchain
+|   |   |   `-- langchain.ts
+|   |   |-- nutrition
+|   |   |   `-- nutritionUtils.ts
+|   |   |-- supabase
+|   |   |   `-- client.ts
+|   |   |-- utils
+|   |   |   |-- date.ts
+|   |   |   |-- image-utils.ts
+|   |   |   |-- nutrition.ts
+|   |   |   `-- profile.ts
+|   |   `-- utils.ts
+|   |-- middleware.ts
+|   `-- types
+|       |-- meal.ts
+|       |-- nutrition.ts
+|       `-- user.ts
+|-- tailwind.config.ts
+|-- test-api-direct.js
+|-- test-api-meal.js
+|-- test-api.js
+|-- test-meal-image.jpg
+|-- test-nutrition-api.js
+|-- test-recipe-api.js
+`-- tsconfig.json
 
 ### 3. コンポーネント設計方針
 #### 3.1 認証関連（auth/）
