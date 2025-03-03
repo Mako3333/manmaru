@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         }
 
         // Gemini Proモデルの初期化（テキスト処理用）
-        const model = createGeminiModel("gemini-pro", {
+        const model = createGeminiModel("gemini-2.0-flash-001", {
             temperature: 0.2,
             maxOutputTokens: 1024
         });

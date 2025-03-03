@@ -27,7 +27,7 @@ const apiKey = process.env.GEMINI_API_KEY || '';
 
 // モデルの設定
 const genAI = new GoogleGenerativeAI(apiKey);
-const modelName = 'gemini-1.5-pro'; // 画像認識に適したモデル
+const modelName = 'gemini-2.0-flash-001'; // 画像認識に適したモデル
 
 export async function POST(request: Request) {
     try {

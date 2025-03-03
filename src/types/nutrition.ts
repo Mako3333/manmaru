@@ -1,5 +1,21 @@
-// 栄養データの型定義
-export interface NutritionData {
+/**
+ * 基本的な栄養素データ（集計や保存に使用）
+ */
+export interface BasicNutritionData {
+    calories: number;
+    protein: number;
+    iron: number;        // 鉄分 (mg)
+    folic_acid: number;  // 葉酸 (μg)
+    calcium: number;     // カルシウム (mg)
+    vitamin_d: number;   // ビタミンD (μg)
+    confidence_score?: number; // AI分析の信頼度
+}
+
+/**
+ * 栄養素データの詳細インターフェース
+ * 妊婦に重要な栄養素を含む
+ */
+export interface NutritionData extends BasicNutritionData {
     overall_score: number;
     deficient_nutrients: string[];
     sufficient_nutrients: string[];
@@ -22,22 +38,83 @@ export interface NutrientSummary {
     [key: string]: number; // インデックスシグネチャ
 }
 
-// 日次栄養ログの型定義
+/**
+ * トライメスター別の栄養摂取目標値
+ */
+export interface NutritionTarget {
+    id: string;
+    trimester: number;   // 1, 2, 3のいずれか
+    calories: number;
+    protein: number;
+    iron: number;
+    folic_acid: number;
+    calcium: number;
+    vitamin_d: number;
+    created_at: string;
+}
+
+/**
+ * 食事ごとの栄養素データ
+ */
+export interface MealNutrient {
+    id: string;
+    meal_id: string;
+    calories: number;
+    protein: number;
+    iron: number;
+    folic_acid: number;
+    calcium: number;
+    vitamin_d: number;
+    confidence_score: number;
+    created_at: string;
+}
+
+/**
+ * 栄養目標の進捗状況（ビューから取得）
+ */
+export interface NutritionProgress {
+    user_id: string;
+    trimester: number;
+    meal_date: string;
+    // 目標値
+    target_calories: number;
+    target_protein: number;
+    target_iron: number;
+    target_folic_acid: number;
+    target_calcium: number;
+    target_vitamin_d: number;
+    // 実際の摂取量
+    actual_calories: number;
+    actual_protein: number;
+    actual_iron: number;
+    actual_folic_acid: number;
+    actual_calcium: number;
+    actual_vitamin_d: number;
+    // 達成率（%）
+    calories_percent: number;
+    protein_percent: number;
+    iron_percent: number;
+    folic_acid_percent: number;
+    calcium_percent: number;
+    vitamin_d_percent: number;
+}
+
+/**
+ * 日次の栄養ログ
+ */
 export interface DailyNutritionLog {
     id: string;
     user_id: string;
     log_date: string;
-    nutrition_data: {
-        summary: NutrientSummary;
-        meals_count: number;
-        deficient_nutrients: string[];
-    };
-    ai_comment?: string;
+    nutrition_data: NutritionData;
+    ai_comment: string | null;
     created_at: string;
     updated_at: string;
 }
 
-// 食品アイテムの型定義
+/**
+ * 食品アイテムの型定義
+ */
 export interface FoodItem {
     id?: string;
     name: string;
@@ -47,12 +124,16 @@ export interface FoodItem {
     notes?: string;
 }
 
-// 検出された食品リストの型定義
+/**
+ * 検出された食品リストの型定義
+ */
 export interface DetectedFoods {
     foods: FoodItem[];
 }
 
-// 食事タイプの定義
+/**
+ * 食事タイプの定義
+ */
 export enum MealType {
     BREAKFAST = '朝食',
     LUNCH = '昼食',
@@ -60,7 +141,9 @@ export enum MealType {
     SNACK = '間食'
 }
 
-// 食品カテゴリーの定義
+/**
+ * 食品カテゴリーの定義
+ */
 export enum FoodCategory {
     GRAINS = '穀物',
     VEGETABLES = '野菜',
@@ -141,4 +224,30 @@ export interface DatabaseFoodItem {
     category?: FoodCategory;
     aliases?: string[];
     notes?: string;
+}
+
+/**
+ * 栄養アドバイス
+ */
+export interface NutritionAdvice {
+    id: string;
+    user_id: string;
+    advice_date: string;
+    advice_type: string;  // 例: 'iron_deficiency', 'calcium_recommendation'
+    advice_content: string;
+    is_read: boolean;
+    created_at: string;
+}
+
+/**
+ * 栄養アドバイスの種類
+ */
+export enum AdviceType {
+    IRON_DEFICIENCY = 'iron_deficiency',
+    CALCIUM_RECOMMENDATION = 'calcium_recommendation',
+    FOLIC_ACID_REMINDER = 'folic_acid_reminder',
+    VITAMIN_D_SUGGESTION = 'vitamin_d_suggestion',
+    PROTEIN_INTAKE = 'protein_intake',
+    CALORIE_BALANCE = 'calorie_balance',
+    GENERAL_NUTRITION = 'general_nutrition'
 }

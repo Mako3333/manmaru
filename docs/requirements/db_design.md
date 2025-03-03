@@ -31,11 +31,12 @@
 2. **栄養素関連テーブルの追加**
    - `nutrition_targets`テーブル（トライメスター別推奨摂取量）
    - `meal_nutrients`テーブル（食事ごとの栄養素データ）
-   - `weight_logs`テーブル（体重記録） 
+   - `weight_logs`テーブル（体重記録）
+   - `daily_nutrition_logs`テーブル（日次栄養ログ）
+   - `daily_nutri_advice`テーブル（日次栄養アドバイス）
 
 3. **ビュー・関数の追加**
-   - 日次栄養集計ビュー
-   - 栄養目標達成率ビュー
+   - 栄養目標達成率ビュー（`nutrition_goal_prog`）
    - 妊娠週数自動更新関数
 
 ### フェーズ2: APIエンドポイントの修正（3日間）
@@ -101,7 +102,7 @@ ADD COLUMN auto_update_week BOOLEAN DEFAULT TRUE;
 CREATE TABLE nutrition_targets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   trimester SMALLINT NOT NULL CHECK (trimester IN (1, 2, 3)),
-  calories INTEGER NOT NULL,
+  calories NUMERIC NOT NULL,
   protein NUMERIC NOT NULL,
   iron NUMERIC NOT NULL,
   folic_acid NUMERIC NOT NULL,
@@ -122,13 +123,13 @@ VALUES
 CREATE TABLE meal_nutrients (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   meal_id UUID NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
-  calories INTEGER NOT NULL,
-  protein NUMERIC(6,2) NOT NULL,
-  iron NUMERIC(6,2) NOT NULL,
-  folic_acid NUMERIC(6,2) NOT NULL,
-  calcium NUMERIC(6,2) NOT NULL,
-  vitamin_d NUMERIC(6,2) NOT NULL,
-  confidence_score NUMERIC(4,2) NOT NULL,
+  calories NUMERIC NOT NULL,
+  protein NUMERIC NOT NULL,
+  iron NUMERIC NOT NULL,
+  folic_acid NUMERIC NOT NULL,
+  calcium NUMERIC NOT NULL,
+  vitamin_d NUMERIC NOT NULL,
+  confidence_score NUMERIC NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -139,13 +140,34 @@ CREATE TABLE weight_logs (
   log_date DATE NOT NULL DEFAULT CURRENT_DATE,
   weight NUMERIC NOT NULL,
   comment TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (user_id, log_date)
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-# 5. ビュー・関数の作成
+# 5. daily_nutrition_logsテーブル作成
+CREATE TABLE daily_nutrition_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  log_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  nutrition_data JSONB NOT NULL,
+  ai_comment TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+# 6. daily_nutri_adviceテーブル作成
+CREATE TABLE daily_nutri_advice (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  advice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  advice_type TEXT NOT NULL,
+  advice_content TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+# 7. ビュー・関数の作成
 # 栄養目標達成率ビュー
-CREATE OR REPLACE VIEW nutrition_goal_progress AS
+CREATE OR REPLACE VIEW nutrition_goal_prog AS
 SELECT 
   m.user_id,
   p.trimester,
@@ -192,14 +214,14 @@ export interface UserProfile {
   user_id: string;
   age: number;
   pregnancy_week: number;
-  trimester: number; // 新規: 自動計算
+  trimester: number; // 自動計算
   height: number;
   weight: number;
-  due_date: string; // 新規
-  dietary_restrictions: string[]; // 新規
+  due_date: string;
+  dietary_restrictions: string[];
   adult_family_members: number;
   child_family_members: number;
-  auto_update_week: boolean; // 新規
+  auto_update_week: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -221,8 +243,8 @@ export interface NutritionGoal extends NutritionData {
 
 export interface NutritionProgress {
   user_id: string;
-  meal_date: string;
   trimester: number;
+  meal_date: string;
   target_calories: number;
   target_protein: number;
   target_iron: number;
@@ -241,6 +263,35 @@ export interface NutritionProgress {
   folic_acid_percent: number;
   calcium_percent: number;
   vitamin_d_percent: number;
+}
+
+export interface DailyNutritionLog {
+  id: string;
+  user_id: string;
+  log_date: string;
+  nutrition_data: NutritionData;
+  ai_comment: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyNutriAdvice {
+  id: string;
+  user_id: string;
+  advice_date: string;
+  advice_type: string;
+  advice_content: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface WeightLog {
+  id: string;
+  user_id: string;
+  log_date: string;
+  weight: number;
+  comment?: string;
+  created_at: string;
 }
 ```
 
@@ -399,7 +450,7 @@ export const getNutritionProgress = async (date) => {
     }
 
     const { data, error } = await supabase
-      .from('nutrition_goal_progress')
+      .from('nutrition_goal_prog')
       .select('*')
       .eq('user_id', session.user.id)
       .eq('meal_date', date)
@@ -410,6 +461,58 @@ export const getNutritionProgress = async (date) => {
     return data || null;
   } catch (error) {
     console.error('栄養目標進捗取得エラー:', error);
+    throw error;
+  }
+};
+
+// 日次栄養アドバイスの取得
+export const getDailyNutritionAdvice = async (date) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('ログインセッションが無効です');
+    }
+
+    const { data, error } = await supabase
+      .from('daily_nutri_advice')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('advice_date', date)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('栄養アドバイス取得エラー:', error);
+    throw error;
+  }
+};
+
+// 体重記録の保存
+export const saveWeightLog = async (weightData) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('ログインセッションが無効です');
+    }
+
+    const { data, error } = await supabase
+      .from('weight_logs')
+      .upsert({
+        user_id: session.user.id,
+        log_date: weightData.log_date || new Date().toISOString().split('T')[0],
+        weight: weightData.weight,
+        comment: weightData.comment
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    
+    return { success: true, data };
+  } catch (error) {
+    console.error('体重記録保存エラー:', error);
     throw error;
   }
 };
@@ -468,81 +571,6 @@ export const getNutritionProgress = async (date) => {
 
 ---
 
-# 妊婦向け栄養管理アプリのER図
-
-以下にアプリケーションの最終的なデータベース構造をER図で表します：
-
-```
-┌───────────────────┐         ┌───────────────────┐         ┌───────────────────┐
-│     profiles      │         │       meals       │         │  meal_nutrients   │
-├───────────────────┤         ├───────────────────┤         ├───────────────────┤
-│ id            PK  │         │ id            PK  │         │ id            PK  │
-│ user_id       FK ─┼─────────┼─► user_id     FK  │         │ meal_id       FK ─┼─► 
-│ age               │         │ meal_type         │         │ calories          │
-│ pregnancy_week    │         │ meal_date         │         │ protein           │
-│ trimester     GEN │         │ photo_url         │         │ iron              │
-│ height            │         │ food_description   │         │ folic_acid        │
-│ weight            │         │ nutrition_data     │         │ calcium           │
-│ due_date          │         │ servings           │         │ vitamin_d         │
-│ dietary_restrict. │         │ created_at         │         │ confidence_score  │
-│ adult_members     │         └─────────┬──────────┘         │ created_at        │
-│ child_members     │                   │                    └───────────────────┘
-│ auto_update_week  │                   │                    
-│ created_at        │                   │                    
-│ updated_at        │                   │                    
-└────────┬──────────┘                   │                    
-         │                              │                    
-         │                              │                    
-┌────────▼──────────┐         ┌─────────▼──────────┐         ┌───────────────────┐
-│   weight_logs     │         │nutrition_goal_prog.│         │nutrition_targets  │
-├───────────────────┤         │      (VIEW)        │         ├───────────────────┤
-│ id            PK  │         ├───────────────────-┤         │ id            PK  │
-│ user_id       FK ─┼─────────┼─► user_id          │         │ trimester     FK ◄┼───┐
-│ log_date          │         │ trimester      FK ─┼─────────┼─►                 │   │
-│ weight            │         │ meal_date          │         │ calories          │   │
-│ comment           │         │ target_calories    │         │ protein           │   │
-│ created_at        │         │ target_protein     │         │ iron              │   │
-└───────────────────┘         │ target_iron        │         │ folic_acid        │   │
-                              │ target_folic_acid  │         │ calcium           │   │
-                              │ target_calcium     │         │ vitamin_d         │   │
-┌───────────────────┐         │ target_vitamin_d   │         │ created_at        │   │
-│daily_nutri_advice │         │ actual_calories    │         └───────────────────┘   │
-├───────────────────┤         │ actual_protein     │                                 │
-│ id            PK  │         │ actual_iron        │                                 │
-│ user_id       FK ─┼─────────┼─► actual_folic_acid│                                 │
-│ advice_date       │         │ actual_calcium     │         ┌───────────────────┐   │
-│ advice_type       │         │ actual_vitamin_d   │         │      recipes      │   │
-│ advice_content    │         │ calories_percent   │         ├───────────────────┤   │
-│ is_read           │         │ protein_percent    │         │ id            PK  │   │
-│ created_at        │         │ iron_percent       │         │ title             │   │
-└───────────────────┘         │ folic_acid_percent │         │ description       │   │
-                              │ calcium_percent    │         │ image_url         │   │
-                              │ vitamin_d_percent  │         │ ingredients       │   │
-┌───────────────────┐         └───────────────────-┘         │ instructions      │   │
-│user_recipe_prefs  │                                        │ preparation_time  │   │
-├───────────────────┤                                        │ difficulty        │   │
-│ id            PK  │                                        │ calories          │   │
-│ user_id       FK ─┼─┐                                      │ protein           │   │
-│ preferred_tags    │ │                                      │ iron              │   │
-│ disliked_ingred.  │ │                                      │ folic_acid        │   │
-│ cooking_time_max  │ │                                      │ calcium           │   │
-│ created_at        │ │                                      │ vitamin_d         │   │
-│ updated_at        │ │                                      │ tags              │   │
-└───────────────────┘ │                                      │ created_at        │   │
-                      │                                      └───────────────────┘   │
-                      │                                                              │
-                      │                                                              │
-┌─────────────────────────────────────────────────────────────────────────────────┐ │
-│                                    auth.users                                    │ │
-├─────────────────────────────────────────────────────────────────────────────────┤ │
-│ id                                PK ◄─────────────────────────────────────────────┘
-│ email                                                                            │
-│ ... (他のSupabase Auth関連フィールド)                                             │
-└─────────────────────────────────────────────────────────────────────────────────┘
-```
-
-## ER図の説明
-
 ### コアテーブル
 1. **profiles**
    - ユーザー基本情報（妊娠週数、出産予定日など）
@@ -566,20 +594,16 @@ export const getNutritionProgress = async (date) => {
    - 体重記録の履歴管理
    - 妊娠中の体重変化を追跡
 
-6. **daily_nutrition_advice**
+6. **daily_nutrition_logs**
+   - 日次の栄養摂取データを集計
+   - AIによる栄養コメントを保存
+
+7. **daily_nutri_advice**
    - AIが生成した栄養アドバイスを保存
    - 種類別にユーザーへのアドバイスを管理
 
-7. **recipes**
-   - レシピ情報（材料、栄養価など）
-   - 栄養素に基づく献立提案に使用
-
-8. **user_recipe_preferences**
-   - ユーザーの食事嗜好設定
-   - レシピ推奨のパーソナライズに使用
-
 ### ビュー
-9. **nutrition_goal_progress** (VIEW)
+8. **nutrition_goal_prog** (VIEW)
    - 日次栄養目標と実績を集計したビュー
    - ダッシュボード表示用にクエリを簡素化
 

@@ -7,6 +7,8 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { DietaryRestriction } from '@/types/user'
 
 interface ProfileFormData {
     age: number
@@ -15,7 +17,24 @@ interface ProfileFormData {
     weight: number
     adult_family_members: number
     child_family_members: number
+    due_date: string | null
+    dietary_restrictions: string[] | null
+    auto_update_week: boolean
 }
+
+// 食事制限の日本語表示マッピング
+const dietaryRestrictionLabels: Record<string, string> = {
+    'VEGETARIAN': 'ベジタリアン',
+    'VEGAN': 'ビーガン',
+    'GLUTEN_FREE': 'グルテンフリー',
+    'DAIRY_FREE': '乳製品不使用',
+    'NUT_ALLERGY': 'ナッツアレルギー',
+    'SEAFOOD_ALLERGY': '魚介アレルギー',
+    'EGG_ALLERGY': '卵アレルギー',
+    'SOY_ALLERGY': '大豆アレルギー',
+    'LOW_SODIUM': '減塩食',
+    'DIABETIC': '糖尿病食'
+};
 
 export default function ProfilePage() {
     const [loading, setLoading] = useState(false)
@@ -29,16 +48,47 @@ export default function ProfilePage() {
         height: 0,
         weight: 0,
         adult_family_members: 1,
-        child_family_members: 0
+        child_family_members: 0,
+        due_date: null,
+        dietary_restrictions: null,
+        auto_update_week: true
     })
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value, type, checked } = e.target
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox'
+                ? checked
+                : (value === '' ? 0 : Number(value))
+        }))
+    }
+
+    const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target
         setFormData(prev => ({
             ...prev,
-            [name]: Number(value)
+            [name]: value || null
         }))
     }
+
+    const handleDietaryRestrictionChange = (value: string, checked: boolean) => {
+        setFormData(prev => {
+            const currentRestrictions = prev.dietary_restrictions || [];
+
+            if (checked) {
+                return {
+                    ...prev,
+                    dietary_restrictions: [...currentRestrictions, value]
+                };
+            } else {
+                return {
+                    ...prev,
+                    dietary_restrictions: currentRestrictions.filter(item => item !== value)
+                };
+            }
+        });
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -113,12 +163,13 @@ export default function ProfilePage() {
                                         id="age"
                                         name="age"
                                         type="number"
-                                        value={formData.age}
+                                        value={formData.age === 0 ? '' : formData.age}
                                         onChange={handleChange}
                                         required
                                         min="15"
                                         max="60"
                                         className="pr-8"
+                                        placeholder="30"
                                     />
                                     <span className="absolute right-3 top-2 text-zinc-500">歳</span>
                                 </div>
@@ -131,12 +182,13 @@ export default function ProfilePage() {
                                         id="pregnancy_week"
                                         name="pregnancy_week"
                                         type="number"
-                                        value={formData.pregnancy_week}
+                                        value={formData.pregnancy_week === 0 ? '' : formData.pregnancy_week}
                                         onChange={handleChange}
                                         required
                                         min="1"
                                         max="42"
                                         className="pr-8"
+                                        placeholder="12"
                                     />
                                     <span className="absolute right-3 top-2 text-zinc-500">週</span>
                                 </div>
@@ -149,13 +201,14 @@ export default function ProfilePage() {
                                         id="height"
                                         name="height"
                                         type="number"
-                                        value={formData.height}
+                                        value={formData.height === 0 ? '' : formData.height}
                                         onChange={handleChange}
                                         required
                                         min="130"
                                         max="200"
                                         step="0.1"
                                         className="pr-8"
+                                        placeholder="160"
                                     />
                                     <span className="absolute right-3 top-2 text-zinc-500">cm</span>
                                 </div>
@@ -168,13 +221,14 @@ export default function ProfilePage() {
                                         id="weight"
                                         name="weight"
                                         type="number"
-                                        value={formData.weight}
+                                        value={formData.weight === 0 ? '' : formData.weight}
                                         onChange={handleChange}
                                         required
                                         min="30"
                                         max="150"
                                         step="0.1"
                                         className="pr-8"
+                                        placeholder="55"
                                     />
                                     <span className="absolute right-3 top-2 text-zinc-500">kg</span>
                                 </div>
@@ -191,6 +245,7 @@ export default function ProfilePage() {
                                     required
                                     min="1"
                                     max="10"
+                                    placeholder="1"
                                 />
                             </div>
 
@@ -200,14 +255,71 @@ export default function ProfilePage() {
                                     id="child_family_members"
                                     name="child_family_members"
                                     type="number"
-                                    value={formData.child_family_members}
+                                    value={formData.child_family_members === 0 ? '' : formData.child_family_members}
                                     onChange={handleChange}
                                     required
                                     min="0"
                                     max="10"
+                                    placeholder="0"
                                 />
                             </div>
                         </div>
+
+                        <CardContent className="space-y-6">
+                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="due_date">出産予定日</Label>
+                                    <Input
+                                        id="due_date"
+                                        name="due_date"
+                                        type="date"
+                                        value={formData.due_date || ''}
+                                        onChange={handleDateChange}
+                                        placeholder="2024-12-31"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="auto_update_week">妊娠週数の自動更新</Label>
+                                    <div className="flex items-center space-x-2">
+                                        <input
+                                            id="auto_update_week"
+                                            name="auto_update_week"
+                                            type="checkbox"
+                                            checked={formData.auto_update_week}
+                                            onChange={handleChange}
+                                            className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                        />
+                                        <span className="text-sm text-gray-700">出産予定日から妊娠週数を自動計算する</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>食事制限</Label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {Object.entries(DietaryRestriction).map(([key, value]) => (
+                                        <div key={value} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`restriction-${value}`}
+                                                checked={(formData.dietary_restrictions || []).includes(value)}
+                                                onCheckedChange={(checked) =>
+                                                    handleDietaryRestrictionChange(value, checked === true)
+                                                }
+                                            />
+                                            <label
+                                                htmlFor={`restriction-${value}`}
+                                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                            >
+                                                {dietaryRestrictionLabels[key] || key.split('_').map(word =>
+                                                    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                                                ).join(' ')}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </CardContent>
                     </CardContent>
 
                     <CardFooter className="flex flex-col space-y-4">

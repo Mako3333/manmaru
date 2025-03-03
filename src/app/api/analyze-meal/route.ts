@@ -7,7 +7,7 @@ const apiKey = process.env.GEMINI_API_KEY || '';
 
 // モデルの設定
 const genAI = new GoogleGenerativeAI(apiKey);
-const modelName = 'gemini-1.5-pro'; // 画像認識に適したモデル
+const modelName = 'gemini-2.0-flash-001'; // 画像認識に適したモデル
 
 // テストモードの設定（開発時のみtrueに設定）
 const TEST_MODE = process.env.NODE_ENV === 'development';
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
         const model = genAI.getGenerativeModel({
             model: modelName,
             generationConfig: {
-                temperature: 0.4,
+                temperature: 0,
                 topK: 32,
                 topP: 0.95,
             },

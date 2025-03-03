@@ -1,6 +1,569 @@
 import { createClient } from '@supabase/supabase-js'
+import {
+    NutritionData,
+    BasicNutritionData,
+    NutritionTarget,
+    NutritionProgress,
+    MealNutrient,
+    DailyNutritionLog,
+    NutritionAdvice
+} from '@/types/nutrition';
+import {
+    Meal,
+    MealCreateData,
+    MealWithNutrients,
+    DailyMealSummary
+} from '@/types/meal';
+import {
+    UserProfile,
+    ProfileUpdateData,
+    WeightLog,
+    WeightLogCreateData
+} from '@/types/user';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// ユーザー関連の関数
+// =========================================================
+
+/**
+ * ユーザープロファイルを取得する
+ * @returns ユーザープロファイル
+ */
+export const getUserProfile = async (): Promise<UserProfile | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .single();
+
+        if (error) throw error;
+
+        return data;
+    } catch (error) {
+        console.error('プロファイル取得エラー:', error);
+        return null;
+    }
+};
+
+/**
+ * ユーザープロファイルを更新する
+ * @param profileData 更新するプロファイルデータ
+ * @returns 更新されたプロファイル
+ */
+export const updateUserProfile = async (profileData: ProfileUpdateData): Promise<UserProfile | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('profiles')
+            .update({
+                ...profileData,
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', session.user.id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return data;
+    } catch (error) {
+        console.error('プロファイル更新エラー:', error);
+        return null;
+    }
+};
+
+// 食事関連の関数
+// =========================================================
+
+/**
+ * 食事データを保存し、栄養素データも同時に保存する
+ * @param mealData 保存する食事データ
+ * @returns 保存された食事データ
+ */
+export const saveMealWithNutrients = async (mealData: MealCreateData): Promise<Meal | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        // 1. meals テーブルに挿入
+        const { data: mealRecord, error: mealError } = await supabase
+            .from('meals')
+            .insert({
+                user_id: session.user.id,
+                meal_type: mealData.meal_type,
+                meal_date: mealData.meal_date || new Date().toISOString().split('T')[0],
+                photo_url: mealData.photo_url || null,
+                food_description: { items: mealData.foods },
+                nutrition_data: mealData.nutrition,
+                servings: mealData.servings || 1
+            })
+            .select()
+            .single();
+
+        if (mealError) throw mealError;
+
+        // 2. meal_nutrients テーブルに挿入
+        const { error: nutrientError } = await supabase
+            .from('meal_nutrients')
+            .insert({
+                meal_id: mealRecord.id,
+                calories: mealData.nutrition.calories,
+                protein: mealData.nutrition.protein,
+                iron: mealData.nutrition.iron,
+                folic_acid: mealData.nutrition.folic_acid,
+                calcium: mealData.nutrition.calcium,
+                vitamin_d: mealData.nutrition.vitamin_d || 0,
+                confidence_score: mealData.nutrition.confidence_score || 0.8
+            });
+
+        if (nutrientError) throw nutrientError;
+
+        return mealRecord;
+    } catch (error) {
+        console.error('食事データ保存エラー:', error);
+        return null;
+    }
+};
+
+/**
+ * 指定した日付の食事データを取得する
+ * @param date 取得する日付（YYYY-MM-DD形式）
+ * @returns 食事データの配列
+ */
+export const getMealsByDate = async (date: string): Promise<Meal[]> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('meals')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('meal_date', date)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        return data || [];
+    } catch (error) {
+        console.error('食事データ取得エラー:', error);
+        return [];
+    }
+};
+
+/**
+ * 指定した日付の食事データと栄養素データを取得する
+ * @param date 取得する日付（YYYY-MM-DD形式）
+ * @returns 食事データと栄養素データを含む配列
+ */
+export const getMealsWithNutrientsByDate = async (date: string): Promise<MealWithNutrients[]> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('meals')
+            .select(`
+        *,
+        nutrients:meal_nutrients(*)
+      `)
+            .eq('user_id', session.user.id)
+            .eq('meal_date', date)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        return data || [];
+    } catch (error) {
+        console.error('食事データ取得エラー:', error);
+        return [];
+    }
+};
+
+/**
+ * 指定した期間の食事データを日付ごとにまとめて取得する
+ * @param startDate 開始日（YYYY-MM-DD形式）
+ * @param endDate 終了日（YYYY-MM-DD形式）
+ * @returns 日付ごとの食事データと栄養素合計
+ */
+export const getMealSummaryByDateRange = async (
+    startDate: string,
+    endDate: string
+): Promise<DailyMealSummary[]> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('meals')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .gte('meal_date', startDate)
+            .lte('meal_date', endDate)
+            .order('meal_date', { ascending: true });
+
+        if (error) throw error;
+
+        // 日付ごとにグループ化
+        const mealsByDate: Record<string, Meal[]> = {};
+        data.forEach(meal => {
+            if (!mealsByDate[meal.meal_date]) {
+                mealsByDate[meal.meal_date] = [];
+            }
+            mealsByDate[meal.meal_date].push(meal);
+        });
+
+        // 日付ごとの栄養素合計を計算
+        const summaries: DailyMealSummary[] = Object.keys(mealsByDate).map(date => {
+            const meals = mealsByDate[date];
+            const total_nutrition: BasicNutritionData = {
+                calories: 0,
+                protein: 0,
+                iron: 0,
+                folic_acid: 0,
+                calcium: 0,
+                vitamin_d: 0,
+                confidence_score: 1.0 // 集計データなので信頼度は1.0
+            };
+
+            meals.forEach(meal => {
+                total_nutrition.calories += meal.nutrition_data.calories;
+                total_nutrition.protein += meal.nutrition_data.protein;
+                total_nutrition.iron += meal.nutrition_data.iron || 0;
+                total_nutrition.folic_acid += meal.nutrition_data.folic_acid || 0;
+                total_nutrition.calcium += meal.nutrition_data.calcium || 0;
+                total_nutrition.vitamin_d += meal.nutrition_data.vitamin_d || 0;
+            });
+
+            return {
+                date,
+                meals,
+                total_nutrition
+            };
+        });
+
+        return summaries;
+    } catch (error) {
+        console.error('食事サマリー取得エラー:', error);
+        return [];
+    }
+};
+
+// 栄養関連の関数
+// =========================================================
+
+/**
+ * トライメスター別の栄養目標値を取得する
+ * @param trimester トライメスター（1, 2, 3のいずれか）
+ * @returns 栄養目標値
+ */
+export const getNutritionTargetByTrimester = async (trimester: number): Promise<NutritionTarget | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('nutrition_targets')
+            .select('*')
+            .eq('trimester', trimester)
+            .single();
+
+        if (error) throw error;
+
+        return data;
+    } catch (error) {
+        console.error('栄養目標取得エラー:', error);
+        return null;
+    }
+};
+
+/**
+ * 指定した日付の栄養目標進捗を取得する
+ * @param date 取得する日付（YYYY-MM-DD形式）
+ * @returns 栄養目標進捗データ
+ */
+export const getNutritionProgress = async (date: string): Promise<NutritionProgress | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('nutrition_goal_prog')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('meal_date', date)
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error;
+
+        return data || null;
+    } catch (error) {
+        console.error('栄養目標進捗取得エラー:', error);
+        return null;
+    }
+};
+
+/**
+ * 指定した期間の栄養目標進捗を取得する
+ * @param startDate 開始日（YYYY-MM-DD形式）
+ * @param endDate 終了日（YYYY-MM-DD形式）
+ * @returns 栄養目標進捗データの配列
+ */
+export const getNutritionProgressByDateRange = async (
+    startDate: string,
+    endDate: string
+): Promise<NutritionProgress[]> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('nutrition_goal_prog')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .gte('meal_date', startDate)
+            .lte('meal_date', endDate)
+            .order('meal_date', { ascending: true });
+
+        if (error) throw error;
+
+        return data || [];
+    } catch (error) {
+        console.error('栄養目標進捗取得エラー:', error);
+        return [];
+    }
+};
+
+/**
+ * 日次栄養アドバイスを取得する
+ * @param date 取得する日付（YYYY-MM-DD形式）
+ * @returns 栄養アドバイスの配列
+ */
+export const getDailyNutritionAdvice = async (date: string): Promise<NutritionAdvice[]> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('daily_nutri_advice')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('advice_date', date)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        return data || [];
+    } catch (error) {
+        console.error('栄養アドバイス取得エラー:', error);
+        return [];
+    }
+};
+
+/**
+ * 栄養アドバイスを既読にする
+ * @param adviceId アドバイスID
+ * @returns 成功したかどうか
+ */
+export const markAdviceAsRead = async (adviceId: string): Promise<boolean> => {
+    try {
+        const { error } = await supabase
+            .from('daily_nutri_advice')
+            .update({ is_read: true })
+            .eq('id', adviceId);
+
+        if (error) throw error;
+
+        return true;
+    } catch (error) {
+        console.error('アドバイス既読更新エラー:', error);
+        return false;
+    }
+};
+
+/**
+ * 日次栄養ログを保存または更新する
+ * @param logData 栄養ログデータ
+ * @param date 日付（YYYY-MM-DD形式）
+ * @returns 保存されたログデータ
+ */
+export const saveDailyNutritionLog = async (
+    logData: NutritionData,
+    date: string,
+    aiComment?: string
+): Promise<DailyNutritionLog | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        // 既存のログを確認
+        const { data: existingLog } = await supabase
+            .from('daily_nutrition_logs')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .eq('log_date', date)
+            .single();
+
+        let result;
+
+        if (existingLog) {
+            // 更新
+            const { data, error } = await supabase
+                .from('daily_nutrition_logs')
+                .update({
+                    nutrition_data: logData,
+                    ai_comment: aiComment,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingLog.id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            result = data;
+        } else {
+            // 新規作成
+            const { data, error } = await supabase
+                .from('daily_nutrition_logs')
+                .insert({
+                    user_id: session.user.id,
+                    log_date: date,
+                    nutrition_data: logData,
+                    ai_comment: aiComment
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+            result = data;
+        }
+
+        return result;
+    } catch (error) {
+        console.error('栄養ログ保存エラー:', error);
+        return null;
+    }
+};
+
+// 体重記録関連の関数
+// =========================================================
+
+/**
+ * 体重記録を保存する
+ * @param weightData 体重記録データ
+ * @returns 保存された体重記録
+ */
+export const saveWeightLog = async (weightData: WeightLogCreateData): Promise<WeightLog | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('weight_logs')
+            .upsert({
+                user_id: session.user.id,
+                log_date: weightData.log_date || new Date().toISOString().split('T')[0],
+                weight: weightData.weight,
+                comment: weightData.comment
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return data;
+    } catch (error) {
+        console.error('体重記録保存エラー:', error);
+        return null;
+    }
+};
+
+/**
+ * 指定した期間の体重記録を取得する
+ * @param startDate 開始日（YYYY-MM-DD形式）
+ * @param endDate 終了日（YYYY-MM-DD形式）
+ * @returns 体重記録の配列
+ */
+export const getWeightLogsByDateRange = async (
+    startDate: string,
+    endDate: string
+): Promise<WeightLog[]> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('weight_logs')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .gte('log_date', startDate)
+            .lte('log_date', endDate)
+            .order('log_date', { ascending: true });
+
+        if (error) throw error;
+
+        return data || [];
+    } catch (error) {
+        console.error('体重記録取得エラー:', error);
+        return [];
+    }
+};
+
+/**
+ * 最新の体重記録を取得する
+ * @returns 最新の体重記録
+ */
+export const getLatestWeightLog = async (): Promise<WeightLog | null> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error('ログインセッションが無効です');
+        }
+
+        const { data, error } = await supabase
+            .from('weight_logs')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('log_date', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error;
+
+        return data || null;
+    } catch (error) {
+        console.error('体重記録取得エラー:', error);
+        return null;
+    }
+};

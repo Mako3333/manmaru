@@ -1,0 +1,154 @@
+@startuml Maternal Nutrition System ER Diagram
+
+' Styling
+skinparam linetype ortho
+skinparam dpi 300
+skinparam PackageStyle rectangle
+skinparam Shadowing false
+skinparam ClassBackgroundColor #FEFECE
+skinparam ClassBorderColor #A80036
+skinparam NoteBorderColor #A80036
+skinparam NoteBackgroundColor #FEFECE
+
+' Core Tables
+entity "profiles" as profiles {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  age : INT
+  pregnancy_week : INT
+  trimester : INT <<generated>>
+  height : NUMERIC
+  weight : NUMERIC
+  due_date : DATE
+  dietary_restrictions : TEXT[]
+  adult_family_members : INT
+  child_family_members : INT
+  auto_update_week : BOOLEAN
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "meals" as meals {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  meal_type : VARCHAR
+  meal_date : DATE
+  photo_url : TEXT
+  food_description : JSONB
+  nutrition_data : JSONB
+  servings : INT
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "meal_nutrients" as meal_nutrients {
+  * id : UUID <<PK>>
+  --
+  * meal_id : UUID <<FK>>
+  calories : NUMERIC
+  protein : NUMERIC
+  iron : NUMERIC
+  folic_acid : NUMERIC
+  calcium : NUMERIC
+  vitamin_d : NUMERIC
+  confidence_score : NUMERIC
+  created_at : TIMESTAMPTZ
+}
+
+entity "nutrition_targets" as nutrition_targets {
+  * id : UUID <<PK>>
+  --
+  * trimester : INT <<FK>>
+  calories : NUMERIC
+  protein : NUMERIC
+  iron : NUMERIC
+  folic_acid : NUMERIC
+  calcium : NUMERIC
+  vitamin_d : NUMERIC
+  created_at : TIMESTAMPTZ
+}
+
+' Support Tables
+entity "weight_logs" as weight_logs {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  log_date : DATE
+  weight : NUMERIC
+  comment : TEXT
+  created_at : TIMESTAMPTZ
+}
+
+entity "daily_nutrition_logs" as daily_nutrition_logs {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  log_date : DATE
+  nutrition_data : JSONB
+  ai_comment : TEXT
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "daily_nutri_advice" as daily_nutri_advice {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  advice_date : DATE
+  advice_type : TEXT
+  advice_content : TEXT
+  is_read : BOOLEAN
+  created_at : TIMESTAMPTZ
+}
+
+' View
+entity "nutrition_goal_prog (VIEW)" as nutrition_goal_prog {
+  user_id : UUID
+  trimester : INT
+  meal_date : DATE
+  target_calories : NUMERIC
+  target_protein : NUMERIC
+  target_iron : NUMERIC
+  target_folic_acid : NUMERIC
+  target_calcium : NUMERIC
+  target_vitamin_d : NUMERIC
+  actual_calories : NUMERIC
+  actual_protein : NUMERIC
+  actual_iron : NUMERIC
+  actual_folic_acid : NUMERIC
+  actual_calcium : NUMERIC
+  actual_vitamin_d : NUMERIC
+  calories_percent : NUMERIC
+  protein_percent : NUMERIC
+  iron_percent : NUMERIC
+  folic_acid_percent : NUMERIC
+  calcium_percent : NUMERIC
+  vitamin_d_percent : NUMERIC
+}
+
+' Auth Table
+entity "auth.users" as auth_users {
+  * id : UUID <<PK>>
+  --
+  email : TEXT
+  ' Other Supabase Auth fields
+}
+
+' Relationships
+auth_users ||--o{ profiles : "user_id"
+auth_users ||--o{ meals : "user_id"
+auth_users ||--o{ weight_logs : "user_id"
+auth_users ||--o{ daily_nutrition_logs : "user_id"
+auth_users ||--o{ daily_nutri_advice : "user_id"
+
+profiles |o--o{ nutrition_goal_prog : "user_id"
+profiles }o..|| nutrition_targets : "trimester"
+
+meals ||--o{ meal_nutrients : "meal_id"
+meals }o--o{ nutrition_goal_prog : "user_id, meal_date"
+
+nutrition_targets ||--o{ nutrition_goal_prog : "trimester"
+
+@enduml
