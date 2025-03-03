@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     try {
         // リクエストボディの解析
         const body = await req.json();
-        const { meal_type, meal_date, photo_url, food_description, nutrition_data, servings } = body;
+        const { meal_type, meal_date, photo_url, food_description, nutrition_data, nutrition, servings } = body;
 
         // バリデーション
         if (!meal_type || !meal_date) {
@@ -31,8 +31,8 @@ export async function POST(req: Request) {
             );
         }
 
-        // データベースに保存
-        const { data, error } = await supabase
+        // トランザクション的に処理するため、まずmealsテーブルに保存
+        const { data: mealData, error: mealError } = await supabase
             .from('meals')
             .insert({
                 user_id: session.user.id,
@@ -46,18 +46,40 @@ export async function POST(req: Request) {
             .select('id')
             .single();
 
-        if (error) {
-            console.error('Supabase保存エラー:', error);
+        if (mealError) {
+            console.error('Supabase meals保存エラー:', mealError);
             return NextResponse.json(
-                { error: '食事の保存に失敗しました', details: error.message },
+                { error: '食事の保存に失敗しました', details: mealError.message },
                 { status: 500 }
             );
+        }
+
+        // 次にmeal_nutrientsテーブルに栄養データを保存
+        if (nutrition && mealData) {
+            const { error: nutrientError } = await supabase
+                .from('meal_nutrients')
+                .insert({
+                    meal_id: mealData.id,
+                    calories: nutrition.calories,
+                    protein: nutrition.protein,
+                    iron: nutrition.iron,
+                    folic_acid: nutrition.folic_acid,
+                    calcium: nutrition.calcium,
+                    vitamin_d: nutrition.vitamin_d || 0,
+                    confidence_score: nutrition.confidence_score || 0.8
+                });
+
+            if (nutrientError) {
+                console.error('Supabase meal_nutrients保存エラー:', nutrientError);
+                // meal_nutrientsの保存に失敗しても、mealsの保存は成功しているので、警告だけ出す
+                console.warn('栄養データの保存に失敗しましたが、食事データは保存されました');
+            }
         }
 
         return NextResponse.json({
             success: true,
             message: '食事が保存されました',
-            data: { id: data.id }
+            data: { id: mealData.id }
         });
     } catch (error) {
         console.error('食事保存APIエラー:', error);

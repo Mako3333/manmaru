@@ -47,6 +47,9 @@ export default function MealLogPage() {
     // 食事タイプの状態(朝食・昼食・夕食・間食)
     const [mealType, setMealType] = useState<MealType>('breakfast')
 
+    // 日付の状態
+    const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+
     // 入力モードの状態(写真モード・テキストモード)
     const [inputMode, setInputMode] = useState<InputMode>('photo')
 
@@ -125,40 +128,83 @@ export default function MealLogPage() {
         }
     };
 
-    // 編集結果の保存処理
-    const handleSaveRecognition = async (data: any) => {
-        setSaving(true);
+    // 認識結果の保存処理
+    const handleSaveRecognition = async () => {
+        if (!recognitionData) return;
 
         try {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session) {
-                toast.error('ログインセッションが無効です。再ログインしてください。');
-                return;
+            setSaving(true);
+
+            // セッションチェック
+            const session = await supabase.auth.getSession();
+            if (!session.data.session) {
+                throw new Error('ログインが必要です');
             }
 
-            // 食事データを保存
-            const { error } = await supabase
-                .from('meals')
-                .insert({
-                    user_id: session.user.id,
-                    meal_type: mealType,
-                    food_description: {
-                        items: data.foods
-                    },
-                    nutrition_data: data.nutrition,
-                    image_url: base64Image // 実際のプロダクションでは画像はストレージに保存し、URLを参照するべき
-                });
+            // 保存用のデータを準備
+            const mealData = {
+                meal_type: mealType,
+                meal_date: selectedDate.toISOString().split('T')[0],
+                photo_url: base64Image,
+                food_description: {
+                    items: recognitionData.foods.map((food: any) => ({
+                        name: food.name,
+                        quantity: food.quantity,
+                        confidence: food.confidence
+                    }))
+                },
+                // データベース構造に合わせて栄養データをフォーマット
+                nutrition_data: {
+                    ...recognitionData.nutrition,
+                    // NutritionData型に必要な追加フィールド
+                    overall_score: 0,
+                    deficient_nutrients: [],
+                    sufficient_nutrients: [],
+                    daily_records: []
+                },
+                // meal_nutrientsテーブル用のデータも含める
+                nutrition: {
+                    calories: recognitionData.nutrition.calories,
+                    protein: recognitionData.nutrition.protein,
+                    iron: recognitionData.nutrition.iron,
+                    folic_acid: recognitionData.nutrition.folic_acid,
+                    calcium: recognitionData.nutrition.calcium,
+                    vitamin_d: recognitionData.nutrition.vitamin_d || 0,
+                    confidence_score: recognitionData.nutrition.confidence_score
+                },
+                servings: 1
+            };
 
-            if (error) throw error;
+            // APIを使用してデータを保存
+            const response = await fetch('/api/meals', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(mealData),
+            });
 
-            // 成功メッセージを表示
-            toast.success('食事を記録しました！');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || '食事の保存に失敗しました');
+            }
 
-            // ホームページにリダイレクト
-            router.push('/home');
+            // 成功時の処理
+            toast.success("食事を記録しました", {
+                description: "栄養情報が更新されました",
+                duration: 3000,
+            });
+
+            // ホーム画面にリダイレクト
+            setTimeout(() => {
+                router.refresh();
+                router.push('/home');
+            }, 1500);
         } catch (error) {
-            console.error('食事保存エラー:', error);
-            toast.error('食事の記録に失敗しました。もう一度お試しください。');
+            console.error('保存エラー:', error);
+            toast.error("保存に失敗しました", {
+                description: error instanceof Error ? error.message : "もう一度お試しください",
+            });
         } finally {
             setSaving(false);
         }
@@ -307,19 +353,45 @@ export default function MealLogPage() {
 
             const { nutrition } = await nutritionResponse.json();
 
-            // Supabaseに保存
-            const { error } = await supabase
-                .from('meals')
-                .insert({
-                    user_id: session.user.id,
+            // APIを使用してデータを保存
+            const response = await fetch('/api/meals', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
                     meal_type: mealType,
+                    meal_date: selectedDate.toISOString().split('T')[0],
                     food_description: {
                         items: foodsData
                     },
-                    nutrition_data: nutrition,
-                });
+                    // データベース構造に合わせて栄養データをフォーマット
+                    nutrition_data: {
+                        ...nutrition,
+                        // NutritionData型に必要な追加フィールド
+                        overall_score: 0,
+                        deficient_nutrients: [],
+                        sufficient_nutrients: [],
+                        daily_records: []
+                    },
+                    // meal_nutrientsテーブル用のデータも含める
+                    nutrition: {
+                        calories: nutrition.calories,
+                        protein: nutrition.protein,
+                        iron: nutrition.iron,
+                        folic_acid: nutrition.folic_acid,
+                        calcium: nutrition.calcium,
+                        vitamin_d: nutrition.vitamin_d || 0,
+                        confidence_score: nutrition.confidence_score || 1.0
+                    },
+                    servings: 1
+                }),
+            });
 
-            if (error) throw error;
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || '食事の保存に失敗しました');
+            }
 
             // 成功通知
             toast.success("保存完了", {

@@ -38,6 +38,7 @@ interface Nutrition {
     iron: number;
     folic_acid: number;
     calcium: number;
+    vitamin_d?: number; // ビタミンDを追加（オプショナル）
     confidence_score: number;
 }
 
@@ -166,6 +167,7 @@ export function RecognitionEditor({
                 nutrition
             };
 
+            // saveMealWithNutrients APIを使用して、meals と meal_nutrients の両方に保存
             const response = await fetch('/api/meals', {
                 method: 'POST',
                 headers: {
@@ -179,11 +181,29 @@ export function RecognitionEditor({
                     food_description: {
                         items: dataToSave.foods.map(food => ({
                             name: food.name,
-                            quantity: food.quantity
+                            quantity: food.quantity,
+                            confidence: food.confidence
                         }))
                     },
                     // データベース構造に合わせて栄養データをフォーマット
-                    nutrition_data: dataToSave.nutrition,
+                    nutrition_data: {
+                        ...dataToSave.nutrition,
+                        // NutritionData型に必要な追加フィールド
+                        overall_score: 0,
+                        deficient_nutrients: [],
+                        sufficient_nutrients: [],
+                        daily_records: []
+                    },
+                    // meal_nutrientsテーブル用のデータも含める
+                    nutrition: {
+                        calories: dataToSave.nutrition.calories,
+                        protein: dataToSave.nutrition.protein,
+                        iron: dataToSave.nutrition.iron,
+                        folic_acid: dataToSave.nutrition.folic_acid,
+                        calcium: dataToSave.nutrition.calcium,
+                        vitamin_d: dataToSave.nutrition.vitamin_d || 0, // デフォルト値を設定
+                        confidence_score: dataToSave.nutrition.confidence_score
+                    },
                     servings: 1
                 }),
             });
