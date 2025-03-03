@@ -27,6 +27,8 @@ alwaysApply: false
   -radio-group
   -sonner
   -checkbox
+  -progress
+  -tabs
 
 ### 2. ディレクトリ構造
 ```
@@ -64,6 +66,8 @@ alwaysApply: false
 |   |   |   `-- settings
 |   |   |       `-- page.tsx
 |   |   |-- api
+|   |   |   |-- analyze-image
+|   |   |   |   `-- route.ts
 |   |   |   |-- analyze-meal
 |   |   |   |   `-- route.ts
 |   |   |   |-- analyze-meal-langchain
@@ -91,14 +95,9 @@ alwaysApply: false
 |   |   |   |   `-- page.tsx
 |   |   |   `-- register
 |   |   |       `-- page.tsx
-|   |   |-- dashboard
 |   |   |-- favicon.ico
 |   |   |-- globals.css
 |   |   |-- layout.tsx
-|   |   |-- meals
-|   |   |   |-- 2025-2-27
-|   |   |   |-- [date]
-|   |   |   `-- add
 |   |   |-- page.tsx
 |   |   `-- terms
 |   |       `-- page.tsx
@@ -110,23 +109,29 @@ alwaysApply: false
 |   |   |   |-- bottom-nav.tsx
 |   |   |   `-- header.tsx
 |   |   |-- dashboard
+|   |   |   |-- daily-nutrition-scores.tsx
+|   |   |   |-- meal-history-list.tsx
 |   |   |   |-- meal-summary.tsx
-|   |   |   `-- nutrition-chart.tsx
+|   |   |   |-- nutrition-advice.tsx
+|   |   |   |-- nutrition-chart.tsx
+|   |   |   |-- pregnancy-week-info.tsx
+|   |   |   |-- tabs-container.tsx
+|   |   |   `-- weight-chart.tsx
 |   |   |-- home
+|   |   |   |-- action-card.tsx
+|   |   |   |-- advice-card.tsx
 |   |   |   |-- daily-record-card.tsx
 |   |   |   |-- home-client.tsx
 |   |   |   |-- nutrition-summary.tsx
+|   |   |   |-- pregnancy-week-info.tsx
 |   |   |   |-- progress-card.tsx
 |   |   |   `-- recipe-preview.tsx
 |   |   |-- layout
 |   |   |   `-- bottom-navigation.tsx
 |   |   |-- meals
-|   |   |   |-- meal-card.tsx
-|   |   |   |-- meal-input.tsx
 |   |   |   |-- meal-photo-input.tsx
 |   |   |   |-- meal-type-selector.tsx
 |   |   |   `-- recognition-editor.tsx
-|   |   |-- nutrition
 |   |   |-- recipes
 |   |   |   `-- recipe-card.tsx
 |   |   `-- ui
@@ -136,8 +141,10 @@ alwaysApply: false
 |   |       |-- dialog.tsx
 |   |       |-- input.tsx
 |   |       |-- label.tsx
+|   |       |-- progress.tsx
 |   |       |-- radio-group.tsx
-|   |       `-- sonner.tsx
+|   |       |-- sonner.tsx
+|   |       `-- tabs.tsx
 |   |-- data
 |   |   `-- nutrition_data.json
 |   |-- hooks
@@ -145,10 +152,16 @@ alwaysApply: false
 |   |   |-- useMeals.ts
 |   |   `-- useNutrition.ts
 |   |-- lib
+|   |   |-- ai
+|   |   |   `-- response-parser.ts
 |   |   |-- api.ts
+|   |   |-- date-utils.ts
+|   |   |-- errors
+|   |   |   `-- food-analysis-error.ts
 |   |   |-- langchain
 |   |   |   `-- langchain.ts
 |   |   |-- nutrition
+|   |   |   |-- database.ts
 |   |   |   `-- nutritionUtils.ts
 |   |   |-- supabase
 |   |   |   `-- client.ts
@@ -170,7 +183,9 @@ alwaysApply: false
 |-- test-meal-image.jpg
 |-- test-nutrition-api.js
 |-- test-recipe-api.js
-`-- tsconfig.json
+|-- tsconfig.json
+`-- tsconfig.tsbuildinfo
+```
 
 ### 3. コンポーネント設計方針
 #### 3.1 認証関連（auth/）
