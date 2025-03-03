@@ -16,7 +16,7 @@ import NutritionAdvice from '@/components/dashboard/nutrition-advice';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink } from 'lucide-react';
+import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight } from 'lucide-react';
 
 interface HomeClientProps {
     user: any;
@@ -26,6 +26,7 @@ export default function HomeClient({ user }: HomeClientProps) {
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+    const [nutritionData, setNutritionData] = useState<any>(null);
     const router = useRouter();
     const supabase = createClientComponentClient();
 
@@ -54,6 +55,40 @@ export default function HomeClient({ user }: HomeClientProps) {
         fetchProfile();
     }, [user, supabase]);
 
+    useEffect(() => {
+        const fetchNutritionData = async () => {
+            if (!user) return;
+
+            try {
+                const { data, error } = await supabase
+                    .from('nutrition_goal_prog')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .eq('meal_date', currentDate)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') {
+                    console.error('栄養データ取得エラー:', error);
+                    return;
+                }
+
+                setNutritionData(data || {
+                    calories_percent: 0,
+                    protein_percent: 0,
+                    iron_percent: 0,
+                    folic_acid_percent: 0,
+                    calcium_percent: 0,
+                    vitamin_d_percent: 0,
+                    overall_score: 0
+                });
+            } catch (error) {
+                console.error('栄養データ取得エラー:', error);
+            }
+        };
+
+        fetchNutritionData();
+    }, [user, currentDate, supabase]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[50vh]">
@@ -73,6 +108,22 @@ export default function HomeClient({ user }: HomeClientProps) {
             </div>
         );
     }
+
+    // 不足している栄養素を抽出
+    const deficientNutrients = nutritionData ? [
+        { name: 'タンパク質', percent: nutritionData.protein_percent, icon: '🥩' },
+        { name: '鉄分', percent: nutritionData.iron_percent, icon: '⚙️' },
+        { name: '葉酸', percent: nutritionData.folic_acid_percent, icon: '🍃' },
+        { name: 'カルシウム', percent: nutritionData.calcium_percent, icon: '🥛' },
+        { name: 'ビタミンD', percent: nutritionData.vitamin_d_percent, icon: '☀️' }
+    ].filter(nutrient => nutrient.percent < 70) : [];
+
+    // 栄養素の状態に応じた色を取得
+    const getNutrientColor = (percent: number) => {
+        if (percent < 50) return 'text-red-500';
+        if (percent < 70) return 'text-orange-500';
+        return 'text-green-500';
+    };
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50">
@@ -101,119 +152,122 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                 </div>
 
-                {/* 妊娠週情報（拡張版） */}
+                {/* 1. 妊娠週数情報カード */}
                 <PregnancyWeekInfo />
 
-                {/* 栄養アドバイス */}
-                <div className="mt-6">
-                    <NutritionAdvice date={currentDate} />
-                </div>
-
-                {/* 栄養サマリー */}
-                <div className="mt-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-semibold">今日の栄養状態</h2>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-green-600 border-green-600 hover:bg-green-50"
-                            onClick={() => router.push('/dashboard')}
-                        >
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            詳細を確認
-                        </Button>
-                    </div>
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="space-y-4">
-                                <div>
-                                    <div className="flex justify-between mb-2">
-                                        <span className="font-medium">総合スコア</span>
-                                        <span className="font-medium text-green-600">75%</span>
-                                    </div>
-                                    <Progress value={75} className="h-2 bg-gray-200" indicatorClassName="bg-green-500" />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 mt-4">
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span>タンパク質</span>
-                                            <span className="text-green-600">85%</span>
-                                        </div>
-                                        <Progress value={85} className="h-1.5 bg-gray-200" indicatorClassName="bg-green-500" />
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span>鉄分</span>
-                                            <span className="text-yellow-500">65%</span>
-                                        </div>
-                                        <Progress value={65} className="h-1.5 bg-gray-200" indicatorClassName="bg-yellow-500" />
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span>カルシウム</span>
-                                            <span className="text-red-500">45%</span>
-                                        </div>
-                                        <Progress value={45} className="h-1.5 bg-gray-200" indicatorClassName="bg-red-500" />
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span>葉酸</span>
-                                            <span className="text-green-600">90%</span>
-                                        </div>
-                                        <Progress value={90} className="h-1.5 bg-gray-200" indicatorClassName="bg-green-500" />
-                                    </div>
+                {/* 2. 栄養状態サマリーカード */}
+                <Card className="w-full overflow-hidden">
+                    <CardHeader className="pb-2">
+                        <div className="flex justify-between items-center">
+                            <CardTitle className="text-lg sm:text-xl font-bold">栄養状態サマリー</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="relative w-24 h-24">
+                                <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
+                                <svg className="w-full h-full" viewBox="0 0 36 36">
+                                    <path
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="#E5E7EB"
+                                        strokeWidth="3"
+                                    />
+                                    <path
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="#22C55E"
+                                        strokeWidth="3"
+                                        strokeDasharray={`${nutritionData?.overall_score || 0}, 100`}
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className="text-2xl font-bold">{nutritionData?.overall_score || 0}</span>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                            <div className="flex-1 ml-6">
+                                {deficientNutrients.length > 0 ? (
+                                    <div>
+                                        <h3 className="font-medium mb-2">不足している栄養素</h3>
+                                        <div className="space-y-2">
+                                            {deficientNutrients.map((nutrient, index) => (
+                                                <div key={index} className="flex items-center">
+                                                    <span className="mr-2">{nutrient.icon}</span>
+                                                    <span className="mr-2">{nutrient.name}</span>
+                                                    <span className={getNutrientColor(nutrient.percent)}>
+                                                        {Math.round(nutrient.percent)}%
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-green-600 font-medium">
+                                        すべての栄養素が十分に摂取されています！
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <Button
+                            variant="outline"
+                            className="w-full mt-2 border-green-500 text-green-600 hover:bg-green-50"
+                            onClick={() => router.push('/dashboard')}
+                        >
+                            詳細を見る <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                    </CardContent>
+                </Card>
 
-                {/* アクションカード */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                    <Card className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-0">
-                            <button
-                                onClick={() => router.push('/meals/log')}
-                                className="flex items-center justify-between w-full p-6"
-                            >
-                                <div className="flex items-center">
-                                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mr-4">
-                                        <Utensils className="h-5 w-5 text-green-600" />
-                                    </div>
-                                    <div className="text-left">
-                                        <h3 className="font-medium">食事を記録</h3>
-                                        <p className="text-sm text-gray-500">今日の食事内容を記録しましょう</p>
-                                    </div>
-                                </div>
-                                <ArrowRight className="h-5 w-5 text-gray-400" />
-                            </button>
-                        </CardContent>
-                    </Card>
+                {/* 3. アドバイスカード */}
+                <Card className="w-full overflow-hidden">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-lg sm:text-xl font-bold">今日のアドバイス</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <NutritionAdvice date={currentDate} />
+                    </CardContent>
+                </Card>
 
-                    <Card className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-0">
-                            <button
-                                onClick={() => router.push('/dashboard')}
-                                className="flex items-center justify-between w-full p-6"
-                            >
-                                <div className="flex items-center">
-                                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-4">
-                                        <LineChart className="h-5 w-5 text-blue-600" />
-                                    </div>
-                                    <div className="text-left">
-                                        <h3 className="font-medium">体重を記録</h3>
-                                        <p className="text-sm text-gray-500">定期的な体重管理が大切です</p>
-                                    </div>
+                {/* 4. 行動喚起カード */}
+                <Card className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-0">
+                        <button
+                            onClick={() => router.push('/meals/log')}
+                            className="flex items-center justify-between w-full p-6"
+                        >
+                            <div className="flex items-center">
+                                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mr-4">
+                                    <Utensils className="h-6 w-6 text-green-600" />
                                 </div>
-                                <ArrowRight className="h-5 w-5 text-gray-400" />
-                            </button>
-                        </CardContent>
-                    </Card>
-                </div>
+                                <div className="text-left">
+                                    <h3 className="font-medium text-lg">食事を記録</h3>
+                                    <p className="text-sm text-gray-500">今日の食事内容を記録しましょう</p>
+                                </div>
+                            </div>
+                            <ArrowRight className="h-5 w-5 text-gray-400" />
+                        </button>
+                    </CardContent>
+                </Card>
+
+                {/* 5. おすすめレシピカード */}
+                <Card className="w-full overflow-hidden">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-lg sm:text-xl font-bold">おすすめレシピ</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-center py-4">
+                            <p className="text-gray-500 mb-4">あなたに合ったレシピを準備中です</p>
+                            <Button
+                                variant="outline"
+                                className="border-green-500 text-green-600 hover:bg-green-50"
+                                onClick={() => router.push('/recipes')}
+                            >
+                                レシピを探す <ChevronRight className="h-4 w-4 ml-1" />
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </main>
 
             {/* ナビゲーションバー */}
