@@ -6,20 +6,15 @@ import { useRouter } from 'next/navigation'
 import { format, subDays, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { Profile } from '@/lib/utils/profile'
-import { NutritionData, DailyNutritionLog, nutrientNameMap } from '@/types/nutrition'
-import type { BasicNutritionData } from '@/types/nutrition'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
 
 // 新しいダッシュボードコンポーネントをインポート
-import NutritionChart from '@/components/dashboard/nutrition-chart';
-import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
-import TabsContainer from '@/components/dashboard/tabs-container';
 import MealHistoryList from '@/components/dashboard/meal-history-list';
-import DailyNutritionScores from '@/components/dashboard/daily-nutrition-scores';
-import WeightChart from '@/components/dashboard/weight-chart';
+
 
 // 栄養素アイコンマッピング
 const NUTRIENT_ICONS = {
@@ -336,11 +331,6 @@ export default function DashboardPage() {
                     </p>
                 </CardContent>
             </Card>
-
-            {/* 栄養アドバイス詳細 */}
-            <div className="mb-6">
-                <DetailedNutritionAdvice />
-            </div>
 
             {/* 4. 栄養素別状況カード */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

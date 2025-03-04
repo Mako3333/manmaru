@@ -194,7 +194,7 @@ function generatePrompt(
 ): string {
     const basePrompt = `
 あなたは妊婦向け栄養管理アプリ「manmaru」の栄養アドバイザーです。
-現在妊娠${pregnancyWeek}週目（第${trimester}期）の妊婦に対して、栄養アドバイスを作成します。
+現在妊娠${pregnancyWeek}週目（第${trimester}期）の妊婦に対して、栄養アドバイスを作成してください。
 
 ${deficientNutrients.length > 0
             ? `特に不足している栄養素: ${deficientNutrients.join('、')}`

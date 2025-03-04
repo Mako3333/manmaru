@@ -1,143 +1,104 @@
-"use client";
+import React, { useEffect, useState } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { NutritionAdvice } from '@/types/nutrition';
+import { AdviceType } from '@/types/nutrition';
 
-import { useState, useEffect } from "react";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2, ExternalLink } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { AdviceState } from "@/types/nutrition";
+interface AdviceCardProps {
+    date: string;
+    className?: string;
+}
 
-export function AdviceCard() {
-    // 1. 状態管理
-    const [state, setState] = useState<AdviceState>({
-        loading: true,
-        error: null,
-        advice: null
-    });
+// アドバイスタイプごとの表示情報
+const ADVICE_TYPE_INFO: Record<string, { title: string; icon: string; }> = {
+    [AdviceType.IRON_DEFICIENCY]: { title: '鉄分不足', icon: '⚙️' },
+    [AdviceType.FOLIC_ACID_REMINDER]: { title: '葉酸摂取', icon: '🍃' },
+    [AdviceType.CALCIUM_RECOMMENDATION]: { title: 'カルシウム摂取', icon: '🥛' },
+    [AdviceType.PROTEIN_INTAKE]: { title: 'タンパク質摂取', icon: '🥩' },
+    [AdviceType.VITAMIN_D_SUGGESTION]: { title: 'ビタミンD補給', icon: '☀️' },
+    [AdviceType.CALORIE_BALANCE]: { title: 'カロリーバランス', icon: '🔥' },
+    [AdviceType.GENERAL_NUTRITION]: { title: '栄養バランス', icon: '📝' }
+};
 
-    const router = useRouter();
+// デフォルトのアドバイス（データがない場合に表示）
+const DEFAULT_ADVICE = {
+    type: AdviceType.GENERAL_NUTRITION,
+    content: '毎日バランスの良い食事を心がけましょう。特に妊娠中は鉄分、葉酸、カルシウム、タンパク質の摂取が重要です。'
+};
 
-    // 2. データ取得
+export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) => {
+    const [advice, setAdvice] = useState<NutritionAdvice | null>(null);
+    const [loading, setLoading] = useState<boolean>(true);
+    const supabase = createClientComponentClient();
+
     useEffect(() => {
-        async function fetchAdvice() {
+        const fetchAdvice = async () => {
             try {
-                setState(prev => ({ ...prev, loading: true }));
+                setLoading(true);
 
-                const response = await fetch("/api/nutrition-advice");
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || "アドバイスの取得に失敗しました");
+                // セッションの有効性を確認
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    setLoading(false);
+                    return;
                 }
 
-                const data = await response.json();
+                const { data, error: fetchError } = await supabase
+                    .from('daily_nutri_advice')
+                    .select('*')
+                    .eq('user_id', session.user.id)
+                    .eq('advice_date', date)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
 
-                if (!data.success) {
-                    throw new Error(data.error || "データの取得に失敗しました");
+                if (fetchError && fetchError.code !== 'PGRST116') {
+                    throw fetchError;
                 }
 
-                // 3. アドバイスデータの設定
-                setState({
-                    loading: false,
-                    error: null,
-                    advice: data.advice ? {
-                        content: data.advice.content,
-                        recommended_foods: data.advice.recommended_foods
-                    } : null
-                });
-
-                // 4. 既読状態の更新
-                if (data.advice && data.advice.id && !data.advice.is_read) {
-                    try {
-                        await fetch("/api/nutrition-advice", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ id: data.advice.id })
-                        });
-                    } catch (readError) {
-                        console.error("既読更新エラー:", readError);
-                        // 非クリティカルなので失敗してもユーザーには表示しない
-                    }
-                }
+                setAdvice(data || null);
             } catch (err) {
-                console.error("アドバイス取得エラー:", err);
-                setState({
-                    loading: false,
-                    error: err instanceof Error ? err.message : "アドバイスを読み込めませんでした",
-                    advice: null
-                });
-
-                // エラー通知（オプション）
-                toast.error("アドバイスの読み込みに失敗しました", {
-                    description: "しばらくしてからもう一度お試しください"
-                });
+                console.error('栄養アドバイス取得エラー:', err);
+            } finally {
+                setLoading(false);
             }
+        };
+
+        if (date) {
+            fetchAdvice();
         }
+    }, [date, supabase]);
 
-        fetchAdvice();
-    }, []);
-
-    // 5. ダッシュボードへの遷移
-    const handleViewDetail = () => {
-        router.push("/dashboard?tab=advice");
+    // 表示するアドバイス情報
+    const displayAdvice = advice || {
+        id: 'default',
+        advice_type: DEFAULT_ADVICE.type,
+        advice_content: DEFAULT_ADVICE.content
     };
 
-    // 6. UI描画
+    const adviceInfo = ADVICE_TYPE_INFO[displayAdvice.advice_type] ||
+        { title: 'アドバイス', icon: '📝' };
+
     return (
-        <Card className="w-full overflow-hidden">
+        <Card className={`w-full ${className}`}>
             <CardHeader className="pb-2">
-                <CardTitle className="text-lg sm:text-xl font-bold">本日の栄養アドバイス</CardTitle>
+                <CardTitle className="text-lg font-bold flex items-center">
+                    <span className="mr-2 text-xl">{adviceInfo.icon}</span>
+                    今日のアドバイス
+                </CardTitle>
             </CardHeader>
             <CardContent>
-                {/* コンテンツエリア */}
-                <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100">
-                    {state.loading ? (
-                        // ローディング表示
-                        <div className="flex justify-center items-center py-4">
-                            <Loader2 className="h-6 w-6 animate-spin text-green-600" />
-                        </div>
-                    ) : state.error ? (
-                        // エラー表示
-                        <div className="text-gray-500">
-                            <p>{state.error}</p>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setState(prev => ({ ...prev, loading: true }))}
-                                className="mt-2 text-green-600"
-                            >
-                                再読み込み
-                            </Button>
-                        </div>
-                    ) : state.advice?.content ? (
-                        // アドバイス表示
-                        <div className="text-green-700">
-                            {state.advice.content}
-                        </div>
-                    ) : (
-                        // データなし表示
-                        <p className="text-green-700">
-                            今日の栄養バランスは良好です。このまま栄養バランスの良い食事を続けましょう。
-                        </p>
-                    )}
-                </div>
+                {loading ? (
+                    <div className="flex justify-center items-center h-16">
+                        <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                    </div>
+                ) : (
+                    <div className="p-3 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200">
+                        <h3 className="font-semibold text-sm mb-1">{adviceInfo.title}</h3>
+                        <p className="text-sm">{displayAdvice.advice_content}</p>
+                    </div>
+                )}
             </CardContent>
-
-            {/* 詳細表示ボタン - エラー時や読み込み中は非表示 */}
-            {!state.loading && !state.error && (
-                <CardFooter className="flex justify-end pt-0">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleViewDetail}
-                        className="text-green-600 hover:text-green-700 hover:bg-green-50 flex items-center gap-1"
-                    >
-                        詳しく見る
-                        <ExternalLink className="h-3.5 w-3.5" />
-                    </Button>
-                </CardFooter>
-            )}
         </Card>
     );
-} 
+}; 
