@@ -192,9 +192,16 @@ function generatePrompt(
     deficientNutrients: string[],
     mode: 'summary' | 'detail'
 ): string {
+    // 現在の日付情報を取得
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 0-11なので+1する
+    const currentSeason = getSeason(currentMonth);
+    const formattedDate = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
     const basePrompt = `
 あなたは妊婦向け栄養管理アプリ「manmaru」の栄養アドバイザーです。
 現在妊娠${pregnancyWeek}週目（第${trimester}期）の妊婦に対して、栄養アドバイスを作成してください。
+今日は${formattedDate}で、現在は${currentSeason}です。季節に合わせたアドバイスも含めてください。
 
 ${deficientNutrients.length > 0
             ? `特に不足している栄養素: ${deficientNutrients.join('、')}`
@@ -210,6 +217,7 @@ ${basePrompt}
 2. ${deficientNutrients.length > 0
                 ? `不足している栄養素を補うための簡単なアドバイス`
                 : '全体的な栄養バランスを維持するための簡単なアドバイス'}
+3. ${currentSeason}の旬の食材を取り入れた提案
 
 アドバイスは150-200字程度、親しみやすく、要点を絞った内容で作成してください。
 専門用語の使用は最小限に抑え、温かい口調で作成してください。
@@ -224,14 +232,22 @@ ${basePrompt}
 3. ${deficientNutrients.length > 0
                 ? `不足している栄養素（${deficientNutrients.join('、')}）を補うための具体的な食品例とレシピのアイデア`
                 : '全体的な栄養バランスを維持するための詳細なアドバイスと食品例'}
-4. 季節の食材を取り入れた提案
+4. ${currentSeason}の旬の食材を取り入れた具体的な提案
 
-さらに、レスポンスの最後に「### 推奨食品リスト」というセクションを作成し、箇条書きで5-7つの具体的な食品と、その栄養価や調理法のヒントを簡潔に列挙してください。
+さらに、レスポンスの最後に「### 推奨食品リスト」というセクションを作成し、箇条書きで5-7つの具体的な食品と、その栄養価や調理法のヒントを簡潔に列挙してください。特に${currentSeason}の旬の食材を含めてください。
 
 アドバイスは300-500字程度、詳細ながらも理解しやすい内容で作成してください。
 専門用語を使う場合は、簡単な説明を添えてください。
 `;
     }
+}
+
+// 月から季節を判定する関数
+function getSeason(month: number): string {
+    if (month >= 3 && month <= 5) return '春';
+    if (month >= 6 && month <= 8) return '夏';
+    if (month >= 9 && month <= 11) return '秋';
+    return '冬';
 }
 
 // read状態を更新するPATCHエンドポイント
