@@ -74,7 +74,7 @@ export async function GET(request: Request) {
         // 栄養データがなくてもエラーとはしない（新規ユーザーや食事未記録の場合）
 
         // 8. Gemini APIセットアップ
-        const apiKey = process.env.GOOGLE_AI_API_KEY;
+        const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             console.error('API KEY未設定');
             return NextResponse.json(
@@ -85,8 +85,8 @@ export async function GET(request: Request) {
 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-pro",
-            generationConfig: { temperature: 0.4 }
+            model: "gemini-2.0-flash-001",
+            generationConfig: { temperature: 0.2 }
         });
 
         // 9. 不足栄養素の特定
