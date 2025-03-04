@@ -15,7 +15,7 @@ import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
 // 新しいダッシュボードコンポーネントをインポート
 import NutritionChart from '@/components/dashboard/nutrition-chart';
-import NutritionAdvice from '@/components/dashboard/nutrition-advice';
+import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
 import TabsContainer from '@/components/dashboard/tabs-container';
 import MealHistoryList from '@/components/dashboard/meal-history-list';
 import DailyNutritionScores from '@/components/dashboard/daily-nutrition-scores';
@@ -336,6 +336,11 @@ export default function DashboardPage() {
                     </p>
                 </CardContent>
             </Card>
+
+            {/* 栄養アドバイス詳細 */}
+            <div className="mb-6">
+                <DetailedNutritionAdvice />
+            </div>
 
             {/* 4. 栄養素別状況カード */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

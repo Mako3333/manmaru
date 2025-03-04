@@ -1,116 +1,149 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { NutritionAdvice } from '@/types/nutrition';
-import { AdviceType } from '@/types/nutrition';
+import { useState, useEffect } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import { AdviceState } from "@/types/nutrition";
 
-interface NutritionAdviceProps {
-    date: string;
-    className?: string;
-}
+export function DetailedNutritionAdvice() {
+    // 1. 状態管理
+    const [state, setState] = useState<AdviceState>({
+        loading: true,
+        error: null,
+        advice: null
+    });
 
-// アドバイスタイプごとの表示情報
-const ADVICE_TYPE_INFO: Record<string, { title: string; icon: string; }> = {
-    [AdviceType.IRON_DEFICIENCY]: { title: '鉄分不足', icon: '⚙️' },
-    [AdviceType.FOLIC_ACID_REMINDER]: { title: '葉酸摂取', icon: '🍃' },
-    [AdviceType.CALCIUM_RECOMMENDATION]: { title: 'カルシウム摂取', icon: '🥛' },
-    [AdviceType.PROTEIN_INTAKE]: { title: 'タンパク質摂取', icon: '🥩' },
-    [AdviceType.VITAMIN_D_SUGGESTION]: { title: 'ビタミンD補給', icon: '☀️' },
-    [AdviceType.CALORIE_BALANCE]: { title: 'カロリーバランス', icon: '🔥' },
-    [AdviceType.GENERAL_NUTRITION]: { title: '栄養バランス', icon: '📝' }
-};
+    // 2. データ取得関数
+    const fetchDetailedAdvice = async () => {
+        try {
+            setState(prev => ({ ...prev, loading: true }));
 
-// デフォルトのアドバイス（データがない場合に表示）
-const DEFAULT_ADVICE = {
-    type: AdviceType.GENERAL_NUTRITION,
-    content: '毎日バランスの良い食事を心がけましょう。特に妊娠中は鉄分、葉酸、カルシウム、タンパク質の摂取が重要です。'
-};
+            const response = await fetch("/api/nutrition-advice?detail=true");
 
-export default function NutritionAdvice({ date, className }: NutritionAdviceProps) {
-    const [advices, setAdvices] = useState<NutritionAdvice[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
-    const supabase = createClientComponentClient();
-
-    useEffect(() => {
-        const fetchAdvices = async () => {
-            try {
-                setLoading(true);
-
-                // セッションの有効性を確認
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) {
-                    setError('ログインが必要です。再度ログインしてください。');
-                    setLoading(false);
-                    return;
-                }
-
-                const { data, error: fetchError } = await supabase
-                    .from('daily_nutri_advice')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .eq('advice_date', date)
-                    .order('created_at', { ascending: false });
-
-                if (fetchError) throw fetchError;
-
-                setAdvices(data || []);
-            } catch (err) {
-                console.error('栄養アドバイス取得エラー:', err);
-                setError('栄養アドバイスの取得に失敗しました');
-            } finally {
-                setLoading(false);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "詳細アドバイスの取得に失敗しました");
             }
-        };
 
-        fetchAdvices();
-    }, [date, supabase]);
+            const data = await response.json();
 
+            if (!data.success) {
+                throw new Error(data.error || "データの取得に失敗しました");
+            }
+
+            // 3. アドバイスデータの設定
+            setState({
+                loading: false,
+                error: null,
+                advice: data.advice ? {
+                    content: data.advice.content,
+                    recommended_foods: data.advice.recommended_foods
+                } : null
+            });
+
+            // 4. 既読状態の更新
+            if (data.advice && data.advice.id && !data.advice.is_read) {
+                try {
+                    await fetch("/api/nutrition-advice", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: data.advice.id })
+                    });
+                } catch (readError) {
+                    console.error("既読更新エラー:", readError);
+                }
+            }
+        } catch (err) {
+            console.error("詳細アドバイス取得エラー:", err);
+            setState({
+                loading: false,
+                error: err instanceof Error ? err.message : "詳細アドバイスを読み込めませんでした",
+                advice: null
+            });
+
+            toast.error("詳細アドバイスの読み込みに失敗しました");
+        }
+    };
+
+    // 5. 初回読み込み
+    useEffect(() => {
+        fetchDetailedAdvice();
+    }, []);
+
+    // 6. UI描画
     return (
-        <Card className={`w-full ${className}`}>
-            <CardHeader className="pb-2">
-                <CardTitle className="text-lg sm:text-xl font-bold">栄養アドバイス</CardTitle>
+        <Card className="w-full overflow-hidden">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-lg sm:text-xl font-bold">栄養アドバイス詳細</CardTitle>
+
+                {/* 更新ボタン */}
+                {!state.loading && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={fetchDetailedAdvice}
+                        disabled={state.loading}
+                        className="h-8 w-8 p-0"
+                    >
+                        <RefreshCw className="h-4 w-4" />
+                        <span className="sr-only">更新</span>
+                    </Button>
+                )}
             </CardHeader>
+
             <CardContent>
-                {loading ? (
-                    <div className="flex justify-center items-center h-40">
-                        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+                {state.loading ? (
+                    // ローディング表示
+                    <div className="flex justify-center items-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
                     </div>
-                ) : error ? (
-                    <div className="text-center text-red-500 py-8">{error}</div>
-                ) : advices.length > 0 ? (
-                    <div className="space-y-4">
-                        {advices.map((advice) => (
-                            <div
-                                key={advice.id}
-                                className="p-4 rounded-lg border bg-indigo-50 text-indigo-800 border-indigo-200"
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className="text-2xl">
-                                        {ADVICE_TYPE_INFO[advice.advice_type]?.icon || '📋'}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-sm sm:text-base mb-1">
-                                            {ADVICE_TYPE_INFO[advice.advice_type]?.title || 'アドバイス'}
-                                        </h3>
-                                        <p className="text-sm">{advice.advice_content}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                ) : state.error ? (
+                    // エラー表示
+                    <div className="text-gray-500 py-4 text-center">
+                        <p>{state.error}</p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchDetailedAdvice}
+                            className="mt-4"
+                        >
+                            再読み込み
+                        </Button>
                     </div>
-                ) : (
-                    <div className="p-4 rounded-lg border bg-indigo-50 text-indigo-800 border-indigo-200">
-                        <div className="flex items-start gap-3">
-                            <div className="text-2xl">{ADVICE_TYPE_INFO[DEFAULT_ADVICE.type].icon}</div>
-                            <div>
-                                <h3 className="font-semibold text-sm sm:text-base mb-1">{ADVICE_TYPE_INFO[DEFAULT_ADVICE.type].title}</h3>
-                                <p className="text-sm">{DEFAULT_ADVICE.content}</p>
+                ) : state.advice ? (
+                    // アドバイス表示
+                    <div className="space-y-6">
+                        {/* 詳細アドバイス */}
+                        <div className="p-5 rounded-lg bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100">
+                            <div className="text-green-700 whitespace-pre-line">
+                                {state.advice.content}
                             </div>
                         </div>
+
+                        {/* 推奨食品リスト */}
+                        {state.advice.recommended_foods && state.advice.recommended_foods.length > 0 && (
+                            <div className="p-5 rounded-lg border border-green-100 bg-white">
+                                <h3 className="text-green-800 font-semibold mb-3">今日のおすすめ食品</h3>
+                                <ul className="space-y-2">
+                                    {state.advice.recommended_foods.map((food, index) => (
+                                        <li key={index} className="flex items-start">
+                                            <span className="inline-flex w-6 h-6 rounded-full bg-green-100 text-green-600 flex-shrink-0 items-center justify-center mr-2 mt-0.5 text-sm font-medium">
+                                                {index + 1}
+                                            </span>
+                                            <span className="text-gray-700">{food}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
+                ) : (
+                    // データなし表示
+                    <p className="text-green-700 py-4 text-center">
+                        今日の栄養バランスは良好です。このまま栄養バランスの良い食事を続けましょう。
+                    </p>
                 )}
             </CardContent>
         </Card>

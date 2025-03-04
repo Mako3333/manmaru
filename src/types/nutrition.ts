@@ -233,8 +233,10 @@ export interface NutritionAdvice {
     id: string;
     user_id: string;
     advice_date: string;
-    advice_type: string;  // 例: 'iron_deficiency', 'calcium_recommendation'
-    advice_content: string;
+    advice_type: AdviceType;
+    advice_summary: string;
+    advice_detail?: string;
+    recommended_foods?: string[];
     is_read: boolean;
     created_at: string;
 }
@@ -243,11 +245,31 @@ export interface NutritionAdvice {
  * 栄養アドバイスの種類
  */
 export enum AdviceType {
-    IRON_DEFICIENCY = 'iron_deficiency',
-    CALCIUM_RECOMMENDATION = 'calcium_recommendation',
-    FOLIC_ACID_REMINDER = 'folic_acid_reminder',
-    VITAMIN_D_SUGGESTION = 'vitamin_d_suggestion',
-    PROTEIN_INTAKE = 'protein_intake',
-    CALORIE_BALANCE = 'calorie_balance',
-    GENERAL_NUTRITION = 'general_nutrition'
+    DAILY = 'daily',
+    DEFICIENCY = 'deficiency',
+    MEAL_SPECIFIC = 'meal_specific',
+    WEEKLY = 'weekly'
+}
+
+// APIレスポンス用の型定義
+export interface NutritionAdviceResponse {
+    success: boolean;
+    advice?: {
+        id: string;
+        content: string; // UIで表示するコンテンツ (summary or detail)
+        recommended_foods?: string[];
+        created_at: string;
+        is_read: boolean;
+    };
+    error?: string;
+}
+
+// フロントエンド状態管理用の型定義
+export interface AdviceState {
+    loading: boolean;
+    error: string | null;
+    advice: {
+        content: string;
+        recommended_foods?: string[];
+    } | null;
 }

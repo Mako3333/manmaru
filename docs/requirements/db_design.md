@@ -280,7 +280,9 @@ export interface DailyNutriAdvice {
   user_id: string;
   advice_date: string;
   advice_type: string;
-  advice_content: string;
+  advice_summary: string;
+  advice_detail: string;
+  recommended_foods: string;
   is_read: boolean;
   created_at: string;
 }

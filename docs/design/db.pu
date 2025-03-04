@@ -98,10 +98,13 @@ entity "daily_nutri_advice" as daily_nutri_advice {
   * user_id : UUID <<FK>>
   advice_date : DATE
   advice_type : TEXT
-  advice_content : TEXT
+  advice_summary : TEXT
+  advice_detail : TEXT
+  recommended_foods : TEXT[]
   is_read : BOOLEAN
   created_at : TIMESTAMPTZ
 }
+note right of daily_nutri_advice : Modified table structure
 
 ' View
 entity "nutrition_goal_prog (VIEW)" as nutrition_goal_prog {
