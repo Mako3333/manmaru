@@ -3,6 +3,19 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AdviceType } from "@/types/nutrition";
+import { AIModelFactory } from '@/lib/ai/model-factory';
+import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
+import { getSeason } from '@/lib/ai/prompts/prompt-utils';
+import { withErrorHandling } from '@/lib/errors/error-utils';
+import { AIError, ErrorCode } from '@/lib/errors/ai-error';
+import { z } from 'zod';
+
+// リクエストスキーマ
+const RequestSchema = z.object({
+    pregnancyWeek: z.number().min(1).max(42),
+    deficientNutrients: z.array(z.string()).optional(),
+    mode: z.enum(['summary', 'detail']).default('detail')
+});
 
 export async function GET(request: Request) {
     try {
@@ -10,13 +23,45 @@ export async function GET(request: Request) {
 
         // 1. リクエストパラメータの取得
         const { searchParams } = new URL(request.url);
-        const detailLevel = searchParams.get('detail') === 'true' ? 'detail' : 'summary';
-        console.log('栄養アドバイスAPI: 詳細レベル', detailLevel); // デバッグ用ログ
+        const pregnancyWeekParam = searchParams.get('pregnancyWeek');
+        const deficientNutrientsParam = searchParams.get('deficientNutrients');
+        const modeParam = searchParams.get('mode') as 'summary' | 'detail' || 'detail';
+        console.log('栄養アドバイスAPI: 妊娠週数', pregnancyWeekParam);
+        console.log('栄養アドバイスAPI: 不足栄養素', deficientNutrientsParam);
+        console.log('栄養アドバイスAPI: 詳細レベル', modeParam);
 
-        // 2. Supabaseクライアント初期化
+        // 2. パラメータの検証
+        if (!pregnancyWeekParam) {
+            throw new AIError(
+                '妊娠週数が指定されていません',
+                ErrorCode.VALIDATION_ERROR,
+                null,
+                ['pregnancyWeek パラメータを指定してください']
+            );
+        }
+
+        const pregnancyWeek = parseInt(pregnancyWeekParam, 10);
+        if (isNaN(pregnancyWeek) || pregnancyWeek < 1 || pregnancyWeek > 42) {
+            throw new AIError(
+                '妊娠週数が無効です',
+                ErrorCode.VALIDATION_ERROR,
+                null,
+                ['妊娠週数は1〜42の範囲で指定してください']
+            );
+        }
+
+        // 不足栄養素の解析
+        const deficientNutrients = deficientNutrientsParam
+            ? deficientNutrientsParam.split(',').map(n => n.trim())
+            : [];
+
+        // 3. トリメスター（妊娠期）の計算
+        const trimester = calculateTrimester(pregnancyWeek);
+
+        // 4. Supabaseクライアント初期化
         const supabase = createRouteHandlerClient({ cookies });
 
-        // 3. セッション確認 (認証チェック)
+        // 5. セッション確認 (認証チェック)
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
             console.log('栄養アドバイスAPI: 認証エラー - セッションなし'); // デバッグ用ログ
@@ -27,11 +72,11 @@ export async function GET(request: Request) {
         }
         console.log('栄養アドバイスAPI: ユーザーID', session.user.id); // デバッグ用ログ
 
-        // 4. 今日の日付を取得
+        // 6. 今日の日付を取得
         const today = new Date().toISOString().split('T')[0];
         console.log('栄養アドバイスAPI: 今日の日付', today); // デバッグ用ログ
 
-        // 5. 既存のアドバイスを確認
+        // 7. 既存のアドバイスを確認
         const { data: existingAdvice, error: adviceError } = await supabase
             .from('daily_nutri_advice')
             .select('*')
@@ -49,8 +94,8 @@ export async function GET(request: Request) {
                 success: true,
                 advice: {
                     id: existingAdvice.id,
-                    content: detailLevel === 'detail' ? existingAdvice.advice_detail : existingAdvice.advice_summary,
-                    recommended_foods: detailLevel === 'detail' ? existingAdvice.recommended_foods : undefined,
+                    content: modeParam === 'detail' ? existingAdvice.advice_detail : existingAdvice.advice_summary,
+                    recommended_foods: modeParam === 'detail' ? existingAdvice.recommended_foods : undefined,
                     created_at: existingAdvice.created_at,
                     is_read: existingAdvice.is_read
                 }
@@ -59,7 +104,7 @@ export async function GET(request: Request) {
 
         console.log('栄養アドバイスAPI: 新規アドバイス生成開始'); // デバッグ用ログ
 
-        // 6. ユーザープロファイル取得
+        // 8. ユーザープロファイル取得
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
@@ -75,7 +120,7 @@ export async function GET(request: Request) {
             );
         }
 
-        // 7. 栄養目標・実績データ取得
+        // 9. 栄養目標・実績データ取得
         const { data: nutritionData, error: nutritionError } = await supabase
             .from('nutrition_goal_prog')
             .select('*')
@@ -85,7 +130,7 @@ export async function GET(request: Request) {
 
         // 栄養データがなくてもエラーとはしない（新規ユーザーや食事未記録の場合）
 
-        // 8. Gemini APIセットアップ
+        // 10. Gemini APIセットアップ
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             console.error('API KEY未設定');
@@ -112,43 +157,20 @@ export async function GET(request: Request) {
             generationConfig: { temperature: 0.2 }
         });
 
-        // 9. 不足栄養素の特定
-        const deficientNutrients = [];
-
-        if (nutritionData) {
-            if (nutritionData.protein_percent < 80)
-                deficientNutrients.push("タンパク質");
-            if (nutritionData.iron_percent < 80)
-                deficientNutrients.push("鉄分");
-            if (nutritionData.folic_acid_percent < 80)
-                deficientNutrients.push("葉酸");
-            if (nutritionData.calcium_percent < 80)
-                deficientNutrients.push("カルシウム");
-            if (nutritionData.vitamin_d_percent < 80)
-                deficientNutrients.push("ビタミンD");
-        }
-
-        // 10. トライメスターの計算
-        const pregnancyWeek = profile.pregnancy_week || 0;
-        let trimester = 1;
-        if (pregnancyWeek > 13) trimester = 2;
-        if (pregnancyWeek > 27) trimester = 3;
-
         // 11. プロンプト生成
-        const summaryPrompt = generatePrompt(pregnancyWeek, trimester, deficientNutrients, 'summary');
-        const detailPrompt = generatePrompt(pregnancyWeek, trimester, deficientNutrients, 'detail');
+        const prompt = generatePrompt(
+            pregnancyWeek,
+            trimester,
+            deficientNutrients,
+            modeParam
+        );
 
         // 12. AI生成（並行処理）
-        let summaryResult, detailResult;
+        let result;
         try {
-            [summaryResult, detailResult] = await Promise.all([
-                model.generateContent({
-                    contents: [{ role: "user", parts: [{ text: summaryPrompt }] }]
-                }),
-                model.generateContent({
-                    contents: [{ role: "user", parts: [{ text: detailPrompt }] }]
-                })
-            ]);
+            result = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: prompt }] }]
+            });
         } catch (aiError) {
             console.error('AI生成エラー:', aiError);
             console.log('栄養アドバイスAPI: Gemini API呼び出しエラー', aiError); // デバッグ用ログ
@@ -158,10 +180,10 @@ export async function GET(request: Request) {
                 success: true,
                 advice: {
                     id: 'fallback',
-                    content: detailLevel === 'detail'
+                    content: modeParam === 'detail'
                         ? "現在、詳細な栄養アドバイスを生成できません。しばらく経ってからもう一度お試しください。バランスの良い食事を心がけ、特に鉄分、葉酸、カルシウムの摂取に注意しましょう。"
                         : "バランスの良い食事を心がけましょう。特に妊娠中は鉄分、葉酸、カルシウムの摂取が重要です。",
-                    recommended_foods: detailLevel === 'detail'
+                    recommended_foods: modeParam === 'detail'
                         ? ["ほうれん草", "レバー", "ブロッコリー", "牛乳", "ヨーグルト", "豆腐", "ナッツ類"]
                         : undefined,
                     created_at: new Date().toISOString(),
@@ -170,23 +192,9 @@ export async function GET(request: Request) {
             });
         }
 
-        const adviceSummary = summaryResult.response.text();
-        const detailResponse = detailResult.response.text();
+        const advice = result.response.text();
 
-        // 13. 詳細レスポンスから推奨食品リストを抽出
-        let adviceDetail = detailResponse;
-        let recommendedFoods: string[] = [];
-
-        const foodListMatch = detailResponse.match(/### 推奨食品リスト\s*([\s\S]*?)(\n\n|$)/);
-        if (foodListMatch) {
-            adviceDetail = detailResponse.replace(/### 推奨食品リスト[\s\S]*/, '').trim();
-            recommendedFoods = foodListMatch[1]
-                .split('\n')
-                .map(item => item.replace(/^[•\-\*]\s*/, '').trim())
-                .filter(item => item.length > 0);
-        }
-
-        // 14. データベースに保存
+        // 13. データベースに保存
         try {
             const { data: savedAdvice, error: saveError } = await supabase
                 .from('daily_nutri_advice')
@@ -194,9 +202,9 @@ export async function GET(request: Request) {
                     user_id: session.user.id,
                     advice_date: today,
                     advice_type: AdviceType.DAILY,
-                    advice_summary: adviceSummary,
-                    advice_detail: adviceDetail,
-                    recommended_foods: recommendedFoods,
+                    advice_summary: advice,
+                    advice_detail: advice,
+                    recommended_foods: [],
                     is_read: false
                 })
                 .select()
@@ -211,8 +219,8 @@ export async function GET(request: Request) {
                     success: true,
                     advice: {
                         id: 'temp-' + Date.now(),
-                        content: detailLevel === 'detail' ? adviceDetail : adviceSummary,
-                        recommended_foods: detailLevel === 'detail' ? recommendedFoods : undefined,
+                        content: modeParam === 'detail' ? advice : advice,
+                        recommended_foods: modeParam === 'detail' ? [] : undefined,
                         created_at: new Date().toISOString(),
                         is_read: false
                     },
@@ -220,14 +228,14 @@ export async function GET(request: Request) {
                 });
             }
 
-            // 15. レスポンス返却
+            // 14. レスポンス返却
             console.log('栄養アドバイスAPI: 新規アドバイス生成完了'); // デバッグ用ログ
             return NextResponse.json({
                 success: true,
                 advice: {
                     id: savedAdvice.id,
-                    content: detailLevel === 'detail' ? savedAdvice.advice_detail : savedAdvice.advice_summary,
-                    recommended_foods: detailLevel === 'detail' ? savedAdvice.recommended_foods : undefined,
+                    content: modeParam === 'detail' ? savedAdvice.advice_detail : savedAdvice.advice_summary,
+                    recommended_foods: modeParam === 'detail' ? [] : undefined,
                     created_at: savedAdvice.created_at,
                     is_read: savedAdvice.is_read
                 }
@@ -241,8 +249,8 @@ export async function GET(request: Request) {
                 success: true,
                 advice: {
                     id: 'temp-' + Date.now(),
-                    content: detailLevel === 'detail' ? adviceDetail : adviceSummary,
-                    recommended_foods: detailLevel === 'detail' ? recommendedFoods : undefined,
+                    content: modeParam === 'detail' ? advice : advice,
+                    recommended_foods: modeParam === 'detail' ? [] : undefined,
                     created_at: new Date().toISOString(),
                     is_read: false
                 },
@@ -267,57 +275,32 @@ function generatePrompt(
     deficientNutrients: string[],
     mode: 'summary' | 'detail'
 ): string {
-    // 現在の日付情報を取得
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1; // 0-11なので+1する
-    const currentSeason = getSeason(currentMonth);
-    const formattedDate = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+    // プロンプトサービスを利用
+    const promptService = PromptService.getInstance();
 
-    const basePrompt = `
-あなたは妊婦向け栄養管理アプリ「manmaru」の栄養アドバイザーです。
-現在妊娠${pregnancyWeek}週目（第${trimester}期）の妊婦に対して、栄養アドバイスを作成してください。
-今日は${formattedDate}で、現在は${currentSeason}です。季節に合わせたアドバイスも含めてください。
+    // コンテキスト作成
+    const context = {
+        pregnancyWeek,
+        trimester,
+        deficientNutrients,
+        isSummary: mode === 'summary',
+        formattedDate: new Date().toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        }),
+        currentSeason: getSeason(new Date().getMonth() + 1)
+    };
 
-${deficientNutrients.length > 0
-            ? `特に不足している栄養素: ${deficientNutrients.join('、')}`
-            : '現在の栄養状態は良好です。'}
-`;
-
-    if (mode === 'summary') {
-        return `
-${basePrompt}
-
-以下の点を考慮した簡潔なアドバイスを作成してください:
-1. 妊娠周期、栄養摂取状況、不足している栄養素、季節要因を考慮した
-アドバイスを2文程度、親しみやすく、要点を絞った内容で作成してください。
-専門用語の使用は最小限に抑え、温かい口調で作成してください。
-`;
-    } else {
-        return `
-${basePrompt}
-
-以下の点を含む詳細なアドバイスを作成してください:
-1. 妊娠${pregnancyWeek}週目の胎児の発達状況
-2. この時期に特に重要な栄養素とその理由
-3. ${deficientNutrients.length > 0
-                ? `不足している栄養素（${deficientNutrients.join('、')}）を補うための具体的な食品例とレシピのアイデア`
-                : '全体的な栄養バランスを維持するための詳細なアドバイスと食品例'}
-4. ${currentSeason}の旬の食材を取り入れた具体的な提案
-
-さらに、レスポンスの最後に「### 推奨食品リスト」というセクションを作成し、箇条書きで5-7つの具体的な食品と、その栄養価や調理法のヒントを簡潔に列挙してください。特に${currentSeason}の旬の食材を含めてください。
-
-アドバイスは300-500字程度、詳細ながらも理解しやすい内容で作成してください。
-専門用語を使う場合は、簡単な説明を添えてください。
-`;
-    }
+    // プロンプト生成
+    return promptService.generateNutritionAdvicePrompt(context);
 }
 
-// 月から季節を判定する関数
-function getSeason(month: number): string {
-    if (month >= 3 && month <= 5) return '春';
-    if (month >= 6 && month <= 8) return '夏';
-    if (month >= 9 && month <= 11) return '秋';
-    return '冬';
+// 妊娠週数から妊娠期（トリメスター）を計算
+function calculateTrimester(pregnancyWeek: number): number {
+    if (pregnancyWeek <= 13) return 1;
+    if (pregnancyWeek <= 27) return 2;
+    return 3;
 }
 
 // read状態を更新するPATCHエンドポイント

@@ -8,19 +8,22 @@ import { createGeminiModel } from "@/lib/langchain/langchain";
 import { AIResponseParser } from "@/lib/ai/response-parser";
 import { FoodAnalysisError, ErrorCode, createErrorResponse } from "@/lib/errors/food-analysis-error";
 import { NutritionDatabase } from "@/lib/nutrition/database";
+import { AIModelFactory } from '@/lib/ai/model-factory';
+import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
+import { formatFoodsText } from '@/lib/ai/prompts/prompt-utils';
+import { withErrorHandling } from '@/lib/errors/error-utils';
+import { AIError } from '@/lib/errors/ai-error';
 
 // リクエスト用のZodスキーマ
 const RequestSchema = z.object({
     foods: z.array(z.object({
-        id: z.string().optional(),
         name: z.string(),
-        quantity: z.string().optional(),
-        confidence: z.number().optional()
+        quantity: z.string().optional()
     }))
 });
 
 // テキスト入力解析のAPIエンドポイント
-export async function POST(request: Request) {
+export const POST = withErrorHandling(async (request: Request) => {
     try {
         console.log('テキスト解析リクエスト受信');
         const body = await request.json();
@@ -29,10 +32,11 @@ export async function POST(request: Request) {
         // APIキーの取得と検証
         const geminiApiKey = process.env.GEMINI_API_KEY;
         if (!geminiApiKey) {
-            throw new FoodAnalysisError(
+            throw new AIError(
                 'API設定エラー',
-                ErrorCode.MISSING_API_KEY,
-                'GEMINI_API_KEY環境変数が設定されていません'
+                ErrorCode.API_KEY_ERROR,
+                null,
+                ['GEMINI_API_KEY環境変数を設定してください']
             );
         }
 
@@ -41,95 +45,70 @@ export async function POST(request: Request) {
 
         // 食品データがない場合はエラー
         if (!foods || foods.length === 0) {
-            throw new FoodAnalysisError(
+            throw new AIError(
                 '食品データが必要です',
-                ErrorCode.MISSING_TEXT,
-                '入力データが空です'
+                ErrorCode.VALIDATION_ERROR,
+                null,
+                ['少なくとも1つの食品を入力してください']
             );
         }
 
-        // Gemini Proモデルの初期化（テキスト処理用）
-        const model = createGeminiModel("gemini-2.0-flash-001", {
+        // AIモデルファクトリーの使用
+        const model = AIModelFactory.createTextModel({
             temperature: 0.2,
             maxOutputTokens: 1024
         });
 
-        // 食品リストをテキスト形式に変換
-        const foodsText = foods.map(food =>
-            `・${food.name}${food.quantity ? ` ${food.quantity}` : ''}`
-        ).join('\n');
+        // プロンプトサービスの使用
+        const promptService = PromptService.getInstance();
+        const foodsText = formatFoodsText(foods);
+        const prompt = promptService.generateTextInputAnalysisPrompt({ foodsText });
 
-        // プロンプトの構築
-        const prompt = `
-# 指示
-あなたは日本の栄養士AIです。以下の食事リストを解析して、データベース検索に適した形式に変換してください。
+        // AIモデル呼び出し
+        console.log('テキスト解析API: Gemini API呼び出し');
+        const result = await model.invoke(prompt);
+        const responseText = result.toString();
 
-## 入力データ
-${foodsText}
-
-## 出力要件
-1. 各食品を標準的な日本語の食品名に変換してください
-2. 量が曖昧または不明確な場合は、一般的な分量を推測して具体化してください
-   例: 「サラダ」→「グリーンサラダ 100g」、「りんご」→「りんご 150g（中1個）」
-3. 以下の量の表現は具体的な数値に変換してください
-   - 「少し」→ 適切なグラム数（例: 10-30g）
-   - 「一杯」→ 適切な量（例: ご飯なら150g、スープなら200ml）
-   - 「一切れ」→ 食品に適した量（例: パンなら40g、ケーキなら80g）
-
-## 出力形式
-以下のJSONフォーマットで出力してください:
-{
-  "enhancedFoods": [
-    {"name": "標準化された食品名", "quantity": "標準化された量", "confidence": 0.9},
-    ...
-  ]
-}
-
-JSONデータのみを出力してください。説明文などは不要です。
-`;
-
-        // AIに解析リクエスト
-        const aiResponse = await model.invoke(prompt);
-        const responseText = aiResponse.toString();
-
-        // AIの回答を解析
-        const parsedData = AIResponseParser.parseResponse(responseText);
-        const enhancedData = AIResponseParser.validateAndEnhanceFoodData(parsedData);
-
-        // 栄養データベースのインスタンスを取得
-        const nutritionDb = NutritionDatabase.getInstance();
-
-        // 栄養素を計算
-        const nutritionData = await nutritionDb.calculateNutrition(enhancedData.foods);
-
-        // レスポンスデータの準備
-        const responseData = {
-            enhancedFoods: enhancedData.foods,
-            nutrition: nutritionData
-        };
-        console.log('API応答:', responseData);
-
-        // 結果を返却
-        return NextResponse.json(responseData);
-
-    } catch (error) {
-        console.error('テキスト解析エラー詳細:', error);
-
-        if (error instanceof FoodAnalysisError) {
-            return NextResponse.json(
-                createErrorResponse(error),
-                { status: 500 }
+        // JSONレスポンスの抽出
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new FoodAnalysisError(
+                'AIからの応答を解析できませんでした',
+                ErrorCode.RESPONSE_PARSE_ERROR,
+                responseText
             );
         }
 
-        // その他のエラー
-        return NextResponse.json(
-            createErrorResponse(new FoodAnalysisError(
-                'テキスト解析中にエラーが発生しました',
-                ErrorCode.AI_ERROR,
+        // JSONパース
+        try {
+            const jsonResponse = JSON.parse(jsonMatch[0]);
+            console.log('テキスト解析API: 解析成功', JSON.stringify(jsonResponse).substring(0, 100) + '...');
+            return NextResponse.json(jsonResponse);
+        } catch (parseError) {
+            throw new FoodAnalysisError(
+                'AIレスポンスのJSON解析に失敗しました',
+                ErrorCode.RESPONSE_PARSE_ERROR,
+                { error: parseError, text: jsonMatch[0] }
+            );
+        }
+    } catch (error) {
+        // エラー変換処理
+        if (error instanceof FoodAnalysisError || error instanceof AIError) {
+            throw error;
+        }
+
+        if (error instanceof z.ZodError) {
+            throw new AIError(
+                'リクエスト形式が不正です',
+                ErrorCode.VALIDATION_ERROR,
                 error
-            )),
-            { status: 500 }
+            );
+        }
+
+        throw new AIError(
+            'テキスト解析中にエラーが発生しました',
+            ErrorCode.AI_MODEL_ERROR,
+            error
         );
     }
-}
+});
