@@ -2,6 +2,7 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { HumanMessage } from "@langchain/core/messages";
 import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIModel, ModelOptions } from "@/lib/ai/model-factory";
 
 // GEMINI APIキーの取得
 const getGeminiApiKey = (): string => {
@@ -28,12 +29,11 @@ interface GeminiModelOptions {
 }
 
 /**
- * Geminiモデルを作成する関数
- * @param modelName モデル名（例: "gemini-2.0-pro", "gemini-2.0-pro-vision"）
- * @param options モデルオプション
- * @returns Geminiモデルインスタンス
+ * Geminiモデルを作成する関数 (非推奨、代わりにAIModelFactoryを使用)
+ * @deprecated Use AIModelFactory.createTextModel or AIModelFactory.createVisionModel instead
  */
-export function createGeminiModel(modelName: string, options: GeminiModelOptions = {}) {
+export function createGeminiModel(modelName: string, options: ModelOptions = {}) {
+    console.warn("createGeminiModel は非推奨です。AIModelFactory を使用してください。");
     // APIキーの取得
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {

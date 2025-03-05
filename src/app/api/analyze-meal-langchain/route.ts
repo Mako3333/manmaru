@@ -29,89 +29,30 @@ const apiKey = process.env.GEMINI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(apiKey);
 const modelName = 'gemini-2.0-flash-001'; // 画像認識に適したモデル
 
+/**
+ * 互換性のためのリダイレクトハンドラ
+ * @deprecated - このAPIは廃止予定です。代わりに /api/analyze-meal を使用してください
+ */
 export async function POST(request: Request) {
-    try {
-        // リクエストボディからデータを取得
-        const body = await request.json();
-        const { image, mealType } = body;
+    console.log('リダイレクト: /api/analyze-meal-langchain から /api/analyze-meal へ');
 
-        // 画像データの確認
-        if (!image) {
-            return NextResponse.json(
-                { error: '画像データが含まれていません' },
-                { status: 400 }
-            );
-        }
+    // 新しいURLを構築
+    const url = new URL(request.url);
+    const newUrl = new URL('/api/analyze-meal', url.origin);
 
-        // Gemini APIのためのコンテンツ準備
-        const imageContent = createImageContent(image);
+    // リクエストボディを取得して転送
+    const body = await request.json();
 
-        // Gemini モデルの設定
-        const model = genAI.getGenerativeModel({
-            model: modelName,
-            generationConfig: {
-                temperature: 0.2,
-                topK: 32,
-                topP: 0.95,
-            },
-        });
+    // 新APIへのフェッチ
+    const response = await fetch(newUrl.toString(), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
 
-        // スキーマ情報を文字列化
-        const schemaDescription = JSON.stringify(outputSchema.shape, null, 2);
-
-        // プロンプトの作成
-        const prompt = `
-      この食事の写真から含まれている食品を識別し、栄養情報を推定してください。
-      食事タイプは「${mealType}」です。
-      
-      以下のスキーマに従ってJSON形式で回答してください:
-      ${schemaDescription}
-      
-      回答は必ずこのJSONフォーマットのみで返してください。
-    `;
-
-        // Gemini APIを呼び出し
-        const result = await model.generateContent({
-            contents: [
-                {
-                    role: 'user',
-                    parts: [
-                        { text: prompt },
-                        { inlineData: imageContent }
-                    ]
-                }
-            ]
-        });
-
-        const response = result.response;
-        const responseText = response.text();
-
-        // JSONレスポンスの抽出（レスポンスからJSONを見つける）
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-
-        if (!jsonMatch) {
-            throw new Error('APIからの応答を解析できませんでした');
-        }
-
-        const jsonResponse = JSON.parse(jsonMatch[0]);
-
-        // スキーマに対して検証
-        const validationResult = outputSchema.safeParse(jsonResponse);
-
-        if (!validationResult.success) {
-            console.error('スキーマ検証エラー:', validationResult.error);
-            return NextResponse.json(
-                { error: 'APIレスポンスの形式が不正です', details: validationResult.error.format() },
-                { status: 500 }
-            );
-        }
-
-        return NextResponse.json(validationResult.data);
-    } catch (error) {
-        console.error('画像解析エラー:', error);
-        return NextResponse.json(
-            { error: '画像の解析に失敗しました' },
-            { status: 500 }
-        );
-    }
+    // レスポンスをそのまま返す
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
 } 
