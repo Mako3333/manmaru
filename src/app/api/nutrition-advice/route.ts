@@ -22,25 +22,10 @@ const RequestSchema = z.object({
 // Supabaseクライアント型定義
 type SupabaseClient = any; // 実際の型が利用可能な場合は置き換えてください
 
-// Supabaseクライアント作成関数（仮実装）
-// 実際の実装に合わせて修正してください
+// Supabaseクライアント作成関数
 function createClient(): SupabaseClient {
-    // 実際のSupabaseクライアント作成ロジックに置き換えてください
-    if (typeof window === 'undefined') {
-        // サーバーサイド
-        const { createClient } = require('@supabase/supabase-js');
-        return createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
-    } else {
-        // クライアントサイド
-        const { createClient } = require('@supabase/supabase-js');
-        return createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        );
-    }
+    // サーバーサイドでのクライアント作成
+    return createRouteHandlerClient({ cookies });
 }
 
 // 栄養アドバイスAPIエンドポイント
@@ -66,18 +51,17 @@ export const GET = withErrorHandling(async (req: Request) => {
 
         // 既存のアドバイスがあるか確認
         const { data: existingAdvice } = await supabase
-            .from('nutrition_advice')
+            .from('daily_nutri_advice')
             .select('*')
             .eq('user_id', userId)
-            .eq('date', formattedDate)
+            .eq('advice_date', formattedDate)
             .maybeSingle();
 
         if (existingAdvice) {
             console.log('栄養アドバイスAPI: 既存アドバイスを返します'); // デバッグ用ログ
             return NextResponse.json({
-                advice: existingAdvice.advice,
-                detailed_advice: existingAdvice.detailed_advice,
-                recommended_foods: existingAdvice.recommended_foods
+                success: true,
+                ...existingAdvice
             });
         }
 
@@ -139,26 +123,36 @@ export const GET = withErrorHandling(async (req: Request) => {
             recommendedFoods = detailResult.recommendedFoods || [];
         }
 
+        // 推奨食品をフォーマット
+        const formattedRecommendedFoods = recommendedFoods.map(food =>
+            `**${food.name}:** ${food.benefits}`
+        );
+
         // データベースに保存
-        const { error: saveError } = await supabase
-            .from('nutrition_advice')
+        const { data: savedAdvice, error: saveError } = await supabase
+            .from('daily_nutri_advice')
             .insert({
                 user_id: userId,
-                date: formattedDate,
-                advice: summaryResult.summary,
-                detailed_advice: detailedAdvice,
-                recommended_foods: recommendedFoods.length > 0 ? recommendedFoods : null
-            });
+                advice_date: formattedDate,
+                advice_type: 'daily',
+                advice_summary: summaryResult.summary,
+                advice_detail: detailedAdvice,
+                recommended_foods: formattedRecommendedFoods,
+                is_read: false,
+                created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
 
         if (saveError) {
             console.error('アドバイス保存エラー:', saveError);
             console.log('栄養アドバイスAPI: データベース保存エラー', saveError); // デバッグ用ログ
+            throw new Error('アドバイスの保存に失敗しました');
         }
 
         return NextResponse.json({
-            advice: summaryResult.summary,
-            detailed_advice: detailedAdvice,
-            recommended_foods: recommendedFoods
+            success: true,
+            ...savedAdvice
         });
     } catch (error) {
         console.error("アドバイス生成エラー:", error);

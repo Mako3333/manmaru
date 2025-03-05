@@ -5,6 +5,7 @@ import type { NutritionAdvice } from '@/types/nutrition';
 import { AdviceType } from '@/types/nutrition';
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 interface AdviceCardProps {
     date: string;
@@ -141,9 +142,19 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
                         <p className="text-sm">{error}</p>
                     </div>
                 ) : advice ? (
-                    <div className="p-3 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200">
-                        <h3 className="font-semibold text-sm mb-1">{adviceInfo.title}</h3>
-                        <p className="text-sm">{advice.advice_summary}</p>
+                    <div className="space-y-4">
+                        <div className="p-3 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200">
+                            <p className="text-sm whitespace-pre-line">{advice.advice_summary}</p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            className="w-full mt-2"
+                            asChild
+                        >
+                            <Link href="/dashboard">
+                                詳細を見る
+                            </Link>
+                        </Button>
                     </div>
                 ) : (
                     <div className="p-3 rounded-lg bg-gray-50 text-gray-800 border border-gray-200">

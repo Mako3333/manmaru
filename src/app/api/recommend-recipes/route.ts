@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
-import { PromptTemplate } from "@langchain/core/prompts";
-import { StringOutputParser } from "@langchain/core/output_parsers";
 import { createClient } from '@supabase/supabase-js';
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import {
-    DynamicRetrievalMode,
-    GoogleSearchRetrievalTool,
-} from "@google/generative-ai";
+import { AIService } from '@/lib/ai/ai-service';
+import { AIModelFactory } from '@/lib/ai/model-factory';
+import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
 
 export async function POST(req: Request) {
     try {
@@ -72,107 +68,70 @@ export async function POST(req: Request) {
             }
         }
 
-        // 3. Google検索ツールを設定
-        const searchRetrievalTool: GoogleSearchRetrievalTool = {
-            googleSearchRetrieval: {
-                dynamicRetrievalConfig: {
-                    mode: DynamicRetrievalMode.MODE_DYNAMIC,
-                    dynamicThreshold: 0.7,
-                },
-            },
+        // 現在の季節を取得
+        const currentSeason = getCurrentSeason();
+
+        // 日付をフォーマット
+        const today = new Date();
+        const formattedDate = today.toLocaleDateString('ja-JP');
+
+        // 妊娠期の計算
+        const trimester = Math.ceil(pregnancyWeek / 13);
+
+        // レシピ生成用のプロンプトコンテキスト
+        const promptContext = {
+            pregnancyWeek,
+            trimester,
+            deficientNutrients,
+            excludeIngredients: allExcludeIngredients,
+            servings,
+            isFirstTimeUser,
+            formattedDate,
+            currentSeason
         };
 
-        // 4. Gemini 2.0 Flashモデルを設定（検索ツール付き）
-        const model = new ChatGoogleGenerativeAI({
-            model: "gemini-2.0-flash-001",
-            temperature: 0.2,
-            maxOutputTokens: 2048,
-            apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
-        }).bindTools([searchRetrievalTool]);
+        // AIモデルを使用してレシピを生成
+        const model = AIModelFactory.createTextModel({
+            temperature: 0.7,
+            maxOutputTokens: 2048
+        });
 
-        // 5. プロンプトテンプレートを作成（初回ユーザー向けの情報を追加）
-        const recipePrompt = `
-あなたは妊婦向けの栄養士です。以下の栄養素が不足している妊婦に適したレシピを3つ提案してください。
+        // プロンプトサービスからレシピ生成用プロンプトを取得
+        const promptService = PromptService.getInstance();
+        const prompt = promptService.generatePrompt(PromptType.RECIPE_RECOMMENDATION, promptContext);
 
-不足している栄養素: ${deficientNutrients.join(', ')}
-妊娠週数: ${pregnancyWeek}週
-除外したい食材: ${allExcludeIngredients.join(', ')}
-${isFirstTimeUser ? '※これは初めてアプリを使用するユーザーです。基本的な栄養情報も含めてください。' : ''}
+        // モデル呼び出し
+        const response = await model.invoke(prompt);
+        const responseText = response.toString();
 
-提案するレシピは以下の条件を満たすこと:
-- ${servings}人分の分量
-- 調理時間30分以内
-- 一般的な食材を使用
-- 妊婦に安全な食材のみ使用
-- 季節の食材を優先的に使用
-
-最新の栄養学的知見に基づいて、不足している栄養素を効率的に補給できるレシピを提案してください。
-また、なぜそのレシピが妊婦に適しているのか、どのように栄養素を補給できるのかも説明してください。
-${isFirstTimeUser ? '初めてのユーザーのため、妊娠中の栄養摂取の基本についても簡潔に説明してください。' : ''}
-
-以下のJSON形式で返してください:
-{
-  "recipes": [
-    {
-      "title": "レシピ名",
-      "description": "レシピの簡単な説明と栄養的メリット",
-      "ingredients": ["材料1: 量", "材料2: 量", ...],
-      "steps": ["手順1", "手順2", ...],
-      "nutrients": ["含まれる栄養素1: 量", "含まれる栄養素2: 量", ...],
-      "preparation_time": "調理時間（分）",
-      "difficulty": "簡単/中級/難しい",
-      "tips": "調理のコツや代替食材の提案"
-    }
-  ],
-  "nutrition_tips": [
-    "不足栄養素に関するアドバイス1",
-    "不足栄養素に関するアドバイス2"
-  ]${isFirstTimeUser ? ',\n  "first_time_info": "妊娠中の栄養摂取に関する基本情報"' : ''}
-}
-`;
-
-        // 6. モデルを呼び出してレシピを生成
-        const result = await model.invoke(recipePrompt);
-
-        // 7. 結果をJSONに変換して返す
+        // レスポンスからJSONを抽出
         try {
-            // レスポンスからJSONを抽出
-            const content = result.content.toString();
-            const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) ||
-                content.match(/```\n([\s\S]*?)\n```/) ||
-                content.match(/{[\s\S]*}/);
+            const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) ||
+                responseText.match(/```\n([\s\S]*?)\n```/) ||
+                responseText.match(/{[\s\S]*}/);
 
             let jsonContent = '';
             if (jsonMatch) {
                 jsonContent = jsonMatch[1] || jsonMatch[0];
             } else {
-                jsonContent = content;
+                jsonContent = responseText;
             }
 
             const recipes = JSON.parse(jsonContent);
 
-            // 検索メタデータを取得（存在する場合）
-            const searchMetadata = result.response_metadata?.groundingMetadata;
-
             // レスポンスを構築
-            const response = {
+            const responseData = {
                 ...recipes,
-                is_first_time_user: isFirstTimeUser,
-                search_metadata: searchMetadata ? {
-                    queries: searchMetadata.webSearchQueries || [],
-                    sources: (searchMetadata.groundingChunks || []).map((chunk: any) =>
-                        chunk.web ? { title: chunk.web.title, uri: chunk.web.uri } : null
-                    ).filter(Boolean)
-                } : null
+                is_first_time_user: isFirstTimeUser
             };
 
-            return NextResponse.json(response);
+            return NextResponse.json(responseData);
         } catch (parseError) {
             console.error('Error parsing recipe result:', parseError);
             return NextResponse.json(
                 {
                     error: 'レシピデータの解析に失敗しました',
-                    raw_response: result.content.toString()
+                    raw_response: responseText
                 },
                 { status: 500 }
             );
@@ -184,4 +143,14 @@ ${isFirstTimeUser ? '初めてのユーザーのため、妊娠中の栄養摂�
             { status: 500 }
         );
     }
+}
+
+// 現在の季節を取得する関数
+function getCurrentSeason(): string {
+    const month = new Date().getMonth() + 1; // 0-indexed to 1-indexed
+
+    if (month >= 3 && month <= 5) return '春';
+    if (month >= 6 && month <= 8) return '夏';
+    if (month >= 9 && month <= 11) return '秋';
+    return '冬';
 } 

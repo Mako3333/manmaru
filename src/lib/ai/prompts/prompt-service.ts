@@ -121,5 +121,21 @@ export class PromptService {
             parameters: ['foodsText'],
             defaultVersion: 'v1'
         });
+
+        // レシピ推薦
+        try {
+            const recipeRecommendationV1 = require('./templates/recipe-recommendation/v1');
+            this.versionManager.registerPrompt({
+                id: PromptType.RECIPE_RECOMMENDATION,
+                name: 'レシピ推薦',
+                description: '妊婦向けレシピ推薦生成',
+                category: '栄養アドバイス',
+                versions: [recipeRecommendationV1.metadata],
+                parameters: ['pregnancyWeek', 'trimester', 'deficientNutrients', 'excludeIngredients', 'servings', 'isFirstTimeUser', 'formattedDate', 'currentSeason'],
+                defaultVersion: 'v1'
+            });
+        } catch (error) {
+            console.error('レシピ推薦プロンプトの登録に失敗しました:', error);
+        }
     }
 } 

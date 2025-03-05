@@ -21,6 +21,7 @@ export function DetailedNutritionAdvice() {
             setState(prev => ({ ...prev, loading: true, error: null }));
             console.log('DetailedNutritionAdvice: データ取得開始'); // デバッグ用ログ
 
+            // Supabaseから直接データを取得する代わりに、APIを使用
             const response = await fetch("/api/nutrition-advice?detail=true");
             console.log('DetailedNutritionAdvice: APIレスポンス', response.status); // デバッグ用ログ
 
@@ -34,26 +35,26 @@ export function DetailedNutritionAdvice() {
             console.log('DetailedNutritionAdvice: 取得データ', data); // デバッグ用ログ
 
             if (!data.success) {
-                throw new Error(data.error || "データの取得に失敗しました");
+                throw new Error(data.error || "アドバイスの取得に失敗しました");
             }
 
             // 3. アドバイスデータの設定
             setState({
                 loading: false,
                 error: null,
-                advice: data.advice ? {
-                    content: data.advice.content,
-                    recommended_foods: data.advice.recommended_foods
-                } : null
+                advice: {
+                    content: data.advice?.content || data.advice_detail || "",
+                    recommended_foods: data.advice?.recommended_foods || data.recommended_foods || []
+                }
             });
 
             // 4. 既読状態の更新
-            if (data.advice && data.advice.id && !data.advice.is_read) {
+            if (data.id && !data.is_read) {
                 try {
                     await fetch("/api/nutrition-advice", {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: data.advice.id })
+                        body: JSON.stringify({ id: data.id })
                     });
                     console.log('DetailedNutritionAdvice: 既読状態更新完了'); // デバッグ用ログ
                 } catch (readError) {
