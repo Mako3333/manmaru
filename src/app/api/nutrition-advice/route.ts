@@ -6,9 +6,12 @@ import { AdviceType } from "@/types/nutrition";
 
 export async function GET(request: Request) {
     try {
+        console.log('栄養アドバイスAPI: リクエスト受信'); // デバッグ用ログ
+
         // 1. リクエストパラメータの取得
         const { searchParams } = new URL(request.url);
         const detailLevel = searchParams.get('detail') === 'true' ? 'detail' : 'summary';
+        console.log('栄養アドバイスAPI: 詳細レベル', detailLevel); // デバッグ用ログ
 
         // 2. Supabaseクライアント初期化
         const supabase = createRouteHandlerClient({ cookies });
@@ -16,14 +19,17 @@ export async function GET(request: Request) {
         // 3. セッション確認 (認証チェック)
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
+            console.log('栄養アドバイスAPI: 認証エラー - セッションなし'); // デバッグ用ログ
             return NextResponse.json(
                 { success: false, error: "認証が必要です" },
                 { status: 401 }
             );
         }
+        console.log('栄養アドバイスAPI: ユーザーID', session.user.id); // デバッグ用ログ
 
         // 4. 今日の日付を取得
         const today = new Date().toISOString().split('T')[0];
+        console.log('栄養アドバイスAPI: 今日の日付', today); // デバッグ用ログ
 
         // 5. 既存のアドバイスを確認
         const { data: existingAdvice, error: adviceError } = await supabase
@@ -34,8 +40,11 @@ export async function GET(request: Request) {
             .eq('advice_type', AdviceType.DAILY)
             .single();
 
+        console.log('栄養アドバイスAPI: 既存アドバイス検索結果', existingAdvice, adviceError); // デバッグ用ログ
+
         // 既存アドバイスがある場合は返す
         if (existingAdvice && !adviceError) {
+            console.log('栄養アドバイスAPI: 既存アドバイスを返します'); // デバッグ用ログ
             return NextResponse.json({
                 success: true,
                 advice: {
@@ -48,6 +57,8 @@ export async function GET(request: Request) {
             });
         }
 
+        console.log('栄養アドバイスAPI: 新規アドバイス生成開始'); // デバッグ用ログ
+
         // 6. ユーザープロファイル取得
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
@@ -57,6 +68,7 @@ export async function GET(request: Request) {
 
         if (profileError) {
             console.error('プロファイル取得エラー:', profileError);
+            console.log('栄養アドバイスAPI: プロファイル取得エラー', profileError); // デバッグ用ログ
             return NextResponse.json(
                 { success: false, error: "プロフィール情報の取得に失敗しました" },
                 { status: 500 }
@@ -77,8 +89,19 @@ export async function GET(request: Request) {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             console.error('API KEY未設定');
+            console.log('栄養アドバイスAPI: Gemini API KEY未設定'); // デバッグ用ログ
             return NextResponse.json(
                 { success: false, error: "サーバー設定エラー" },
+                { status: 500 }
+            );
+        }
+
+        // APIキーが有効かどうかを確認するための簡易チェック
+        if (apiKey.length < 10) {
+            console.error('API KEY無効: 長さが不足しています');
+            console.log('栄養アドバイスAPI: Gemini API KEY無効', apiKey.length); // デバッグ用ログ
+            return NextResponse.json(
+                { success: false, error: "API設定エラー" },
                 { status: 500 }
             );
         }
@@ -116,14 +139,36 @@ export async function GET(request: Request) {
         const detailPrompt = generatePrompt(pregnancyWeek, trimester, deficientNutrients, 'detail');
 
         // 12. AI生成（並行処理）
-        const [summaryResult, detailResult] = await Promise.all([
-            model.generateContent({
-                contents: [{ role: "user", parts: [{ text: summaryPrompt }] }]
-            }),
-            model.generateContent({
-                contents: [{ role: "user", parts: [{ text: detailPrompt }] }]
-            })
-        ]);
+        let summaryResult, detailResult;
+        try {
+            [summaryResult, detailResult] = await Promise.all([
+                model.generateContent({
+                    contents: [{ role: "user", parts: [{ text: summaryPrompt }] }]
+                }),
+                model.generateContent({
+                    contents: [{ role: "user", parts: [{ text: detailPrompt }] }]
+                })
+            ]);
+        } catch (aiError) {
+            console.error('AI生成エラー:', aiError);
+            console.log('栄養アドバイスAPI: Gemini API呼び出しエラー', aiError); // デバッグ用ログ
+
+            // フォールバックのアドバイスを返す
+            return NextResponse.json({
+                success: true,
+                advice: {
+                    id: 'fallback',
+                    content: detailLevel === 'detail'
+                        ? "現在、詳細な栄養アドバイスを生成できません。しばらく経ってからもう一度お試しください。バランスの良い食事を心がけ、特に鉄分、葉酸、カルシウムの摂取に注意しましょう。"
+                        : "バランスの良い食事を心がけましょう。特に妊娠中は鉄分、葉酸、カルシウムの摂取が重要です。",
+                    recommended_foods: detailLevel === 'detail'
+                        ? ["ほうれん草", "レバー", "ブロッコリー", "牛乳", "ヨーグルト", "豆腐", "ナッツ類"]
+                        : undefined,
+                    created_at: new Date().toISOString(),
+                    is_read: false
+                }
+            });
+        }
 
         const adviceSummary = summaryResult.response.text();
         const detailResponse = detailResult.response.text();
@@ -142,42 +187,72 @@ export async function GET(request: Request) {
         }
 
         // 14. データベースに保存
-        const { data: savedAdvice, error: saveError } = await supabase
-            .from('daily_nutri_advice')
-            .insert({
-                user_id: session.user.id,
-                advice_date: today,
-                advice_type: AdviceType.DAILY,
-                advice_summary: adviceSummary,
-                advice_detail: adviceDetail,
-                recommended_foods: recommendedFoods,
-                is_read: false
-            })
-            .select()
-            .single();
+        try {
+            const { data: savedAdvice, error: saveError } = await supabase
+                .from('daily_nutri_advice')
+                .insert({
+                    user_id: session.user.id,
+                    advice_date: today,
+                    advice_type: AdviceType.DAILY,
+                    advice_summary: adviceSummary,
+                    advice_detail: adviceDetail,
+                    recommended_foods: recommendedFoods,
+                    is_read: false
+                })
+                .select()
+                .single();
 
-        if (saveError) {
-            console.error('アドバイス保存エラー:', saveError);
-            return NextResponse.json(
-                { success: false, error: "アドバイスの保存に失敗しました" },
-                { status: 500 }
-            );
-        }
+            if (saveError) {
+                console.error('アドバイス保存エラー:', saveError);
+                console.log('栄養アドバイスAPI: データベース保存エラー', saveError); // デバッグ用ログ
 
-        // 15. レスポンス返却
-        return NextResponse.json({
-            success: true,
-            advice: {
-                id: savedAdvice.id,
-                content: detailLevel === 'detail' ? savedAdvice.advice_detail : savedAdvice.advice_summary,
-                recommended_foods: detailLevel === 'detail' ? savedAdvice.recommended_foods : undefined,
-                created_at: savedAdvice.created_at,
-                is_read: savedAdvice.is_read
+                // 保存に失敗した場合でも、生成したアドバイスを返す
+                return NextResponse.json({
+                    success: true,
+                    advice: {
+                        id: 'temp-' + Date.now(),
+                        content: detailLevel === 'detail' ? adviceDetail : adviceSummary,
+                        recommended_foods: detailLevel === 'detail' ? recommendedFoods : undefined,
+                        created_at: new Date().toISOString(),
+                        is_read: false
+                    },
+                    warning: "アドバイスの保存に失敗しました。次回アクセス時に再生成される可能性があります。"
+                });
             }
-        });
+
+            // 15. レスポンス返却
+            console.log('栄養アドバイスAPI: 新規アドバイス生成完了'); // デバッグ用ログ
+            return NextResponse.json({
+                success: true,
+                advice: {
+                    id: savedAdvice.id,
+                    content: detailLevel === 'detail' ? savedAdvice.advice_detail : savedAdvice.advice_summary,
+                    recommended_foods: detailLevel === 'detail' ? savedAdvice.recommended_foods : undefined,
+                    created_at: savedAdvice.created_at,
+                    is_read: savedAdvice.is_read
+                }
+            });
+        } catch (dbError) {
+            console.error('データベース操作エラー:', dbError);
+            console.log('栄養アドバイスAPI: 予期せぬデータベースエラー', dbError); // デバッグ用ログ
+
+            // データベースエラーの場合でも、生成したアドバイスを返す
+            return NextResponse.json({
+                success: true,
+                advice: {
+                    id: 'temp-' + Date.now(),
+                    content: detailLevel === 'detail' ? adviceDetail : adviceSummary,
+                    recommended_foods: detailLevel === 'detail' ? recommendedFoods : undefined,
+                    created_at: new Date().toISOString(),
+                    is_read: false
+                },
+                warning: "データベースエラーが発生しました。次回アクセス時に再生成される可能性があります。"
+            });
+        }
 
     } catch (error) {
         console.error("アドバイス生成エラー:", error);
+        console.log('栄養アドバイスAPI: 予期せぬエラー', error); // デバッグ用ログ
         return NextResponse.json(
             { success: false, error: "アドバイスの生成に失敗しました" },
             { status: 500 }
@@ -213,13 +288,8 @@ ${deficientNutrients.length > 0
 ${basePrompt}
 
 以下の点を考慮した簡潔なアドバイスを作成してください:
-1. 妊娠${pregnancyWeek}週目に特に重要な栄養素の説明
-2. ${deficientNutrients.length > 0
-                ? `不足している栄養素を補うための簡単なアドバイス`
-                : '全体的な栄養バランスを維持するための簡単なアドバイス'}
-3. ${currentSeason}の旬の食材を取り入れた提案
-
-アドバイスは150-200字程度、親しみやすく、要点を絞った内容で作成してください。
+1. 妊娠周期、栄養摂取状況、不足している栄養素、季節要因を考慮した
+アドバイスを2文程度、親しみやすく、要点を絞った内容で作成してください。
 専門用語の使用は最小限に抑え、温かい口調で作成してください。
 `;
     } else {

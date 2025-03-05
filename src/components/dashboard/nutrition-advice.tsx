@@ -18,16 +18,20 @@ export function DetailedNutritionAdvice() {
     // 2. データ取得関数
     const fetchDetailedAdvice = async () => {
         try {
-            setState(prev => ({ ...prev, loading: true }));
+            setState(prev => ({ ...prev, loading: true, error: null }));
+            console.log('DetailedNutritionAdvice: データ取得開始'); // デバッグ用ログ
 
             const response = await fetch("/api/nutrition-advice?detail=true");
+            console.log('DetailedNutritionAdvice: APIレスポンス', response.status); // デバッグ用ログ
 
             if (!response.ok) {
                 const errorData = await response.json();
+                console.log('DetailedNutritionAdvice: APIエラー', errorData); // デバッグ用ログ
                 throw new Error(errorData.error || "詳細アドバイスの取得に失敗しました");
             }
 
             const data = await response.json();
+            console.log('DetailedNutritionAdvice: 取得データ', data); // デバッグ用ログ
 
             if (!data.success) {
                 throw new Error(data.error || "データの取得に失敗しました");
@@ -51,17 +55,18 @@ export function DetailedNutritionAdvice() {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ id: data.advice.id })
                     });
+                    console.log('DetailedNutritionAdvice: 既読状態更新完了'); // デバッグ用ログ
                 } catch (readError) {
                     console.error("既読更新エラー:", readError);
                 }
             }
         } catch (err) {
             console.error("詳細アドバイス取得エラー:", err);
-            setState({
+            setState(prev => ({
                 loading: false,
                 error: err instanceof Error ? err.message : "詳細アドバイスを読み込めませんでした",
                 advice: null
-            });
+            }));
 
             toast.error("詳細アドバイスの読み込みに失敗しました");
         }
@@ -69,6 +74,7 @@ export function DetailedNutritionAdvice() {
 
     // 5. 初回読み込み
     useEffect(() => {
+        console.log('DetailedNutritionAdvice: コンポーネントマウント'); // デバッグ用ログ
         fetchDetailedAdvice();
     }, []);
 
@@ -141,9 +147,17 @@ export function DetailedNutritionAdvice() {
                     </div>
                 ) : (
                     // データなし表示
-                    <p className="text-green-700 py-4 text-center">
-                        今日の栄養バランスは良好です。このまま栄養バランスの良い食事を続けましょう。
-                    </p>
+                    <div className="text-center py-6">
+                        <p className="text-gray-500 mb-4">アドバイスを読み込めませんでした</p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchDetailedAdvice}
+                            className="mt-2"
+                        >
+                            再読み込み
+                        </Button>
+                    </div>
                 )}
             </CardContent>
         </Card>

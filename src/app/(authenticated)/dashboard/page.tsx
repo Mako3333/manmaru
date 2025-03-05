@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 // 新しいダッシュボードコンポーネントをインポート
 import MealHistoryList from '@/components/dashboard/meal-history-list';
+import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
 
 
 // 栄養素アイコンマッピング
@@ -332,64 +333,9 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* 4. 栄養素別状況カード */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 不足している栄養素 */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-lg">不足している栄養素</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {deficientNutrients.length > 0 ? (
-                            <div className="space-y-3">
-                                {deficientNutrients.map((nutrient) => (
-                                    <div key={nutrient.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div className="flex items-center">
-                                            <span className="text-xl mr-2">{nutrient.icon}</span>
-                                            <span className="font-medium">{nutrient.name}</span>
-                                        </div>
-                                        <span className={`px-2 py-1 rounded-full text-sm ${getNutrientColor(nutrient.percent)}`}>
-                                            {Math.round(nutrient.percent)}%
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-6 text-green-600">
-                                <p className="font-medium">すべての栄養素が十分に摂取されています！</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* 十分な栄養素 */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-lg">十分な栄養素</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {sufficientNutrients.length > 0 ? (
-                            <div className="space-y-3">
-                                {sufficientNutrients.map((nutrient) => (
-                                    <div key={nutrient.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div className="flex items-center">
-                                            <span className="text-xl mr-2">{nutrient.icon}</span>
-                                            <span className="font-medium">{nutrient.name}</span>
-                                        </div>
-                                        <span className={`px-2 py-1 rounded-full text-sm ${getNutrientColor(nutrient.percent)}`}>
-                                            {Math.round(nutrient.percent)}%
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-6 text-red-500">
-                                <p className="font-medium">十分に摂取できている栄養素がありません。</p>
-                                <p className="text-sm mt-2">食事内容を見直してみましょう。</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+            {/* 詳細栄養アドバイス */}
+            <div className="mb-6">
+                <DetailedNutritionAdvice />
             </div>
 
             {/* 食事履歴 */}

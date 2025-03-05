@@ -219,7 +219,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                 </Card>
 
                 {/* 3. アドバイスカード - 修正版 */}
-                <AdviceCard />
+                <AdviceCard date={currentDate} />
 
                 {/* 4. 行動喚起カード */}
                 <Card className="hover:shadow-md transition-shadow">
