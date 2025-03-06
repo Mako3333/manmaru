@@ -67,7 +67,15 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
                 const response = await fetch('/api/nutrition-advice');
 
                 if (!response.ok) {
-                    throw new Error('アドバイスの取得に失敗しました');
+                    const errorData = await response.json();
+                    console.log('AdviceCard: APIエラーレスポンス', errorData); // デバッグ用ログ
+
+                    if (errorData.redirect) {
+                        setError(`${errorData.error}: ${errorData.message || ''}. プロフィールページへ移動してください。`);
+                    } else {
+                        throw new Error(errorData.error || 'アドバイスの取得に失敗しました');
+                    }
+                    return;
                 }
 
                 const apiData = await response.json();
@@ -139,7 +147,14 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
                     </div>
                 ) : error ? (
                     <div className="p-3 rounded-lg bg-red-50 text-red-800 border border-red-200">
-                        <p className="text-sm">{error}</p>
+                        <p className="text-sm mb-2">{error}</p>
+                        {error.includes('プロフィールページへ移動') && (
+                            <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+                                <Link href="/profile">
+                                    プロフィールページへ移動
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 ) : advice ? (
                     <div className="space-y-4">

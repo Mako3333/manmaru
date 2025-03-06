@@ -9,8 +9,8 @@ import type { Profile } from '@/lib/utils/profile'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight, Clock, Calendar } from 'lucide-react';
-
+import { ChevronLeft, ChevronRight, Clock, Calendar, RefreshCw, History } from 'lucide-react';
+import { toast } from 'sonner';
 
 // 新しいダッシュボードコンポーネントをインポート
 import MealHistoryList from '@/components/dashboard/meal-history-list';
@@ -29,12 +29,23 @@ const NUTRIENT_ICONS = {
     vitamin_d: '☀️',
 };
 
+// アドバイス履歴の型定義
+interface AdviceHistoryItem {
+    id: string;
+    advice_date: string;
+    advice_summary: string;
+    is_read: boolean;
+}
+
 export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
     const [nutritionData, setNutritionData] = useState<any>(null)
     const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [activeTab, setActiveTab] = useState<string>('today');
+    const [adviceHistory, setAdviceHistory] = useState<AdviceHistoryItem[]>([]);
+    const [showAdviceHistory, setShowAdviceHistory] = useState(false);
+    const [refreshingAdvice, setRefreshingAdvice] = useState(false);
     const router = useRouter()
     const supabase = createClientComponentClient()
 
@@ -100,6 +111,9 @@ export default function DashboardPage() {
                     ...data,
                     overall_score
                 });
+
+                // アドバイス履歴を取得
+                fetchAdviceHistory(session.user.id);
             } catch (error) {
                 console.error('データ取得エラー:', error)
             } finally {
@@ -109,6 +123,62 @@ export default function DashboardPage() {
 
         fetchData()
     }, [supabase, router, currentDate])
+
+    // アドバイス履歴を取得する関数
+    const fetchAdviceHistory = async (userId: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('daily_nutri_advice')
+                .select('id, advice_date, advice_summary, is_read')
+                .eq('user_id', userId)
+                .order('advice_date', { ascending: false })
+                .limit(10);
+
+            if (error) throw error;
+            setAdviceHistory(data || []);
+        } catch (error) {
+            console.error('アドバイス履歴取得エラー:', error);
+        }
+    };
+
+    // アドバイスを手動で更新する関数
+    const refreshAdvice = async () => {
+        if (refreshingAdvice) return;
+
+        try {
+            setRefreshingAdvice(true);
+            toast.loading('栄養アドバイスを更新中...');
+
+            // 強制的に新しいアドバイスを生成するモードでAPIを呼び出し
+            const response = await fetch('/api/nutrition-advice?detail=true&mode=force_update');
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'アドバイスの更新に失敗しました');
+            }
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'アドバイスの更新に失敗しました');
+            }
+
+            toast.success('栄養アドバイスを更新しました');
+
+            // プロフィールがある場合はアドバイス履歴も更新
+            if (profile) {
+                fetchAdviceHistory(profile.user_id);
+            }
+
+            // DetailedNutritionAdviceコンポーネントを更新するためにページをリロード
+            router.refresh();
+        } catch (error) {
+            console.error('アドバイス更新エラー:', error);
+            toast.error(error instanceof Error ? error.message : 'アドバイスの更新に失敗しました');
+        } finally {
+            setRefreshingAdvice(false);
+        }
+    };
 
     // 日付を変更する関数
     const changeDate = (direction: 'prev' | 'next') => {
@@ -353,6 +423,67 @@ export default function DashboardPage() {
 
                         {/* 詳細栄養アドバイス */}
                         <div className="mb-6">
+                            <div className="flex justify-between items-center mb-2">
+                                <h2 className="text-xl font-bold">栄養アドバイス</h2>
+                                <div className="flex space-x-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowAdviceHistory(!showAdviceHistory)}
+                                        className="flex items-center"
+                                    >
+                                        <History className="h-4 w-4 mr-1" />
+                                        {showAdviceHistory ? '履歴を閉じる' : '過去のアドバイス'}
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={refreshAdvice}
+                                        disabled={refreshingAdvice}
+                                        className="flex items-center"
+                                    >
+                                        <RefreshCw className={`h-4 w-4 mr-1 ${refreshingAdvice ? 'animate-spin' : ''}`} />
+                                        更新する
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* アドバイス履歴表示 */}
+                            {showAdviceHistory && (
+                                <Card className="mb-4">
+                                    <CardHeader className="py-3">
+                                        <CardTitle className="text-md">過去のアドバイス履歴</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {adviceHistory.length > 0 ? (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                {adviceHistory.map((item) => (
+                                                    <div key={item.id} className="p-3 border rounded-md hover:bg-gray-50">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <p className="text-sm font-medium">
+                                                                    {format(new Date(item.advice_date), 'yyyy年M月d日', { locale: ja })}
+                                                                </p>
+                                                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                                                    {item.advice_summary}
+                                                                </p>
+                                                            </div>
+                                                            {!item.is_read && (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    未読
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-center text-gray-500 py-4">アドバイス履歴がありません</p>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             <DetailedNutritionAdvice />
                         </div>
 

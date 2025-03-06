@@ -7,10 +7,16 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AdviceState } from "@/types/nutrition";
 import ReactMarkdown from "react-markdown";
+import Link from 'next/link';
 
 export function DetailedNutritionAdvice() {
     // 1. 状態管理
-    const [state, setState] = useState<AdviceState>({
+    const [state, setState] = useState<{
+        loading: boolean;
+        error: string | null;
+        advice: { content: string; recommended_foods: string[] } | null;
+        redirect?: string;
+    }>({
         loading: true,
         error: null,
         advice: null
@@ -29,6 +35,17 @@ export function DetailedNutritionAdvice() {
             if (!response.ok) {
                 const errorData = await response.json();
                 console.log('DetailedNutritionAdvice: APIエラー', errorData); // デバッグ用ログ
+
+                if (errorData.redirect) {
+                    setState(prev => ({
+                        loading: false,
+                        error: `${errorData.error}: ${errorData.message || ''}`,
+                        advice: null,
+                        redirect: errorData.redirect
+                    }));
+                    return;
+                }
+
                 throw new Error(errorData.error || "詳細アドバイスの取得に失敗しました");
             }
 
@@ -108,17 +125,15 @@ export function DetailedNutritionAdvice() {
                         <Loader2 className="h-8 w-8 animate-spin text-green-600" />
                     </div>
                 ) : state.error ? (
-                    // エラー表示
-                    <div className="text-gray-500 py-4 text-center">
-                        <p>{state.error}</p>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={fetchDetailedAdvice}
-                            className="mt-4"
-                        >
-                            再読み込み
-                        </Button>
+                    <div className="p-4 rounded-lg bg-red-50 text-red-800 border border-red-200">
+                        <p className="text-sm mb-2">{state.error}</p>
+                        {state.redirect && (
+                            <Button variant="outline" size="sm" asChild>
+                                <Link href={state.redirect}>
+                                    プロフィールページへ移動
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 ) : state.advice ? (
                     // アドバイス表示

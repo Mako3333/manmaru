@@ -304,19 +304,6 @@
      - 過去7日分を保持
      - 古いアドバイスを自動アーカイブ
   
-  3. テーブル設計
-     ```sql
-     CREATE TABLE nutrition_advice_history (
-       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-       user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-       advice_date DATE NOT NULL,
-       advice_type TEXT NOT NULL,
-       advice_content TEXT NOT NULL,
-       created_at TIMESTAMPTZ DEFAULT NOW(),
-       archived BOOLEAN DEFAULT FALSE,
-       UNIQUE(user_id, advice_date, advice_type)
-     );
-     ```
 
 ### STEP 5: 食材抽出ロジック検討 & 総合テスト
 
