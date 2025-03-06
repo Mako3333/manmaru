@@ -31,9 +31,9 @@ const BABY_GROWTH_INFO = {
 
 // トライメスター情報
 const TRIMESTER_INFO = {
-    1: { name: '第1期', weeks: '1-13週', description: '赤ちゃんの重要な器官が形成される時期です。', color: 'from-pink-400 to-rose-500', bgColor: 'bg-rose-50', textColor: 'text-rose-700', borderColor: 'border-rose-200' },
-    2: { name: '第2期', weeks: '14-27週', description: '赤ちゃんの成長が加速し、胎動を感じる時期です。', color: 'from-purple-400 to-indigo-500', bgColor: 'bg-indigo-50', textColor: 'text-indigo-700', borderColor: 'border-indigo-200' },
-    3: { name: '第3期', weeks: '28-40週', description: '赤ちゃんが最終的な準備をする時期です。', color: 'from-teal-400 to-emerald-500', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
+    1: { name: '初期', weeks: '1-13週', description: '赤ちゃんの重要な器官が形成される時期です。', color: 'from-pink-400 to-rose-500', bgColor: 'bg-rose-50', textColor: 'text-rose-700', borderColor: 'border-rose-200' },
+    2: { name: '安定期', weeks: '14-27週', description: '赤ちゃんの成長が加速し、胎動を感じる時期です。', color: 'from-purple-400 to-indigo-500', bgColor: 'bg-indigo-50', textColor: 'text-indigo-700', borderColor: 'border-indigo-200' },
+    3: { name: '後期', weeks: '28-40週', description: '赤ちゃんが最終的な準備をする時期です。', color: 'from-teal-400 to-emerald-500', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
 };
 
 // 週数マーカーのデータ

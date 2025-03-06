@@ -235,26 +235,26 @@ export default function HomeClient({ user }: HomeClientProps) {
                 {/* 3. アドバイスカード - 修正版 */}
                 <AdviceCard date={currentDate} />
 
-                {/* 4. 行動喚起カード */}
-                <Card className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-0">
-                        <button
-                            onClick={() => router.push('/meals/log')}
-                            className="flex items-center justify-between w-full p-6"
-                        >
-                            <div className="flex items-center">
-                                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mr-4">
-                                    <Utensils className="h-6 w-6 text-green-600" />
-                                </div>
-                                <div className="text-left">
-                                    <h3 className="font-medium text-lg">食事を記録</h3>
-                                    <p className="text-sm text-gray-500">今日の食事内容を記録しましょう</p>
-                                </div>
+                {/* 4. 行動喚起カード - 改善版 */}
+                <div className="mb-4">
+                    <button
+                        onClick={() => router.push('/meals/log')}
+                        className="w-full py-4 px-6 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg transform hover:scale-[1.02] transition-all duration-200 flex items-center justify-between text-white"
+                    >
+                        <div className="flex items-center">
+                            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mr-4">
+                                <Utensils className="h-6 w-6 text-white" />
                             </div>
-                            <ArrowRight className="h-5 w-5 text-gray-400" />
-                        </button>
-                    </CardContent>
-                </Card>
+                            <div className="text-left">
+                                <h3 className="font-bold text-xl">食事を記録</h3>
+                                <p className="text-sm text-white/90">今日の食事内容を記録して栄養バランスを分析しましょう</p>
+                            </div>
+                        </div>
+                        <div className="bg-white/20 rounded-full p-2">
+                            <ArrowRight className="h-5 w-5 text-white" />
+                        </div>
+                    </button>
+                </div>
 
                 {/* 5. おすすめレシピカード */}
                 <Card className="w-full overflow-hidden">
