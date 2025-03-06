@@ -9,7 +9,7 @@ import type { Profile } from '@/lib/utils/profile'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Calendar } from 'lucide-react';
 
 
 // 新しいダッシュボードコンポーネントをインポート
@@ -269,97 +269,122 @@ export default function DashboardPage() {
                         <TabsTrigger value="week">週間</TabsTrigger>
                         <TabsTrigger value="month">月間</TabsTrigger>
                     </TabsList>
-                </Tabs>
-            </div>
 
-            {/* 2. 栄養摂取状況カード */}
-            <Card className="mb-6">
-                <CardHeader>
-                    <CardTitle className="text-lg">栄養摂取状況</CardTitle>
-                    <CardDescription>各栄養素の摂取状況を確認できます</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4">
-                        {nutrientData.map((nutrient) => (
-                            <div key={nutrient.key} className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center">
-                                        <span className="mr-2">{nutrient.icon}</span>
-                                        <span className="font-medium">{nutrient.name}</span>
-                                    </div>
-                                    <div className="text-sm font-medium">
-                                        <span className={`px-2 py-1 rounded-full ${getNutrientColor(nutrient.percent)}`}>
-                                            {Math.round(nutrient.percent)}%
-                                        </span>
-                                    </div>
+                    <TabsContent value="today" className="mt-4">
+                        {/* 今日のタブコンテンツ */}
+                        {/* 2. 栄養摂取状況カード */}
+                        <Card className="mb-6">
+                            <CardHeader>
+                                <CardTitle className="text-lg">栄養摂取状況</CardTitle>
+                                <CardDescription>各栄養素の摂取状況を確認できます</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-4">
+                                    {nutrientData.map((nutrient) => (
+                                        <div key={nutrient.key} className="space-y-1">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center">
+                                                    <span className="mr-2">{nutrient.icon}</span>
+                                                    <span className="font-medium">{nutrient.name}</span>
+                                                </div>
+                                                <div className="text-sm font-medium">
+                                                    <span className={`px-2 py-1 rounded-full ${getNutrientColor(nutrient.percent)}`}>
+                                                        {Math.round(nutrient.percent)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                                <div
+                                                    className={`h-2.5 rounded-full ${getNutrientBarColor(nutrient.percent)}`}
+                                                    style={{ width: `${Math.min(nutrient.percent, 100)}%` }}
+                                                ></div>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-gray-500">
+                                                <span>{nutrient.actual} {nutrient.unit}</span>
+                                                <span>{nutrient.target} {nutrient.unit}</span>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                    <div
-                                        className={`h-2.5 rounded-full ${getNutrientBarColor(nutrient.percent)}`}
-                                        style={{ width: `${Math.min(nutrient.percent, 100)}%` }}
-                                    ></div>
-                                </div>
-                                <div className="flex justify-between text-xs text-gray-500">
-                                    <span>{nutrient.actual} {nutrient.unit}</span>
-                                    <span>{nutrient.target} {nutrient.unit}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
+                            </CardContent>
+                        </Card>
 
-            {/* 3. 栄養バランススコアカード */}
-            <Card className="mb-6">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg font-bold">栄養バランススコア</CardTitle>
-                    <CardDescription>
-                        妊娠期に重要な栄養素の摂取状況に基づいたスコア
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex flex-col items-center">
-                        <div className="relative w-40 h-40 mb-4">
-                            <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
-                            <svg className="w-full h-full" viewBox="0 0 36 36">
-                                <path
-                                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                    fill="none"
-                                    stroke="#E5E7EB"
-                                    strokeWidth="3"
-                                />
-                                <path
-                                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                    fill="none"
-                                    stroke="#22C55E"
-                                    strokeWidth="3"
-                                    strokeDasharray={`${nutritionData?.overall_score || 0}, 100`}
-                                    strokeLinecap="round"
-                                />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-3xl font-bold">{nutritionData?.overall_score || 0}</span>
-                            </div>
+                        {/* 3. 栄養バランススコアカード */}
+                        <Card className="mb-6">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-lg font-bold">栄養バランススコア</CardTitle>
+                                <CardDescription>
+                                    妊娠期に重要な栄養素の摂取状況に基づいたスコア
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex flex-col items-center">
+                                    <div className="relative w-40 h-40 mb-4">
+                                        <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
+                                        <svg className="w-full h-full" viewBox="0 0 36 36">
+                                            <path
+                                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                                fill="none"
+                                                stroke="#E5E7EB"
+                                                strokeWidth="3"
+                                            />
+                                            <path
+                                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                                fill="none"
+                                                stroke="#22C55E"
+                                                strokeWidth="3"
+                                                strokeDasharray={`${nutritionData?.overall_score || 0}, 100`}
+                                                strokeLinecap="round"
+                                            />
+                                        </svg>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-3xl font-bold">{nutritionData?.overall_score || 0}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="text-center text-gray-600 mb-4">
+                                    今日の栄養バランススコアは<span className="font-bold text-green-600">{nutritionData?.overall_score || 0}点</span>です。
+                                </p>
+                                <p className="text-sm text-gray-500 text-center">
+                                    このスコアは妊娠期に重要な栄養素の摂取率から算出されています。
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        {/* 詳細栄養アドバイス */}
+                        <div className="mb-6">
+                            <DetailedNutritionAdvice />
                         </div>
-                    </div>
-                    <p className="text-center text-gray-600 mb-4">
-                        今日の栄養バランススコアは<span className="font-bold text-green-600">{nutritionData?.overall_score || 0}点</span>です。
-                    </p>
-                    <p className="text-sm text-gray-500 text-center">
-                        このスコアは妊娠期に重要な栄養素の摂取率から算出されています。
-                    </p>
-                </CardContent>
-            </Card>
 
-            {/* 詳細栄養アドバイス */}
-            <div className="mb-6">
-                <DetailedNutritionAdvice />
-            </div>
+                        {/* 食事履歴 */}
+                        <div className="mt-6">
+                            <h2 className="text-xl font-bold mb-4">食事履歴</h2>
+                            <MealHistoryList userId={profile.user_id} />
+                        </div>
+                    </TabsContent>
 
-            {/* 食事履歴 */}
-            <div className="mt-6">
-                <h2 className="text-xl font-bold mb-4">食事履歴</h2>
-                <MealHistoryList userId={profile.user_id} />
+                    <TabsContent value="week" className="mt-4">
+                        <div className="flex flex-col items-center justify-center py-10 px-4 border border-dashed rounded-lg bg-gray-50">
+                            <Clock className="h-12 w-12 text-gray-400 mb-4" />
+                            <h3 className="text-lg font-medium text-gray-700">実装中</h3>
+                            <p className="text-sm text-gray-500 text-center mt-2">
+                                週間レポート機能は現在開発中です。<br />
+                                次回のアップデートをお待ちください。
+                            </p>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="month" className="mt-4">
+                        <div className="flex flex-col items-center justify-center py-10 px-4 border border-dashed rounded-lg bg-gray-50">
+                            <Calendar className="h-12 w-12 text-gray-400 mb-4" />
+                            <h3 className="text-lg font-medium text-gray-700">実装中</h3>
+                            <p className="text-sm text-gray-500 text-center mt-2">
+                                月間レポート機能は現在開発中です。<br />
+                                次回のアップデートをお待ちください。
+                            </p>
+                        </div>
+                    </TabsContent>
+                </Tabs>
             </div>
         </div>
     )
