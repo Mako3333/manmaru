@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AdviceState } from "@/types/nutrition";
+import ReactMarkdown from "react-markdown";
 
 export function DetailedNutritionAdvice() {
     // 1. 状態管理
@@ -122,10 +123,12 @@ export function DetailedNutritionAdvice() {
                 ) : state.advice ? (
                     // アドバイス表示
                     <div className="space-y-6">
-                        {/* 詳細アドバイス */}
+                        {/* 詳細アドバイス - マークダウン対応 */}
                         <div className="p-5 rounded-lg bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100">
-                            <div className="text-green-700 whitespace-pre-line">
-                                {state.advice.content}
+                            <div className="text-green-700 prose prose-sm max-w-none prose-headings:text-green-800 prose-headings:font-semibold prose-p:my-2 prose-strong:text-green-800 prose-ul:my-2 prose-li:my-1">
+                                <ReactMarkdown>
+                                    {state.advice.content}
+                                </ReactMarkdown>
                             </div>
                         </div>
 
