@@ -22,16 +22,18 @@ export const template = `
   }
 }
 
+食品名と量の目安は必ず日本語で返してください。
+例: "Rice" → "ご飯"、"1 cup" → "お茶碗1杯分"、"Chicken" → "鶏肉"
 回答は必ずこのJSONフォーマットのみで返してください。
 `;
 
 export default template;
 
 export const metadata = {
-    id: 'food-analysis',
-    version: 'v1',
-    createdAt: new Date('2023-04-01'),
-    updatedAt: new Date('2023-04-01'),
-    isActive: true,
-    changelog: '初期バージョン'
+  id: 'food-analysis',
+  version: 'v1',
+  createdAt: new Date('2023-04-01'),
+  updatedAt: new Date('2023-04-01'),
+  isActive: true,
+  changelog: '初期バージョン'
 }; 

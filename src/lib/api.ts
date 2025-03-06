@@ -110,8 +110,13 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
 
         return result;
     } catch (error) {
-        console.error('画像解析エラー:', error);
-        throw error;
+        console.error('画像解析エラー:', error instanceof Error ? error.message : String(error));
+        // エラーオブジェクトを適切に文字列化して投げる
+        if (error instanceof Error) {
+            throw error;
+        } else {
+            throw new Error(String(error));
+        }
     }
 }
 
@@ -132,11 +137,38 @@ const validateApiResponse = (data: any): boolean => {
         return false;
     }
 
+    // 各食品アイテムの構造チェック
+    for (const food of data.foods) {
+        if (!food.name || typeof food.name !== 'string') {
+            console.error('食品名が不正:', food);
+            return false;
+        }
+
+        if (!food.quantity || typeof food.quantity !== 'string') {
+            console.error('食品量が不正:', food);
+            return false;
+        }
+
+        if (typeof food.confidence !== 'number') {
+            console.error('信頼度が不正:', food);
+            return false;
+        }
+
+        // 英語の食品名をログに記録（エラーにはしない）
+        if (/^[a-zA-Z]/.test(food.name)) {
+            console.warn('英語の食品名が検出されました:', food.name);
+        }
+    }
+
     // nutrition オブジェクトのチェック
     const nutrition = data.nutrition;
     if (!nutrition ||
         typeof nutrition.calories !== 'number' ||
-        typeof nutrition.protein !== 'number') {
+        typeof nutrition.protein !== 'number' ||
+        typeof nutrition.iron !== 'number' ||
+        typeof nutrition.folic_acid !== 'number' ||
+        typeof nutrition.calcium !== 'number' ||
+        typeof nutrition.vitamin_d !== 'number') {
         console.error('nutrition構造が不正:', nutrition);
         return false;
     }

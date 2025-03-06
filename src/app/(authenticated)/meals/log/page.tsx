@@ -118,10 +118,39 @@ export default function MealLogPage() {
             console.log('mealType:', mealType);
             const result = await analyzeMealPhoto(base64Image, mealType);
             console.log('API応答:', result);
+
+            // 応答データの検証
+            if (!result || !result.foods || !Array.isArray(result.foods)) {
+                console.error('不正な応答形式:', result);
+                toast.error('応答データの形式が不正です。もう一度お試しください。');
+                return;
+            }
+
+            // 英語の食品名を検出して警告
+            const hasEnglishFoodNames = result.foods.some((food: any) =>
+                /^[a-zA-Z]/.test(food.name) || /^[0-9]+ [a-z]+/.test(food.quantity)
+            );
+
+            if (hasEnglishFoodNames) {
+                console.warn('英語の食品名が検出されました:', result.foods);
+                // 英語の食品名があっても処理は続行
+            }
+
             setRecognitionData(result);
         } catch (error) {
             console.error('画像解析エラー詳細:', error);
-            toast.error('画像の解析に失敗しました。もう一度お試しください。');
+
+            // エラーメッセージをより具体的に
+            let errorMessage = '画像の解析に失敗しました。もう一度お試しください。';
+            if (error instanceof Error) {
+                if (error.message.includes('応答形式が不正')) {
+                    errorMessage = 'AIからの応答形式が不正です。別の画像で試してください。';
+                } else if (error.message.includes('タイムアウト')) {
+                    errorMessage = '処理がタイムアウトしました。ネットワーク接続を確認して再試行してください。';
+                }
+            }
+
+            toast.error(errorMessage);
         } finally {
             console.log('analyzePhoto完了, analyzing:', analyzing);
             setAnalyzing(false);
