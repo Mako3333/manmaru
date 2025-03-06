@@ -34,16 +34,17 @@ alwaysApply: false
 ```
 .
 |-- README.md
-|-- check-env.js
+|-- __tests__
+|   `-- prompt-service.test.ts
 |-- components.json
-|-- encode-image.js
-|-- encoded_image.txt
 |-- eslint.config.mjs
+|-- jest.config.js
 |-- next-env.d.ts
 |-- next.config.ts
 |-- package-lock.json
 |-- package.json
 |-- postcss.config.mjs
+|-- rendered-prompt.txt
 |-- src
 |   |-- app
 |   |   |-- (authenticated)
@@ -70,8 +71,6 @@ alwaysApply: false
 |   |   |   |   `-- route.ts
 |   |   |   |-- analyze-meal
 |   |   |   |   `-- route.ts
-|   |   |   |-- analyze-meal-langchain
-|   |   |   |   `-- route.ts
 |   |   |   |-- analyze-text-input
 |   |   |   |   `-- route.ts
 |   |   |   |-- calculate-nutrition
@@ -84,6 +83,8 @@ alwaysApply: false
 |   |   |   |   |-- route.ts
 |   |   |   |   `-- summary
 |   |   |   |       `-- route.ts
+|   |   |   |-- nutrition-advice
+|   |   |   |   `-- route.ts
 |   |   |   |-- recommend-recipes
 |   |   |   |   `-- route.ts
 |   |   |   `-- update-nutrition-log
@@ -145,27 +146,42 @@ alwaysApply: false
 |   |       |-- radio-group.tsx
 |   |       |-- sonner.tsx
 |   |       `-- tabs.tsx
-|   |-- data
-|   |   `-- nutrition_data.json
 |   |-- hooks
 |   |   |-- useAuth.ts
 |   |   |-- useMeals.ts
 |   |   `-- useNutrition.ts
 |   |-- lib
 |   |   |-- ai
+|   |   |   |-- ai-service.ts
+|   |   |   |-- model-factory.ts
+|   |   |   |-- prompts
+|   |   |   |   |-- ab-testing
+|   |   |   |   |   `-- test-strategies
+|   |   |   |   |-- metrics
+|   |   |   |   |   `-- metric-collector.ts
+|   |   |   |   |-- prompt-service.ts
+|   |   |   |   |-- prompt-utils.ts
+|   |   |   |   |-- template-engine.ts
+|   |   |   |   |-- templates
+|   |   |   |   |   |-- food-analysis
+|   |   |   |   |   |-- nutrition-advice
+|   |   |   |   |   |-- recipe-recommendation
+|   |   |   |   |   `-- text-input-analysis
+|   |   |   |   `-- version-manager.ts
 |   |   |   `-- response-parser.ts
 |   |   |-- api.ts
 |   |   |-- date-utils.ts
 |   |   |-- errors
+|   |   |   |-- ai-error.ts
+|   |   |   |-- error-utils.ts
 |   |   |   `-- food-analysis-error.ts
-|   |   |-- langchain
-|   |   |   `-- langchain.ts
 |   |   |-- nutrition
 |   |   |   |-- database.ts
 |   |   |   `-- nutritionUtils.ts
 |   |   |-- supabase
 |   |   |   `-- client.ts
 |   |   |-- utils
+|   |   |   |-- date-utils.ts
 |   |   |   |-- date.ts
 |   |   |   |-- image-utils.ts
 |   |   |   |-- nutrition.ts
@@ -177,12 +193,8 @@ alwaysApply: false
 |       |-- nutrition.ts
 |       `-- user.ts
 |-- tailwind.config.ts
-|-- test-api-direct.js
-|-- test-api-meal.js
-|-- test-api.js
 |-- test-meal-image.jpg
-|-- test-nutrition-api.js
-|-- test-recipe-api.js
+|-- test-prompt.js
 |-- tsconfig.json
 `-- tsconfig.tsbuildinfo
 ```

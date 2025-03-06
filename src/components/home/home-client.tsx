@@ -16,6 +16,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight } from 'lucide-react';
+import { NutritionCalculator } from '@/lib/nutrition/calculator';
 
 interface HomeClientProps {
     user: any;
@@ -71,14 +72,27 @@ export default function HomeClient({ user }: HomeClientProps) {
                     return;
                 }
 
-                setNutritionData(data || {
+                // 栄養データがない場合はデフォルト値を設定
+                const defaultData = {
                     calories_percent: 0,
                     protein_percent: 0,
                     iron_percent: 0,
                     folic_acid_percent: 0,
                     calcium_percent: 0,
-                    vitamin_d_percent: 0,
-                    overall_score: 0
+                    vitamin_d_percent: 0
+                };
+
+                // 栄養データを設定し、バランススコアを計算
+                const nutritionProgress = data || defaultData;
+
+                // 新しいNutritionCalculatorを使用してスコアを計算
+                const overall_score = data
+                    ? NutritionCalculator.calculateNutritionScoreFromProgress(data)
+                    : 0;
+
+                setNutritionData({
+                    ...nutritionProgress,
+                    overall_score
                 });
             } catch (error) {
                 console.error('栄養データ取得エラー:', error);

@@ -5,6 +5,10 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { format, differenceInWeeks, addWeeks } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
+import { CalendarIcon } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
+import { motion } from 'framer-motion';
 
 interface PregnancyWeekInfoProps {
     className?: string;
@@ -27,10 +31,18 @@ const BABY_GROWTH_INFO = {
 
 // トライメスター情報
 const TRIMESTER_INFO = {
-    1: { name: '第1期', weeks: '1-13週', description: '赤ちゃんの重要な器官が形成される時期です。', color: 'from-blue-400 to-blue-600' },
-    2: { name: '第2期', weeks: '14-27週', description: '赤ちゃんの成長が加速し、胎動を感じる時期です。', color: 'from-green-400 to-green-600' },
-    3: { name: '第3期', weeks: '28-40週', description: '赤ちゃんが最終的な準備をする時期です。', color: 'from-purple-400 to-purple-600' },
+    1: { name: '第1期', weeks: '1-13週', description: '赤ちゃんの重要な器官が形成される時期です。', color: 'from-pink-400 to-rose-500', bgColor: 'bg-rose-50', textColor: 'text-rose-700', borderColor: 'border-rose-200' },
+    2: { name: '第2期', weeks: '14-27週', description: '赤ちゃんの成長が加速し、胎動を感じる時期です。', color: 'from-purple-400 to-indigo-500', bgColor: 'bg-indigo-50', textColor: 'text-indigo-700', borderColor: 'border-indigo-200' },
+    3: { name: '第3期', weeks: '28-40週', description: '赤ちゃんが最終的な準備をする時期です。', color: 'from-teal-400 to-emerald-500', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
 };
+
+// 週数マーカーのデータ
+const WEEK_MARKERS = [
+    { week: 0, label: '0週' },
+    { week: 13, label: '13週' },
+    { week: 27, label: '27週' },
+    { week: 40, label: '40週' },
+];
 
 export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps) {
     const [profile, setProfile] = useState<any>(null);
@@ -125,13 +137,13 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
 
     if (loading) {
         return (
-            <Card className={`w-full ${className}`}>
+            <Card className={`w-full shadow-md ${className}`}>
                 <CardHeader className="pb-2">
                     <CardTitle className="text-lg sm:text-xl font-bold">妊娠週数情報</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="flex justify-center items-center h-40">
-                        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+                        <div className="animate-spin h-8 w-8 border-4 border-primary rounded-full border-t-transparent"></div>
                     </div>
                 </CardContent>
             </Card>
@@ -140,7 +152,7 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
 
     if (error) {
         return (
-            <Card className={`w-full ${className}`}>
+            <Card className={`w-full shadow-md ${className}`}>
                 <CardHeader className="pb-2">
                     <CardTitle className="text-lg sm:text-xl font-bold">妊娠週数情報</CardTitle>
                 </CardHeader>
@@ -153,7 +165,7 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
 
     if (!profile || !dueDate || pregnancyWeek === null) {
         return (
-            <Card className={`w-full ${className}`}>
+            <Card className={`w-full shadow-md ${className}`}>
                 <CardHeader className="pb-2">
                     <CardTitle className="text-lg sm:text-xl font-bold">妊娠週数情報</CardTitle>
                 </CardHeader>
@@ -177,56 +189,108 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
     const progressPercentage = Math.min((pregnancyWeek / 40) * 100, 100);
 
     return (
-        <Card className={`w-full overflow-hidden ${className}`}>
+        <Card className={`w-full overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-300 ${className}`}>
             <div className={`h-2 bg-gradient-to-r ${trimesterInfo.color}`}></div>
             <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
                     <div>
-                        <CardTitle className="text-lg sm:text-xl font-bold">妊娠 {pregnancyWeek}週目</CardTitle>
-                        <CardDescription>
-                            出産予定日まであと {daysRemaining}日
+                        <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                            <span>妊娠 {pregnancyWeek}週目</span>
+                            <Badge variant="outline" className={`${trimesterInfo.textColor} ${trimesterInfo.bgColor} border-none`}>
+                                {trimesterInfo.name}
+                            </Badge>
+                        </CardTitle>
+                        <CardDescription className="flex items-center gap-1 mt-1">
+                            <CalendarIcon className="h-4 w-4" />
+                            <span>出産予定日: {format(dueDate, 'yyyy年MM月dd日')} (あと{daysRemaining}日)</span>
                         </CardDescription>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-white text-sm bg-gradient-to-r ${trimesterInfo.color}`}>
-                        {trimesterInfo.name} ({trimesterInfo.weeks})
                     </div>
                 </div>
             </CardHeader>
             <CardContent>
-                <div className="space-y-4">
-                    <div>
-                        <div className="mb-2 flex justify-between text-xs text-gray-500">
-                            <span>0週</span>
-                            <span>20週</span>
-                            <span>40週</span>
+                <div className="space-y-5">
+                    {/* 妊娠進捗バー */}
+                    <div className="relative pt-6 pb-2">
+                        <div className="absolute top-0 left-0 right-0 flex justify-between text-xs text-gray-500">
+                            {WEEK_MARKERS.map((marker) => (
+                                <TooltipProvider key={marker.week}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div
+                                                className="flex flex-col items-center"
+                                                style={{
+                                                    position: 'absolute',
+                                                    left: `${(marker.week / 40) * 100}%`,
+                                                    transform: 'translateX(-50%)'
+                                                }}
+                                            >
+                                                <div className={`w-1 h-2 ${marker.week === 0 ? 'bg-gray-300' : marker.week === 13 ? 'bg-rose-400' : marker.week === 27 ? 'bg-indigo-400' : 'bg-emerald-400'}`}></div>
+                                                <span className="mt-1">{marker.label}</span>
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            {marker.week === 0 ? '妊娠開始' :
+                                                marker.week === 13 ? '第1期終了' :
+                                                    marker.week === 27 ? '第2期終了' :
+                                                        '出産予定日'}
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            ))}
                         </div>
                         <Progress
                             value={progressPercentage}
-                            className="h-3 bg-gray-100"
-                            style={{
-                                background: 'linear-gradient(to right, #f0f9ff, #e0f2fe, #bae6fd)',
-                            }}
-                            indicatorClassName="bg-green-500"
+                            className="h-4 mt-6 bg-gray-100"
+                            indicatorClassName={`bg-gradient-to-r ${trimesterInfo.color}`}
                         />
+                        <motion.div
+                            className="absolute"
+                            style={{
+                                left: `${progressPercentage}%`,
+                                top: '1.5rem',
+                                transform: 'translateX(-50%)'
+                            }}
+                            initial={{ scale: 0.8 }}
+                            animate={{ scale: 1 }}
+                            transition={{
+                                repeat: Infinity,
+                                repeatType: "reverse",
+                                duration: 1.5
+                            }}
+                        >
+                            <div className="text-2xl">{babyInfo.icon}</div>
+                        </motion.div>
                     </div>
 
-                    <div className="p-4 rounded-lg border bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-100">
-                        <div className="flex items-start gap-3">
-                            <div className="w-16 h-16 flex items-center justify-center text-4xl bg-white rounded-full shadow-sm">
+                    {/* 赤ちゃん情報カード */}
+                    <motion.div
+                        className={`p-4 rounded-lg border ${trimesterInfo.borderColor} ${trimesterInfo.bgColor}`}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                    >
+                        <div className="flex items-start gap-4">
+                            <div className={`w-16 h-16 flex items-center justify-center text-4xl bg-white rounded-full shadow-sm border ${trimesterInfo.borderColor}`}>
                                 {babyInfo.icon}
                             </div>
                             <div className="flex-1">
-                                <div className="font-semibold text-indigo-900 mb-1">赤ちゃんの大きさ</div>
-                                <div className="text-indigo-800 font-medium">{babyInfo.size}</div>
-                                <div className="mt-1 text-sm text-indigo-700">{babyInfo.description}</div>
+                                <div className={`font-semibold ${trimesterInfo.textColor} mb-1`}>赤ちゃんの大きさ</div>
+                                <div className={`${trimesterInfo.textColor} font-medium`}>{babyInfo.size}</div>
+                                <div className={`mt-1 text-sm ${trimesterInfo.textColor} opacity-90`}>{babyInfo.description}</div>
                             </div>
                         </div>
-                    </div>
+                    </motion.div>
 
-                    <div className="p-4 rounded-lg border bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-100">
-                        <div className="font-semibold text-amber-900 mb-1">今週のポイント</div>
-                        <div className="text-sm text-amber-800">{trimesterInfo.description}</div>
-                    </div>
+                    {/* 今週のポイント */}
+                    <motion.div
+                        className={`p-4 rounded-lg border ${trimesterInfo.borderColor} ${trimesterInfo.bgColor}`}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.2 }}
+                    >
+                        <div className={`font-semibold ${trimesterInfo.textColor} mb-1`}>今週のポイント</div>
+                        <div className={`text-sm ${trimesterInfo.textColor} opacity-90`}>{trimesterInfo.description}</div>
+                    </motion.div>
                 </div>
             </CardContent>
         </Card>

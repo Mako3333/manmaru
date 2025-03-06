@@ -16,6 +16,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import MealHistoryList from '@/components/dashboard/meal-history-list';
 import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
 
+// 栄養計算ユーティリティをインポート
+import { NutritionCalculator } from '@/lib/nutrition/calculator';
 
 // 栄養素アイコンマッピング
 const NUTRIENT_ICONS = {
@@ -64,14 +66,14 @@ export default function DashboardPage() {
                     throw nutritionError;
                 }
 
-                setNutritionData(nutritionProgress || {
+                // 栄養データがない場合はデフォルト値を設定
+                const defaultData = {
                     calories_percent: 0,
                     protein_percent: 0,
                     iron_percent: 0,
                     folic_acid_percent: 0,
                     calcium_percent: 0,
                     vitamin_d_percent: 0,
-                    overall_score: 0,
                     target_calories: 2000,
                     target_protein: 60,
                     target_iron: 27,
@@ -84,6 +86,19 @@ export default function DashboardPage() {
                     actual_folic_acid: 0,
                     actual_calcium: 0,
                     actual_vitamin_d: 0
+                };
+
+                // 栄養データを設定し、バランススコアを計算
+                const data = nutritionProgress || defaultData;
+
+                // 新しいNutritionCalculatorを使用してスコアを計算
+                const overall_score = nutritionProgress
+                    ? NutritionCalculator.calculateNutritionScoreFromProgress(nutritionProgress)
+                    : 0;
+
+                setNutritionData({
+                    ...data,
+                    overall_score
                 });
             } catch (error) {
                 console.error('データ取得エラー:', error)
@@ -296,12 +311,15 @@ export default function DashboardPage() {
 
             {/* 3. 栄養バランススコアカード */}
             <Card className="mb-6">
-                <CardHeader>
-                    <CardTitle className="text-lg">栄養バランススコア</CardTitle>
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-lg font-bold">栄養バランススコア</CardTitle>
+                    <CardDescription>
+                        妊娠期に重要な栄養素の摂取状況に基づいたスコア
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center justify-center mb-4">
-                        <div className="relative w-32 h-32">
+                    <div className="flex flex-col items-center">
+                        <div className="relative w-40 h-40 mb-4">
                             <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
                             <svg className="w-full h-full" viewBox="0 0 36 36">
                                 <path
@@ -328,7 +346,7 @@ export default function DashboardPage() {
                         今日の栄養バランススコアは<span className="font-bold text-green-600">{nutritionData?.overall_score || 0}点</span>です。
                     </p>
                     <p className="text-sm text-gray-500 text-center">
-                        このスコアは各栄養素の摂取率から算出されています。
+                        このスコアは妊娠期に重要な栄養素の摂取率から算出されています。
                     </p>
                 </CardContent>
             </Card>
