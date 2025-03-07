@@ -3,11 +3,6 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AdviceType } from "@/types/nutrition";
-import { AIModelFactory } from '@/lib/ai/model-factory';
-import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
-import { getSeason } from '@/lib/ai/prompts/prompt-utils';
-import { withErrorHandling } from '@/lib/errors/error-utils';
-import { AIError, ErrorCode } from '@/lib/errors/ai-error';
 import { z } from 'zod';
 import { AIService } from '@/lib/ai/ai-service';
 import { getCurrentSeason, getJapanDate } from '@/lib/utils/date-utils';
@@ -32,6 +27,68 @@ function createClient(): SupabaseClient {
     return createRouteHandlerClient({ cookies });
 }
 
+// 過去の栄養データを取得する関数（ここに追加）
+async function getPastNutritionData(supabase: SupabaseClient, userId: string, days: number = 3) {
+    const today = new Date();
+    const pastDates = [];
+
+    // 過去n日分の日付を生成
+    for (let i = 1; i <= days; i++) {
+        const date = new Date();
+        date.setDate(today.getDate() - i);
+        pastDates.push(format(date, 'yyyy-MM-dd'));
+    }
+
+    console.log('過去の栄養データを取得: 対象日付', pastDates);
+
+    // 栄養データを取得
+    const { data, error } = await supabase
+        .from('nutrition_goal_prog')
+        .select('*')
+        .eq('user_id', userId)
+        .in('meal_date', pastDates)
+        .order('meal_date', { ascending: false });
+
+    if (error) {
+        console.error('過去の栄養データ取得エラー:', error);
+        return [];
+    }
+
+    // データがない場合は空配列
+    if (!data || data.length === 0) {
+        console.log('過去の栄養データが見つかりません');
+        return [];
+    }
+
+    console.log(`取得した過去の栄養データ: ${data.length}件`);
+
+    // データを整形して返却
+    return data.map((record: any) => ({
+        date: record.meal_date,
+        overallScore: calculateOverallScore(record),
+        nutrients: {
+            calories: { percentage: record.calories_percent || 0 },
+            protein: { percentage: record.protein_percent || 0 },
+            iron: { percentage: record.iron_percent || 0 },
+            folic_acid: { percentage: record.folic_acid_percent || 0 },
+            calcium: { percentage: record.calcium_percent || 0 },
+            vitamin_d: { percentage: record.vitamin_d_percent || 0 }
+        }
+    }));
+}
+// 総合スコア計算関数
+function calculateOverallScore(record: any): number {
+    const percentages = [
+        record.calories_percent || 0,
+        record.protein_percent || 0,
+        record.iron_percent || 0,
+        record.folic_acid_percent || 0,
+        record.calcium_percent || 0,
+        record.vitamin_d_percent || 0
+    ];
+
+    return Math.round(percentages.reduce((sum, val) => sum + val, 0) / percentages.length);
+}
 // 栄養アドバイスAPIエンドポイント
 export async function GET(request: NextRequest) {
     console.log('栄養アドバイスAPI: リクエスト受信');
@@ -142,23 +199,30 @@ export async function GET(request: NextRequest) {
                 .eq('meal_date', requestDate)
                 .single();
 
+            console.log('栄養アドバイスAPI: 現在日の栄養データ存在確認', {
+                date: requestDate,
+                exists: !!nutritionProgress,
+                data: nutritionProgress || '(データなし)'
+            });
+
             if (nutritionProgress) {
-                // 不足している栄養素を特定
-                if (nutritionProgress.protein_percent < 70) {
-                    deficientNutrients.push('タンパク質');
-                }
-                if (nutritionProgress.iron_percent < 70) {
-                    deficientNutrients.push('鉄分');
-                }
-                if (nutritionProgress.folic_acid_percent < 70) {
-                    deficientNutrients.push('葉酸');
-                }
-                if (nutritionProgress.calcium_percent < 70) {
-                    deficientNutrients.push('カルシウム');
-                }
-                if (nutritionProgress.vitamin_d_percent < 70) {
-                    deficientNutrients.push('ビタミンD');
-                }
+                // 70%未満を不足と判定するロジックに修正
+                const nutrientMapping = {
+                    protein_percent: 'タンパク質',
+                    iron_percent: '鉄分',
+                    folic_acid_percent: '葉酸',
+                    calcium_percent: 'カルシウム',
+                    vitamin_d_percent: 'ビタミンD'
+                };
+
+                deficientNutrients = Object.entries(nutrientMapping)
+                    .filter(([key]) =>
+                        typeof nutritionProgress[key] === 'number' &&
+                        nutritionProgress[key] < 70
+                    )
+                    .map(([_, japaneseName]) => japaneseName);
+
+                console.log('栄養アドバイスAPI: 不足栄養素リスト (70%未満)', deficientNutrients);
             } else {
                 // デフォルトの不足栄養素（データがない場合）
                 deficientNutrients = ['タンパク質', '鉄分', '葉酸', 'カルシウム'];
@@ -175,37 +239,114 @@ export async function GET(request: NextRequest) {
         // 日付を日本語フォーマットで
         const formattedDate = format(new Date(requestDate), 'yyyy年MM月dd日', { locale: ja });
 
-        // AIサービスのインスタンス取得
-        const aiService = AIService.getInstance();
-
-        // 栄養アドバイス生成（常に詳細と要約の両方を生成）
-        console.log('栄養アドバイスAPI: アドバイスを生成します'); // デバッグ用ログ
-        const adviceResult = await aiService.getNutritionAdvice({
+        // AIサービスを使用して栄養アドバイスを生成
+        console.log('栄養アドバイスAPI: AIサービスによるアドバイス生成開始', {
             pregnancyWeek,
             trimester,
-            deficientNutrients,
-            formattedDate,
-            currentSeason
+            deficientNutrientsCount: deficientNutrients.length,
+            date: requestDate
+        }); // デバッグ用ログ
+        // 過去の栄養データを取得
+        const pastNutritionData = await getPastNutritionData(supabase, userId);
+        console.log('栄養アドバイスAPI: 過去の栄養データ取得完了', pastNutritionData.length);
+
+        // 過去数日間の平均値から不足栄養素を計算 (既存の不足栄養素リストを上書き)
+        if (pastNutritionData.length > 0) {
+            // インデックスシグネチャ対応の型を定義
+            interface NutrientAverages {
+                protein: number;
+                iron: number;
+                folic_acid: number;
+                calcium: number;
+                vitamin_d: number;
+                [key: string]: number; // インデックスシグネチャ追加
+            }
+
+            // 栄養素ごとの平均値を計算
+            const avgNutrients: NutrientAverages = {
+                protein: 0,
+                iron: 0,
+                folic_acid: 0,
+                calcium: 0,
+                vitamin_d: 0
+            };
+
+            // 型指定を追加
+            interface NutritionDay {
+                date: string;
+                overallScore: number;
+                nutrients: {
+                    protein: { percentage: number };
+                    iron: { percentage: number };
+                    folic_acid: { percentage: number };
+                    calcium: { percentage: number };
+                    vitamin_d: { percentage: number };
+                    calories: { percentage: number };
+                };
+            }
+
+            pastNutritionData.forEach((day: NutritionDay) => {
+                avgNutrients.protein += day.nutrients.protein.percentage;
+                avgNutrients.iron += day.nutrients.iron.percentage;
+                avgNutrients.folic_acid += day.nutrients.folic_acid.percentage;
+                avgNutrients.calcium += day.nutrients.calcium.percentage;
+                avgNutrients.vitamin_d += day.nutrients.vitamin_d.percentage;
+            });
+
+            // 平均値を算出 (型安全なアクセス)
+            const keys = Object.keys(avgNutrients) as Array<keyof NutrientAverages>;
+            keys.forEach(key => {
+                avgNutrients[key] = avgNutrients[key] / pastNutritionData.length;
+            });
+
+            // 70%未満の栄養素を抽出
+            const nutrientMapping: Record<keyof Omit<NutrientAverages, 'calories'>, string> = {
+                protein: 'タンパク質',
+                iron: '鉄分',
+                folic_acid: '葉酸',
+                calcium: 'カルシウム',
+                vitamin_d: 'ビタミンD'
+            };
+
+            // 既存の不足栄養素リストを上書き
+            deficientNutrients = Object.entries(nutrientMapping)
+                .filter(([key]) => avgNutrients[key as keyof NutrientAverages] < 70)
+                .map(([_, name]) => name);
+
+            console.log('栄養アドバイスAPI: 過去数日間の平均から算出した不足栄養素', deficientNutrients);
+        }
+
+        // AIサービス呼び出しの前に変数の再宣言を避けるため、既存の変数を使用
+        console.log('栄養アドバイスAPI: 不足栄養素リスト', deficientNutrients);
+        console.log('栄養アドバイスAPI: 条件評価', {
+            hasDeficientNutrients: deficientNutrients && deficientNutrients.length > 0,
+            count: deficientNutrients?.length || 0
         });
 
-        console.log('栄養アドバイスAPI: アドバイス生成結果', {
-            summaryLength: adviceResult.summary?.length || 0,
-            detailedAdviceLength: adviceResult.detailedAdvice?.length || 0,
-            recommendedFoodsCount: adviceResult.recommendedFoods?.length || 0
-        }); // デバッグ用ログ
+
+        // AIサービス呼び出し
+        const aiService = AIService.getInstance();
+        const adviceResult = await aiService.getNutritionAdvice({
+            pregnancyWeek,
+            trimester: calculateTrimester(pregnancyWeek),
+            currentSeason: getCurrentSeason(),
+            formattedDate: format(new Date(requestDate), 'yyyy年MM月dd日', { locale: ja }),
+            deficientNutrients: deficientNutrients || [],
+            pastNutritionData: pastNutritionData
+        });
 
         // アドバイスをフォーマット
         const adviceData = {
             user_id: userId,
             advice_date: requestDate,
-            advice_type: 'daily',
+            advice_type: AdviceType.DAILY,
             advice_summary: adviceResult.summary || '栄養アドバイスが生成されました',
             advice_detail: adviceResult.detailedAdvice || adviceResult.summary || '詳細な栄養アドバイスが生成されました',
             recommended_foods: adviceResult.recommendedFoods?.map(food => food.name) || ['バランスの良い食事を心がけましょう'],
             is_read: false
         };
 
-        console.log('栄養アドバイスAPI: 保存するデータ', {
+        console.log('栄養アドバイスAPI: AIサービスからのレスポンス受信', {
             summaryLength: adviceData.advice_summary.length,
             detailLength: adviceData.advice_detail.length,
             foodsCount: adviceData.recommended_foods.length

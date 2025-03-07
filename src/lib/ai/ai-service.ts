@@ -149,6 +149,9 @@ export class AIService {
             const response = await model.invoke(prompt);
             const responseText = response.toString();
 
+            // AIからのレスポンスをログ出力
+            console.log('AIService: AIからのレスポンス:', responseText);
+
             // JSONパース処理
             return this.parseJSONResponse<FoodAnalysisResult>(
                 responseText,
@@ -175,6 +178,18 @@ export class AIService {
         deficientNutrients: string[];
         formattedDate: string;
         currentSeason: string;
+        pastNutritionData?: Array<{
+            date: string;
+            overallScore: number;
+            nutrients: {
+                calories: { percentage: number };
+                protein: { percentage: number };
+                iron: { percentage: number };
+                folic_acid: { percentage: number };
+                calcium: { percentage: number };
+                vitamin_d: { percentage: number };
+            };
+        }>;
     }): Promise<NutritionAdviceResult> {
         // プロンプト生成
         const prompt = this.promptService.generatePrompt(PromptType.NUTRITION_ADVICE, {
@@ -184,8 +199,12 @@ export class AIService {
         console.log('AIService: 栄養アドバイス生成開始', {
             pregnancyWeek: params.pregnancyWeek,
             trimester: params.trimester,
-            deficientNutrientsCount: params.deficientNutrients.length
+            deficientNutrientsCount: params.deficientNutrients.length,
+            pastNutritionDataCount: params.pastNutritionData?.length || 0 // 追加
         }); // デバッグ用ログ
+
+        // プロンプトの内容をログ出力
+        console.log('AIService: 生成されたプロンプト:', prompt);
 
         // モデル呼び出し
         const model = AIModelFactory.createTextModel({
@@ -195,6 +214,9 @@ export class AIService {
         try {
             const response = await model.invoke(prompt);
             const responseText = response.toString();
+
+            // AIからのレスポンスをログ出力
+            console.log('AIService: AIからのレスポンス:', responseText);
 
             // テキスト形式の応答をパース
             return this.parseNutritionAdvice(responseText);

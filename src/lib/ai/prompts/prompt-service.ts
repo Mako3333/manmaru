@@ -50,10 +50,29 @@ export class PromptService {
         pregnancyWeek: number;
         trimester: number;
         deficientNutrients: string[];
-        isSummary: boolean;
         formattedDate: string;
         currentSeason: string;
+        isSummary?: boolean;  // オプショナル
+        pastNutritionData?: Array<{
+            date: string;
+            overallScore: number;
+            nutrients: {
+                calories: { percentage: number };
+                protein: { percentage: number };
+                iron: { percentage: number };
+                folic_acid: { percentage: number };
+                calcium: { percentage: number };
+                vitamin_d: { percentage: number };
+            };
+        }>;
     }): string {
+        // デバッグ用ログを追加
+        console.log('PromptService: 栄養アドバイスプロンプト生成', {
+            pregnancyWeek: context.pregnancyWeek,
+            hasPastData: !!context.pastNutritionData && context.pastNutritionData.length > 0,
+            pastDataCount: context.pastNutritionData?.length || 0
+        });
+
         return this.generatePrompt(PromptType.NUTRITION_ADVICE, context);
     }
 

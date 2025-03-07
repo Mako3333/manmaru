@@ -7,9 +7,19 @@ export const template = `
 今日は{{formattedDate}}で、現在は{{currentSeason}}です。季節に合わせたアドバイスも含めてください。
 
 {{#if deficientNutrients.length}}
-特に不足している栄養素: {{#each deficientNutrients}}{{#if @index}}、{{/if}}{{this}}{{/each}}
+過去数日間のデータから、特に不足している栄養素: {{deficientNutrients}}
 {{else}}
-現在の栄養状態は良好です。
+過去数日間の栄養バランスは良好です。引き続き、バランスの取れた食事を心がけましょう。
+{{/if}}
+
+{{#if pastNutritionData.length}}
+直近の栄養摂取状況:
+{{#each pastNutritionData}}
+- {{date}}: 総合スコア {{overallScore}}点
+  カロリー: {{nutrients.calories.percentage}}%, タンパク質: {{nutrients.protein.percentage}}%, 
+  鉄分: {{nutrients.iron.percentage}}%, 葉酸: {{nutrients.folic_acid.percentage}}%, 
+  カルシウム: {{nutrients.calcium.percentage}}%, ビタミンD: {{nutrients.vitamin_d.percentage}}%
+{{/each}}
 {{/if}}
 
 以下のJSON形式で回答してください：
@@ -17,7 +27,7 @@ export const template = `
 \`\`\`detail
 {
   "advice_summary": "妊娠周期、栄養状態、季節を考慮した簡潔なアドバイスを100-150文字程度で記述してください。",
-  "advice_detail": "妊娠{{pregnancyWeek}}週目の胎児の発達状況、この時期に特に重要な栄養素とその理由、{{#if deficientNutrients.length}}不足している栄養素を補うための具体的な食品例{{else}}全体的な栄養バランスを維持するための詳細なアドバイス{{/if}}、{{currentSeason}}の旬の食材を取り入れた具体的な提案を300-500文字程度で記述してください。",
+  "advice_detail": "妊娠{{pregnancyWeek}}週目の胎児の発達状況、この時期に特に重要な栄養素とその理由、{{#if deficientNutrients.length}}不足している栄養素を補うための具体的な食品例{{else}}全体的な栄養バランスを維持するための詳細なアドバイス{{/if}}、{{currentSeason}}の旬の食材を取り入れた具体的なアドバイスをマークダウン形式で構造化して、300-500文字程度で提案してください。",
   "recommended_foods": [
     {
       "name": "食品名1",
