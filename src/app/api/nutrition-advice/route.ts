@@ -15,7 +15,13 @@ import { NextRequest } from 'next/server';
 const RequestSchema = z.object({
     pregnancyWeek: z.number().min(1).max(42).optional(),
     deficientNutrients: z.array(z.string()).optional(),
-    mode: z.enum(['normal', 'force_update']).optional().default('normal')
+    mode: z.enum(['normal', 'force_update']).optional().default('normal'),
+    advice_type: z.enum([
+        AdviceType.DAILY,
+        AdviceType.DEFICIENCY,
+        AdviceType.MEAL_SPECIFIC,
+        AdviceType.WEEKLY
+    ]).optional().default(AdviceType.DAILY)
 });
 
 // Supabaseクライアント型定義
@@ -99,9 +105,11 @@ export async function GET(request: NextRequest) {
         const forceUpdate = searchParams.get('force') === 'true';
         const isDetailedRequest = searchParams.get('detail') === 'true';
         const requestDate = searchParams.get('date') || getJapanDate();
+        const adviceType = (searchParams.get('advice_type') as AdviceType) || AdviceType.DAILY;
 
         console.log('栄養アドバイスAPI: 強制更新モード =', forceUpdate);
         console.log('栄養アドバイスAPI: リクエスト日付 =', requestDate);
+        console.log('栄養アドバイスAPI: アドバイスタイプ =', adviceType);
 
         const supabase = createClient();
 
@@ -122,19 +130,23 @@ export async function GET(request: NextRequest) {
 
         // 強制更新モードでない場合は、既存のアドバイスを確認
         if (!forceUpdate) {
-            // 指定された日付のアドバイスを取得
+            // 指定された日付とタイプのアドバイスを取得
             const { data: existingAdvice, error: adviceError } = await supabase
                 .from('daily_nutri_advice')
                 .select('*')
                 .eq('user_id', userId)
                 .eq('advice_date', requestDate)
+                .eq('advice_type', adviceType)
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .single();
 
             // エラーがなく、既存のアドバイスがある場合
             if (!adviceError && existingAdvice) {
-                console.log('栄養アドバイスAPI: 既存アドバイスを返します'); // デバッグ用ログ
+                console.log('栄養アドバイスAPI: 既存アドバイスを返します', {
+                    id: existingAdvice.id,
+                    type: existingAdvice.advice_type
+                }); // デバッグ用ログ
                 return NextResponse.json({
                     success: true,
                     ...existingAdvice
@@ -147,13 +159,16 @@ export async function GET(request: NextRequest) {
                 .select('id')
                 .eq('user_id', userId)
                 .eq('advice_date', requestDate)
-                .eq('advice_type', 'daily')
+                .eq('advice_type', adviceType)
                 .single();
 
             // 既存のアドバイスがある場合は、後で更新するためにIDを保存
             if (!adviceError && existingAdvice) {
                 existingAdviceId = existingAdvice.id;
-                console.log('栄養アドバイスAPI: 既存アドバイスを更新します', existingAdviceId); // デバッグ用ログ
+                console.log('栄養アドバイスAPI: 既存アドバイスを更新します', {
+                    id: existingAdviceId,
+                    type: adviceType
+                }); // デバッグ用ログ
             }
         }
 
@@ -244,7 +259,8 @@ export async function GET(request: NextRequest) {
             pregnancyWeek,
             trimester,
             deficientNutrientsCount: deficientNutrients.length,
-            date: requestDate
+            date: requestDate,
+            adviceType
         }); // デバッグ用ログ
         // 過去の栄養データを取得
         const pastNutritionData = await getPastNutritionData(supabase, userId);
@@ -339,11 +355,13 @@ export async function GET(request: NextRequest) {
         const adviceData = {
             user_id: userId,
             advice_date: requestDate,
-            advice_type: AdviceType.DAILY,
+            advice_type: adviceType,
             advice_summary: adviceResult.summary || '栄養アドバイスが生成されました',
             advice_detail: adviceResult.detailedAdvice || adviceResult.summary || '詳細な栄養アドバイスが生成されました',
             recommended_foods: adviceResult.recommendedFoods?.map(food => food.name) || ['バランスの良い食事を心がけましょう'],
-            is_read: false
+            is_read: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
         };
 
         console.log('栄養アドバイスAPI: AIサービスからのレスポンス受信', {

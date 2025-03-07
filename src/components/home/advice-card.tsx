@@ -10,6 +10,7 @@ import Link from 'next/link';
 interface AdviceCardProps {
     date: string;
     className?: string;
+    forceUpdate?: boolean;
 }
 
 // アドバイスタイプごとの表示情報
@@ -20,7 +21,11 @@ const ADVICE_TYPE_INFO: Record<string, { title: string; icon: string; }> = {
     [AdviceType.WEEKLY]: { title: '週間アドバイス', icon: '📅' }
 };
 
-export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) => {
+export const AdviceCard: React.FC<AdviceCardProps> = ({
+    date,
+    className = '',
+    forceUpdate = false
+}) => {
     const [advice, setAdvice] = useState<NutritionAdvice | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -40,35 +45,16 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
                 throw new Error('ログインが必要です');
             }
 
-            // まずデータベースから既存のアドバイスを取得
-            const { data: adviceData, error: dbError } = await supabase
-                .from('daily_nutri_advice')
-                .select('*')
-                .eq('user_id', session.user.id)
-                .eq('advice_date', date)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .single();
+            // APIからアドバイスを取得
+            console.log('AdviceCard: アドバイス取得開始', { date, forceUpdate });
 
-            console.log('AdviceCard: DB結果', adviceData ? 'データあり' : 'データなし', dbError ? 'エラーあり' : 'エラーなし'); // デバッグ用ログ
-
-            // データベースにアドバイスがある場合はそれを表示
-            if (!dbError && adviceData) {
-                setAdvice(adviceData);
-
-                // 未読の場合は既読に更新
-                if (!adviceData.is_read) {
-                    await supabase
-                        .from('daily_nutri_advice')
-                        .update({ is_read: true })
-                        .eq('id', adviceData.id);
-                }
-                return;
+            // APIリクエストURLの構築
+            let apiUrl = `/api/nutrition-advice?date=${date}`;
+            if (forceUpdate) {
+                apiUrl += '&force=true';
             }
 
-            // データベースにない場合はAPIから取得
-            console.log('AdviceCard: APIからアドバイスを取得します'); // デバッグ用ログ
-            const response = await fetch(`/api/nutrition-advice?date=${date}`);
+            const response = await fetch(apiUrl);
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -88,6 +74,12 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
             }
 
             setAdvice(data);
+
+            console.log('AdviceCard: アドバイス取得成功', {
+                type: data.advice_type,
+                date: data.advice_date,
+                summaryLength: data.advice_summary?.length
+            });
         } catch (err) {
             console.error('栄養アドバイス取得エラー:', err);
             setError(err instanceof Error ? err.message : 'アドバイスの取得に失敗しました');
@@ -103,7 +95,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
             console.log('AdviceCard: 日付が指定されていません'); // デバッグ用ログ
             setLoading(false);
         }
-    }, [date, supabase]);
+    }, [date, forceUpdate]);
 
     // アドバイス情報
     const adviceInfo = advice ?

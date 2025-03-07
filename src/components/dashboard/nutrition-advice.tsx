@@ -5,13 +5,18 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { AdviceState } from "@/types/nutrition";
+import { AdviceState, AdviceType } from "@/types/nutrition";
 import ReactMarkdown from "react-markdown";
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { getJapanDate } from '@/lib/utils/date-utils';
 
-export function DetailedNutritionAdvice() {
+interface DetailedNutritionAdviceProps {
+    selectedDate?: string;
+    onDateSelect?: (date: string) => void;
+}
+
+export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: DetailedNutritionAdviceProps) {
     // 1. 状態管理
     const [state, setState] = useState<{
         loading: boolean;
@@ -24,17 +29,32 @@ export function DetailedNutritionAdvice() {
         advice: null
     });
 
+    // アドバイスタイプは固定でDAILYを使用
+    const [forceUpdate, setForceUpdate] = useState<boolean>(false);
+    const [currentDate, setCurrentDate] = useState<string>(selectedDate || getJapanDate());
+
+    // 日付が変更されたときの処理
+    useEffect(() => {
+        if (selectedDate) {
+            setCurrentDate(selectedDate);
+            fetchDetailedAdvice(selectedDate, forceUpdate);
+        }
+    }, [selectedDate]);
+
     // 2. データ取得関数
-    const fetchDetailedAdvice = async () => {
+    const fetchDetailedAdvice = async (date = currentDate, force = forceUpdate) => {
         try {
             setState(prev => ({ ...prev, loading: true, error: null }));
-            console.log('DetailedNutritionAdvice: データ取得開始'); // デバッグ用ログ
+            console.log('DetailedNutritionAdvice: データ取得開始', { date, force }); // デバッグ用ログ
 
-            // 日本時間の現在日付を取得
-            const today = getJapanDate();
+            // APIリクエストURLの構築
+            let apiUrl = `/api/nutrition-advice?detail=true&date=${date}`;
+            if (force) {
+                apiUrl += '&force=true';
+            }
 
-            // Supabaseから直接データを取得する代わりに、APIを使用
-            const response = await fetch(`/api/nutrition-advice?detail=true&date=${today}`);
+            // APIからデータを取得
+            const response = await fetch(apiUrl);
             console.log('DetailedNutritionAdvice: APIレスポンス', response.status); // デバッグ用ログ
 
             if (!response.ok) {
@@ -55,7 +75,12 @@ export function DetailedNutritionAdvice() {
             }
 
             const data = await response.json();
-            console.log('DetailedNutritionAdvice: 取得データ', data); // デバッグ用ログ
+            console.log('DetailedNutritionAdvice: 取得データ', {
+                success: data.success,
+                type: data.advice_type,
+                date: data.advice_date,
+                hasAdvice: !!data.advice || !!data.advice_detail
+            }); // デバッグ用ログ
 
             if (!data.success) {
                 throw new Error(data.error || "アドバイスの取得に失敗しました");
@@ -84,6 +109,9 @@ export function DetailedNutritionAdvice() {
                     console.error("既読更新エラー:", readError);
                 }
             }
+
+            // 強制更新フラグをリセット
+            setForceUpdate(false);
         } catch (err) {
             console.error("詳細アドバイス取得エラー:", err);
             setState(prev => ({
@@ -93,6 +121,9 @@ export function DetailedNutritionAdvice() {
             }));
 
             toast.error("詳細アドバイスの読み込みに失敗しました");
+
+            // 強制更新フラグをリセット
+            setForceUpdate(false);
         }
     };
 
@@ -102,25 +133,48 @@ export function DetailedNutritionAdvice() {
         fetchDetailedAdvice();
     }, []);
 
-    // 6. UI描画
+    // 6. 強制更新ハンドラ
+    const handleForceUpdate = () => {
+        setForceUpdate(true);
+        fetchDetailedAdvice(currentDate, true);
+    };
+
+    // 7. 日付選択ハンドラ
+    const handleDateChange = (date: string) => {
+        setCurrentDate(date);
+        if (onDateSelect) {
+            onDateSelect(date);
+        }
+        fetchDetailedAdvice(date, false);
+    };
+
+    // 8. UI描画
     return (
         <Card className="w-full overflow-hidden">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-lg sm:text-xl font-bold">栄養アドバイス詳細</CardTitle>
+                <CardTitle className="text-lg sm:text-xl font-bold">栄養アドバイス</CardTitle>
 
-                {/* 更新ボタン */}
-                {!state.loading && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={fetchDetailedAdvice}
-                        disabled={state.loading}
-                        className="h-8 w-8 p-0"
-                    >
-                        <RefreshCw className="h-4 w-4" />
-                        <span className="sr-only">更新</span>
-                    </Button>
-                )}
+                <div className="flex items-center space-x-2">
+                    {/* 日付表示 */}
+                    <div className="text-sm text-gray-500">
+                        {format(new Date(currentDate), 'yyyy年MM月dd日')}
+                    </div>
+
+                    {/* 更新ボタン */}
+                    {!state.loading && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleForceUpdate}
+                            disabled={state.loading}
+                            className="h-8 w-8 p-0"
+                            title="アドバイスを更新"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                            <span className="sr-only">更新</span>
+                        </Button>
+                    )}
+                </div>
             </CardHeader>
 
             <CardContent>
@@ -172,14 +226,14 @@ export function DetailedNutritionAdvice() {
                 ) : (
                     // データなし表示
                     <div className="text-center py-6">
-                        <p className="text-gray-500 mb-4">アドバイスを読み込めませんでした</p>
+                        <p className="text-gray-500 mb-4">この日のアドバイスはありません</p>
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={fetchDetailedAdvice}
+                            onClick={handleForceUpdate}
                             className="mt-2"
                         >
-                            再読み込み
+                            アドバイスを生成する
                         </Button>
                     </div>
                 )}

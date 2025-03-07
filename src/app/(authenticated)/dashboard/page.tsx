@@ -188,13 +188,28 @@ export default function DashboardPage() {
     // 日付を変更する関数
     const changeDate = (direction: 'prev' | 'next') => {
         const date = new Date(currentDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // 時刻部分をリセット
+
         const newDate = direction === 'prev'
             ? subDays(date, 1)
             : addDays(date, 1);
 
         // 未来の日付は選択できないようにする
-        if (newDate <= new Date()) {
-            setCurrentDate(format(newDate, 'yyyy-MM-dd'));
+        // 日付の比較は時刻部分を除いて行う
+        newDate.setHours(0, 0, 0, 0);
+
+        if (newDate <= today) {
+            const formattedDate = format(newDate, 'yyyy-MM-dd');
+            console.log('日付変更:', {
+                from: currentDate,
+                to: formattedDate,
+                direction,
+                isToday: format(newDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
+            });
+            setCurrentDate(formattedDate);
+        } else {
+            console.log('未来の日付は選択できません:', format(newDate, 'yyyy-MM-dd'));
         }
     };
 
@@ -332,7 +347,7 @@ export default function DashboardPage() {
                         variant="outline"
                         size="icon"
                         onClick={() => changeDate('next')}
-                        disabled={new Date(currentDate).setHours(0, 0, 0, 0) >= new Date().setHours(0, 0, 0, 0)}
+                        disabled={format(new Date(currentDate), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')}
                     >
                         <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -489,7 +504,10 @@ export default function DashboardPage() {
                                 </Card>
                             )}
 
-                            <DetailedNutritionAdvice />
+                            <DetailedNutritionAdvice
+                                selectedDate={currentDate}
+                                onDateSelect={(date) => setCurrentDate(date)}
+                            />
                         </div>
 
                         {/* 食事履歴 */}

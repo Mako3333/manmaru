@@ -19,17 +19,24 @@ export function getCurrentSeason(): string {
 }
 
 /**
- * 日本時間の現在日付を取得する
- * @param formatStr 日付フォーマット（デフォルト: 'yyyy-MM-dd'）
- * @returns フォーマットされた日本時間の日付文字列
+ * 日本時間の現在日付を取得する（YYYY-MM-DD形式）
  */
-export function getJapanDate(formatStr: string = 'yyyy-MM-dd'): string {
-    // 現在のUTC日時を取得
+export function getJapanDate(): string {
+    // 現在のUTC時間を取得
     const now = new Date();
-    // 日本時間のタイムゾーンオフセットを設定（UTC+9）
-    const japanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
-    // 指定されたフォーマットで日付を返す
-    return formatDate(japanTime, formatStr);
+
+    // 日本時間に変換（UTC+9）
+    // ただし、タイムゾーンオフセットを考慮して正確な日本時間を計算
+    const japanTime = new Date(now.getTime());
+
+    // YYYY-MM-DD形式に変換
+    const year = japanTime.getFullYear();
+    const month = String(japanTime.getMonth() + 1).padStart(2, '0');
+    const day = String(japanTime.getDate()).padStart(2, '0');
+
+    console.log('日本時間の現在日付:', `${year}-${month}-${day}`, '元のDate:', now);
+
+    return `${year}-${month}-${day}`;
 }
 
 /**

@@ -129,10 +129,36 @@ export class AIService {
         foods: FoodInput[],
         mealType: string = 'その他'
     ): Promise<FoodAnalysisResult> {
+        console.log('AIService: テキスト入力解析開始', { foods, mealType });
+
+        // 入力データの検証
+        if (!foods || foods.length === 0) {
+            throw new AIError(
+                '食品データが必要です',
+                ErrorCode.VALIDATION_ERROR,
+                null,
+                ['少なくとも1つの食品を入力してください']
+            );
+        }
+
+        // 空の食品名をフィルタリング
+        const validFoods = foods.filter(food => food.name && food.name.trim() !== '');
+
+        if (validFoods.length === 0) {
+            throw new AIError(
+                '有効な食品データが必要です',
+                ErrorCode.VALIDATION_ERROR,
+                null,
+                ['少なくとも1つの有効な食品名を入力してください']
+            );
+        }
+
         // 食品データをテキスト形式に変換
-        const foodsText = foods.map(food =>
-            `${food.name}${food.quantity ? ` ${food.quantity}` : ''}`
+        const foodsText = validFoods.map(food =>
+            `${food.name.trim()}${food.quantity ? ` ${food.quantity.trim()}` : ''}`
         ).join('、');
+
+        console.log('AIService: 解析対象食品テキスト:', foodsText);
 
         // プロンプト生成
         const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
@@ -149,16 +175,38 @@ export class AIService {
             const response = await model.invoke(prompt);
             const responseText = response.toString();
 
-            // AIからのレスポンスをログ出力
-            console.log('AIService: AIからのレスポンス:', responseText);
+            // AIからのレスポンスをログ出力（長いレスポンスは省略）
+            console.log('AIService: AIからのレスポンス:',
+                responseText.length > 500
+                    ? responseText.substring(0, 500) + '...'
+                    : responseText
+            );
 
             // JSONパース処理
-            return this.parseJSONResponse<FoodAnalysisResult>(
+            const result = this.parseJSONResponse<FoodAnalysisResult>(
                 responseText,
                 foodAnalysisSchema,
                 'foods'
             );
+
+            // 結果の検証と修正
+            // 栄養素の値が負の場合は0に修正
+            if (result.nutrition) {
+                result.nutrition.calories = Math.max(0, result.nutrition.calories);
+                result.nutrition.protein = Math.max(0, result.nutrition.protein);
+                result.nutrition.iron = Math.max(0, result.nutrition.iron);
+                result.nutrition.folic_acid = Math.max(0, result.nutrition.folic_acid);
+                result.nutrition.calcium = Math.max(0, result.nutrition.calcium);
+                if (result.nutrition.vitamin_d !== undefined) {
+                    result.nutrition.vitamin_d = Math.max(0, result.nutrition.vitamin_d);
+                }
+            }
+
+            console.log('AIService: テキスト入力解析結果:', result);
+            return result;
         } catch (error) {
+            console.error('AIService: テキスト入力解析エラー:', error);
+
             if (error instanceof AIError) throw error;
 
             throw new AIError(

@@ -101,6 +101,28 @@ export const saveMealWithNutrients = async (mealData: MealCreateData): Promise<M
             throw new Error('ログインセッションが無効です');
         }
 
+        console.log('食事データ保存開始:', {
+            meal_type: mealData.meal_type,
+            meal_date: mealData.meal_date,
+            foods: mealData.foods,
+            nutrition: mealData.nutrition
+        });
+
+        // 栄養データの値が正しいことを確認（NaNや無効な値を修正）
+        const sanitizedNutrition = {
+            calories: isNaN(mealData.nutrition.calories) ? 0 : Math.max(0, mealData.nutrition.calories),
+            protein: isNaN(mealData.nutrition.protein) ? 0 : Math.max(0, mealData.nutrition.protein),
+            iron: isNaN(mealData.nutrition.iron) ? 0 : Math.max(0, mealData.nutrition.iron),
+            folic_acid: isNaN(mealData.nutrition.folic_acid) ? 0 : Math.max(0, mealData.nutrition.folic_acid),
+            calcium: isNaN(mealData.nutrition.calcium) ? 0 : Math.max(0, mealData.nutrition.calcium),
+            vitamin_d: isNaN(mealData.nutrition.vitamin_d || 0) ? 0 : Math.max(0, mealData.nutrition.vitamin_d || 0),
+            confidence_score: isNaN(mealData.nutrition.confidence_score || 0.8) ? 0.8 : Math.max(0, Math.min(1, mealData.nutrition.confidence_score || 0.8)),
+            overall_score: mealData.nutrition.overall_score || 0,
+            deficient_nutrients: mealData.nutrition.deficient_nutrients || [],
+            sufficient_nutrients: mealData.nutrition.sufficient_nutrients || [],
+            daily_records: mealData.nutrition.daily_records || []
+        };
+
         // 1. meals テーブルに挿入
         const { data: mealRecord, error: mealError } = await supabase
             .from('meals')
@@ -110,30 +132,40 @@ export const saveMealWithNutrients = async (mealData: MealCreateData): Promise<M
                 meal_date: mealData.meal_date || new Date().toISOString().split('T')[0],
                 photo_url: mealData.photo_url || null,
                 food_description: { items: mealData.foods },
-                nutrition_data: mealData.nutrition,
+                nutrition_data: sanitizedNutrition,
                 servings: mealData.servings || 1
             })
             .select()
             .single();
 
-        if (mealError) throw mealError;
+        if (mealError) {
+            console.error('meals テーブル挿入エラー:', mealError);
+            throw mealError;
+        }
+
+        console.log('meals テーブル挿入成功:', mealRecord.id);
 
         // 2. meal_nutrients テーブルに挿入
-        const { error: nutrientError } = await supabase
+        const { data: nutrientRecord, error: nutrientError } = await supabase
             .from('meal_nutrients')
             .insert({
                 meal_id: mealRecord.id,
-                calories: mealData.nutrition.calories,
-                protein: mealData.nutrition.protein,
-                iron: mealData.nutrition.iron,
-                folic_acid: mealData.nutrition.folic_acid,
-                calcium: mealData.nutrition.calcium,
-                vitamin_d: mealData.nutrition.vitamin_d || 0,
-                confidence_score: mealData.nutrition.confidence_score || 0.8
-            });
+                calories: sanitizedNutrition.calories,
+                protein: sanitizedNutrition.protein,
+                iron: sanitizedNutrition.iron,
+                folic_acid: sanitizedNutrition.folic_acid,
+                calcium: sanitizedNutrition.calcium,
+                vitamin_d: sanitizedNutrition.vitamin_d,
+                confidence_score: sanitizedNutrition.confidence_score
+            })
+            .select();
 
-        if (nutrientError) throw nutrientError;
+        if (nutrientError) {
+            console.error('meal_nutrients テーブル挿入エラー:', nutrientError);
+            throw nutrientError;
+        }
 
+        console.log('meal_nutrients テーブル挿入成功:', nutrientRecord);
         return mealRecord;
     } catch (error) {
         console.error('食事データ保存エラー:', error);
