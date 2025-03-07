@@ -10,10 +10,11 @@ import { withErrorHandling } from '@/lib/errors/error-utils';
 import { AIError, ErrorCode } from '@/lib/errors/ai-error';
 import { z } from 'zod';
 import { AIService } from '@/lib/ai/ai-service';
-import { getCurrentSeason } from '@/lib/utils/date-utils';
+import { getCurrentSeason, getJapanDate } from '@/lib/utils/date-utils';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { calculatePregnancyWeek } from '@/lib/date-utils';
+import { NextRequest } from 'next/server';
 
 // リクエストスキーマ
 const RequestSchema = z.object({
@@ -32,19 +33,20 @@ function createClient(): SupabaseClient {
 }
 
 // 栄養アドバイスAPIエンドポイント
-export const GET = withErrorHandling(async (req: Request) => {
+export async function GET(request: NextRequest) {
+    console.log('栄養アドバイスAPI: リクエスト受信');
+
     try {
-        console.log('栄養アドバイスAPI: リクエスト受信'); // デバッグ用ログ
+        // リクエストパラメータの取得
+        const searchParams = request.nextUrl.searchParams;
+        const forceUpdate = searchParams.get('force') === 'true';
+        const isDetailedRequest = searchParams.get('detail') === 'true';
+        const requestDate = searchParams.get('date') || getJapanDate();
+
+        console.log('栄養アドバイスAPI: 強制更新モード =', forceUpdate);
+        console.log('栄養アドバイスAPI: リクエスト日付 =', requestDate);
 
         const supabase = createClient();
-        const { searchParams } = new URL(req.url);
-
-        // 詳細モードかどうか
-        const isDetailMode = searchParams.get('detail') === 'true';
-
-        // 強制更新モードかどうか
-        const mode = searchParams.get('mode') || 'normal';
-        const isForceUpdate = mode === 'force_update';
 
         // ユーザー認証確認
         const { data: { session } } = await supabase.auth.getSession();
@@ -57,16 +59,18 @@ export const GET = withErrorHandling(async (req: Request) => {
         }
 
         const userId = session.user.id;
-        const today = new Date().toISOString().split('T')[0];
+
+        // 既存のアドバイスIDを保持する変数
+        let existingAdviceId = null;
 
         // 強制更新モードでない場合は、既存のアドバイスを確認
-        if (!isForceUpdate) {
-            // 今日のアドバイスを取得
+        if (!forceUpdate) {
+            // 指定された日付のアドバイスを取得
             const { data: existingAdvice, error: adviceError } = await supabase
                 .from('daily_nutri_advice')
                 .select('*')
                 .eq('user_id', userId)
-                .eq('advice_date', today)
+                .eq('advice_date', requestDate)
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .single();
@@ -78,6 +82,21 @@ export const GET = withErrorHandling(async (req: Request) => {
                     success: true,
                     ...existingAdvice
                 });
+            }
+        } else {
+            // 強制更新モードの場合、既存のアドバイスを確認
+            const { data: existingAdvice, error: adviceError } = await supabase
+                .from('daily_nutri_advice')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('advice_date', requestDate)
+                .eq('advice_type', 'daily')
+                .single();
+
+            // 既存のアドバイスがある場合は、後で更新するためにIDを保存
+            if (!adviceError && existingAdvice) {
+                existingAdviceId = existingAdvice.id;
+                console.log('栄養アドバイスAPI: 既存アドバイスを更新します', existingAdviceId); // デバッグ用ログ
             }
         }
 
@@ -94,7 +113,8 @@ export const GET = withErrorHandling(async (req: Request) => {
             return NextResponse.json(
                 {
                     error: '妊婦プロフィールが見つかりません',
-
+                    message: 'プロフィールを作成してください。プロフィールページに移動します。',
+                    redirect: '/profile'
                 },
                 { status: 404 }
             );
@@ -119,7 +139,7 @@ export const GET = withErrorHandling(async (req: Request) => {
                 .from('nutrition_goal_prog')
                 .select('*')
                 .eq('user_id', userId)
-                .eq('meal_date', today)
+                .eq('meal_date', requestDate)
                 .single();
 
             if (nutritionProgress) {
@@ -153,73 +173,74 @@ export const GET = withErrorHandling(async (req: Request) => {
         const currentSeason = getCurrentSeason();
 
         // 日付を日本語フォーマットで
-        const formattedDate = format(new Date(), 'yyyy年MM月dd日', { locale: ja });
+        const formattedDate = format(new Date(requestDate), 'yyyy年MM月dd日', { locale: ja });
 
         // AIサービスのインスタンス取得
         const aiService = AIService.getInstance();
 
-        // 詳細アドバイスが必要かどうか
-        if (isDetailMode) {
-            // 詳細アドバイス生成
-            const adviceResult = await aiService.getNutritionAdvice({
-                pregnancyWeek,
-                trimester,
-                deficientNutrients,
-                isSummary: false,
-                formattedDate,
-                currentSeason
-            });
+        // 栄養アドバイス生成（常に詳細と要約の両方を生成）
+        console.log('栄養アドバイスAPI: アドバイスを生成します'); // デバッグ用ログ
+        const adviceResult = await aiService.getNutritionAdvice({
+            pregnancyWeek,
+            trimester,
+            deficientNutrients,
+            formattedDate,
+            currentSeason
+        });
 
-            // アドバイスをフォーマット
-            const adviceData = {
-                user_id: userId,
-                advice_date: today,
-                advice_type: 'daily',
-                advice_summary: adviceResult.summary,
-                advice_detail: adviceResult.detailedAdvice,
-                recommended_foods: adviceResult.recommendedFoods?.map(food => food.name) || [],
-                is_read: false
-            };
+        console.log('栄養アドバイスAPI: アドバイス生成結果', {
+            summaryLength: adviceResult.summary?.length || 0,
+            detailedAdviceLength: adviceResult.detailedAdvice?.length || 0,
+            recommendedFoodsCount: adviceResult.recommendedFoods?.length || 0
+        }); // デバッグ用ログ
 
-            // アドバイスをデータベースに保存
-            const { data: savedAdvice, error: saveError } = await supabase
+        // アドバイスをフォーマット
+        const adviceData = {
+            user_id: userId,
+            advice_date: requestDate,
+            advice_type: 'daily',
+            advice_summary: adviceResult.summary || '栄養アドバイスが生成されました',
+            advice_detail: adviceResult.detailedAdvice || adviceResult.summary || '詳細な栄養アドバイスが生成されました',
+            recommended_foods: adviceResult.recommendedFoods?.map(food => food.name) || ['バランスの良い食事を心がけましょう'],
+            is_read: false
+        };
+
+        console.log('栄養アドバイスAPI: 保存するデータ', {
+            summaryLength: adviceData.advice_summary.length,
+            detailLength: adviceData.advice_detail.length,
+            foodsCount: adviceData.recommended_foods.length
+        }); // デバッグ用ログ
+
+        // アドバイスをデータベースに保存または更新
+        let savedAdvice;
+
+        if (existingAdviceId) {
+            // 既存のアドバイスを更新
+            console.log('栄養アドバイスAPI: 既存アドバイスを更新します', existingAdviceId); // デバッグ用ログ
+            const { data: updatedAdvice, error: updateError } = await supabase
                 .from('daily_nutri_advice')
-                .insert(adviceData)
+                .update({
+                    advice_summary: adviceData.advice_summary,
+                    advice_detail: adviceData.advice_detail,
+                    recommended_foods: adviceData.recommended_foods,
+                    is_read: false,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingAdviceId)
                 .select()
                 .single();
 
-            if (saveError) {
-                console.error('アドバイス保存エラー:', saveError);
-                console.log('栄養アドバイスAPI: データベース保存エラー', saveError); // デバッグ用ログ
-                throw new Error('アドバイスの保存に失敗しました');
+            if (updateError) {
+                console.error('アドバイス更新エラー:', updateError);
+                console.log('栄養アドバイスAPI: データベース更新エラー', updateError); // デバッグ用ログ
+                throw new Error('アドバイスの更新に失敗しました');
             }
 
-            return NextResponse.json({
-                success: true,
-                ...savedAdvice
-            });
+            savedAdvice = updatedAdvice;
         } else {
-            // 要約アドバイス生成
-            const adviceResult = await aiService.getNutritionAdvice({
-                pregnancyWeek,
-                trimester,
-                deficientNutrients,
-                isSummary: true,
-                formattedDate,
-                currentSeason
-            });
-
-            // アドバイスをフォーマット
-            const adviceData = {
-                user_id: userId,
-                advice_date: today,
-                advice_type: 'daily',
-                advice_summary: adviceResult.summary,
-                is_read: false
-            };
-
-            // アドバイスをデータベースに保存
-            const { data: savedAdvice, error: saveError } = await supabase
+            // 新規アドバイスを作成
+            console.log('栄養アドバイスAPI: 新規アドバイスを作成します'); // デバッグ用ログ
+            const { data: newAdvice, error: saveError } = await supabase
                 .from('daily_nutri_advice')
                 .insert(adviceData)
                 .select()
@@ -231,11 +252,13 @@ export const GET = withErrorHandling(async (req: Request) => {
                 throw new Error('アドバイスの保存に失敗しました');
             }
 
-            return NextResponse.json({
-                success: true,
-                ...savedAdvice
-            });
+            savedAdvice = newAdvice;
         }
+
+        return NextResponse.json({
+            success: true,
+            ...savedAdvice
+        });
     } catch (error) {
         console.error("アドバイス生成エラー:", error);
         console.log('栄養アドバイスAPI: 予期せぬエラー', error); // デバッグ用ログ
@@ -244,7 +267,7 @@ export const GET = withErrorHandling(async (req: Request) => {
             { status: 500 }
         );
     }
-});
+}
 
 // 妊娠週数から妊娠期（トリメスター）を計算
 function calculateTrimester(pregnancyWeek: number): number {

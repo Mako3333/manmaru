@@ -27,23 +27,21 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
     const supabase = createClientComponentClient();
 
     const fetchAdvice = async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            console.log('AdviceCard: 日付パラメータ', date); // デバッグ用ログ
+        setLoading(true);
+        setError('');
+        setAdvice(null);
 
-            // セッションの有効性を確認
+        try {
+            // セッション確認
             const { data: { session } } = await supabase.auth.getSession();
+            console.log('AdviceCard: セッション確認', !!session); // デバッグ用ログ
+
             if (!session) {
-                console.log('AdviceCard: セッションなし'); // デバッグ用ログ
-                setLoading(false);
-                return;
+                throw new Error('ログインが必要です');
             }
 
-            console.log('AdviceCard: ユーザーID', session.user.id); // デバッグ用ログ
-
-            // まずSupabaseから既存のアドバイスを取得
-            const { data, error: fetchError } = await supabase
+            // まずデータベースから既存のアドバイスを取得
+            const { data: adviceData, error: dbError } = await supabase
                 .from('daily_nutri_advice')
                 .select('*')
                 .eq('user_id', session.user.id)
@@ -52,54 +50,47 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
                 .limit(1)
                 .single();
 
-            console.log('AdviceCard: データベース取得結果', data, fetchError); // デバッグ用ログ
+            console.log('AdviceCard: DB結果', adviceData ? 'データあり' : 'データなし', dbError ? 'エラーあり' : 'エラーなし'); // デバッグ用ログ
 
-            // データがある場合はそれを使用
-            if (data && !fetchError) {
-                setAdvice(data);
-                setLoading(false);
+            // データベースにアドバイスがある場合はそれを表示
+            if (!dbError && adviceData) {
+                setAdvice(adviceData);
+
+                // 未読の場合は既読に更新
+                if (!adviceData.is_read) {
+                    await supabase
+                        .from('daily_nutri_advice')
+                        .update({ is_read: true })
+                        .eq('id', adviceData.id);
+                }
                 return;
             }
 
-            // データがない場合はAPIから取得
-            if (fetchError && fetchError.code === 'PGRST116') {
-                console.log('AdviceCard: データベースにデータがないためAPIから取得'); // デバッグ用ログ
-                const response = await fetch('/api/nutrition-advice');
+            // データベースにない場合はAPIから取得
+            console.log('AdviceCard: APIからアドバイスを取得します'); // デバッグ用ログ
+            const response = await fetch(`/api/nutrition-advice?date=${date}`);
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    console.log('AdviceCard: APIエラーレスポンス', errorData); // デバッグ用ログ
+            if (!response.ok) {
+                const errorData = await response.json();
 
-                    if (errorData.redirect) {
-                        setError(`${errorData.error}: ${errorData.message || ''}. プロフィールページへ移動してください。`);
-                    } else {
-                        throw new Error(errorData.error || 'アドバイスの取得に失敗しました');
-                    }
-                    return;
+                // リダイレクト情報がある場合
+                if (errorData.redirect) {
+                    throw new Error(`${errorData.error || 'エラーが発生しました'}: ${errorData.message || ''}`);
                 }
 
-                const apiData = await response.json();
-                console.log('AdviceCard: API取得結果', apiData); // デバッグ用ログ
-
-                if (apiData.success && apiData.advice) {
-                    setAdvice({
-                        id: apiData.advice.id,
-                        user_id: session.user.id,
-                        advice_date: date,
-                        advice_type: AdviceType.DAILY,
-                        advice_summary: apiData.advice.content,
-                        is_read: apiData.advice.is_read,
-                        created_at: apiData.advice.created_at
-                    });
-                } else {
-                    throw new Error(apiData.error || 'アドバイスの取得に失敗しました');
-                }
-            } else if (fetchError) {
-                throw fetchError;
+                throw new Error(errorData.error || 'アドバイスの取得に失敗しました');
             }
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'アドバイスの取得に失敗しました');
+            }
+
+            setAdvice(data);
         } catch (err) {
             console.error('栄養アドバイス取得エラー:', err);
-            setError(err instanceof Error ? err.message : '栄養アドバイスの取得に失敗しました');
+            setError(err instanceof Error ? err.message : 'アドバイスの取得に失敗しました');
         } finally {
             setLoading(false);
         }
@@ -161,6 +152,8 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({ date, className = '' }) 
                         <div className="p-3 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200">
                             <p className="text-sm whitespace-pre-line">{advice.advice_summary}</p>
                         </div>
+
+
                         <Button
                             variant="outline"
                             className="w-full mt-2"

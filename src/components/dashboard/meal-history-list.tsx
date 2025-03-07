@@ -37,7 +37,7 @@ export default function MealHistoryList({ userId }: MealHistoryListProps) {
                 setLoading(true);
 
                 const { data: mealRecords, error } = await supabase
-                    .from('meal_records')
+                    .from('meals')
                     .select('*')
                     .eq('user_id', userId)
                     .order('meal_date', { ascending: false })

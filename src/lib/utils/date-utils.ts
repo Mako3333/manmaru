@@ -19,6 +19,20 @@ export function getCurrentSeason(): string {
 }
 
 /**
+ * 日本時間の現在日付を取得する
+ * @param formatStr 日付フォーマット（デフォルト: 'yyyy-MM-dd'）
+ * @returns フォーマットされた日本時間の日付文字列
+ */
+export function getJapanDate(formatStr: string = 'yyyy-MM-dd'): string {
+    // 現在のUTC日時を取得
+    const now = new Date();
+    // 日本時間のタイムゾーンオフセットを設定（UTC+9）
+    const japanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+    // 指定されたフォーマットで日付を返す
+    return formatDate(japanTime, formatStr);
+}
+
+/**
  * 日付をフォーマットする
  * @param date 日付オブジェクトまたは日付文字列
  * @param format フォーマット（'yyyy-MM-dd'など）

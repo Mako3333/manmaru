@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight } from 'lucide-react';
 import { NutritionCalculator } from '@/lib/nutrition/calculator';
+import { getJapanDate } from '@/lib/utils/date-utils';
 
 interface HomeClientProps {
     user: any;
@@ -25,7 +26,8 @@ interface HomeClientProps {
 export default function HomeClient({ user }: HomeClientProps) {
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+    // 日本時間の現在日付を取得
+    const [currentDate, setCurrentDate] = useState<string>(getJapanDate());
     const [nutritionData, setNutritionData] = useState<any>(null);
     const router = useRouter();
     const supabase = createClientComponentClient();
@@ -233,7 +235,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                 </Card>
 
                 {/* 3. アドバイスカード - 修正版 */}
-                <AdviceCard date={currentDate} />
+                <AdviceCard date={format(new Date(), 'yyyy-MM-dd')} />
 
                 {/* 4. 行動喚起カード - 改善版 */}
                 <div className="mb-4">

@@ -173,18 +173,19 @@ export class AIService {
         pregnancyWeek: number;
         trimester: number;
         deficientNutrients: string[];
-        isSummary: boolean;
         formattedDate: string;
         currentSeason: string;
     }): Promise<NutritionAdviceResult> {
         // プロンプト生成
         const prompt = this.promptService.generatePrompt(PromptType.NUTRITION_ADVICE, {
-            ...params,
-            adviceType: params.isSummary ? '簡潔な' : '詳細な',
-            adviceInstructions: params.isSummary
-                ? '簡潔な要約アドバイスを1段落で提供してください。'
-                : '詳細なアドバイスを提供し、最後に「### 推奨食品」セクションを追加して、不足している栄養素を補うのに適した食品を3〜5つリストアップしてください。各食品について、その利点も簡単に説明してください。'
+            ...params
         });
+
+        console.log('AIService: 栄養アドバイス生成開始', {
+            pregnancyWeek: params.pregnancyWeek,
+            trimester: params.trimester,
+            deficientNutrientsCount: params.deficientNutrients.length
+        }); // デバッグ用ログ
 
         // モデル呼び出し
         const model = AIModelFactory.createTextModel({
@@ -196,7 +197,7 @@ export class AIService {
             const responseText = response.toString();
 
             // テキスト形式の応答をパース
-            return this.parseNutritionAdvice(responseText, params.isSummary);
+            return this.parseNutritionAdvice(responseText);
         } catch (error) {
             if (error instanceof AIError) throw error;
 
@@ -271,41 +272,108 @@ export class AIService {
     /**
      * 栄養アドバイステキストのパース
      */
-    private parseNutritionAdvice(responseText: string, isSummary: boolean): NutritionAdviceResult {
-        if (isSummary) {
-            // 要約モードの場合は単純にテキスト全体を要約として扱う
-            return {
-                summary: this.cleanupText(responseText)
-            };
+    private parseNutritionAdvice(responseText: string): NutritionAdviceResult {
+        console.log('AIService: パース開始', { textLength: responseText.length }); // デバッグ用ログ
+
+        // JSONレスポンスかどうかを確認
+        if (responseText.includes('"advice_summary"') && responseText.includes('"advice_detail"')) {
+            try {
+                // JSONの部分を抽出
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    const jsonStr = jsonMatch[0];
+                    const parsedData = JSON.parse(jsonStr);
+
+                    console.log('AIService: JSONレスポンスを検出', {
+                        summaryLength: parsedData.advice_summary?.length || 0,
+                        detailLength: parsedData.advice_detail?.length || 0
+                    });
+
+                    // 推奨食品の形式を変換
+                    let recommendedFoods: Array<{ name: string, benefits: string }> = [];
+                    if (parsedData.recommended_foods && Array.isArray(parsedData.recommended_foods)) {
+                        recommendedFoods = parsedData.recommended_foods.map((food: any) => ({
+                            name: food.name || '',
+                            benefits: food.description || food.benefits || ''
+                        }));
+                    }
+
+                    return {
+                        summary: parsedData.advice_summary || '',
+                        detailedAdvice: parsedData.advice_detail || '',
+                        recommendedFoods: recommendedFoods
+                    };
+                }
+            } catch (error) {
+                console.error('AIService: JSONパースエラー', error);
+                // JSONパースに失敗した場合は通常のテキスト処理に進む
+            }
         }
 
-        // 詳細モードの場合は推奨食品リストを抽出
-        const recommendedFoods = this.extractRecommendedFoods(responseText);
-
-        // 最初の段落を要約として抽出
+        // 通常のテキスト処理（JSONでない場合）
+        // テキストを段落に分割
         const paragraphs = responseText.split(/\n\s*\n/);
-        const summary = paragraphs.length > 0
-            ? this.cleanupText(paragraphs[0])
-            : this.cleanupText(responseText);
 
-        // 詳細アドバイスを抽出（推奨食品リストの前まで）
-        let detailedAdvice = '';
-        const foodListIndex = responseText.indexOf('### 推奨食品');
-        if (foodListIndex !== -1 && paragraphs.length > 1) {
-            detailedAdvice = this.cleanupText(
-                responseText.substring(paragraphs[0].length, foodListIndex)
-            );
-        } else if (paragraphs.length > 1) {
-            // 食品リストが見つからない場合
-            detailedAdvice = this.cleanupText(
-                responseText.substring(paragraphs[0].length)
-            );
+        // 最初の段落を要約として抽出（最大150文字まで）
+        let summary = '';
+        if (paragraphs.length > 0) {
+            const firstParagraph = this.cleanupText(paragraphs[0]);
+            summary = firstParagraph.length > 150
+                ? firstParagraph.substring(0, 147) + '...'
+                : firstParagraph;
+        } else {
+            summary = this.cleanupText(responseText.substring(0, 150) + '...');
         }
+
+        // 推奨食品セクションを探す
+        const foodSectionIndex = responseText.indexOf('### 推奨食品');
+
+        // 詳細アドバイスを抽出
+        let detailedAdvice = '';
+        if (foodSectionIndex !== -1) {
+            // 推奨食品セクションがある場合、その前までを詳細アドバイスとする
+            detailedAdvice = this.cleanupText(responseText.substring(0, foodSectionIndex));
+        } else {
+            // 推奨食品セクションがない場合、全文を詳細アドバイスとする
+            detailedAdvice = this.cleanupText(responseText);
+        }
+
+        // 詳細アドバイスが要約と同じ場合は、要約を除いた部分を詳細アドバイスとする
+        if (detailedAdvice.startsWith(summary) && detailedAdvice.length > summary.length) {
+            detailedAdvice = this.cleanupText(detailedAdvice.substring(summary.length));
+        }
+
+        // 詳細アドバイスが空の場合は、要約をそのまま詳細アドバイスとする
+        if (!detailedAdvice && summary) {
+            detailedAdvice = summary;
+        }
+
+        // 推奨食品リストを抽出
+        let recommendedFoods: Array<{ name: string, benefits: string }> = [];
+        if (foodSectionIndex !== -1) {
+            const foodSectionText = responseText.substring(foodSectionIndex);
+            recommendedFoods = this.extractRecommendedFoods(foodSectionText);
+        }
+
+        // 推奨食品が見つからない場合は、デフォルトの推奨食品を設定
+        if (recommendedFoods.length === 0) {
+            recommendedFoods = [
+                { name: '葉物野菜', benefits: '葉酸が豊富で胎児の神経管の発達に重要です' },
+                { name: '乳製品', benefits: 'カルシウムが豊富で骨の発達に役立ちます' },
+                { name: '果物', benefits: 'ビタミンが豊富で免疫力向上に役立ちます' }
+            ];
+        }
+
+        console.log('AIService: パース結果', {
+            summaryLength: summary.length,
+            detailedAdviceLength: detailedAdvice.length,
+            recommendedFoodsCount: recommendedFoods.length
+        }); // デバッグ用ログ
 
         return {
             summary,
-            detailedAdvice: detailedAdvice || undefined,
-            recommendedFoods: recommendedFoods.length > 0 ? recommendedFoods : undefined
+            detailedAdvice,
+            recommendedFoods
         };
     }
 
@@ -314,25 +382,65 @@ export class AIService {
      */
     private extractRecommendedFoods(text: string): Array<{ name: string, benefits: string }> {
         const foods: Array<{ name: string, benefits: string }> = [];
+        console.log('extractRecommendedFoods: 開始', { textLength: text.length }); // デバッグ用ログ
 
-        // 推奨食品セクションを探す
-        const foodSection = text.match(/###\s*推奨食品[^#]*|推奨食品[：:][^#]*/i);
-        if (!foodSection) return foods;
-
-        // 箇条書きアイテムを抽出
-        const listItems = foodSection[0].match(/[-•*]\s*([^:：\n]+)[：:]\s*([^\n]+)/g);
-        if (!listItems) return foods;
-
-        // 各アイテムをパース
-        listItems.forEach(item => {
-            const parts = item.match(/[-•*]\s*([^:：\n]+)[：:]\s*([^\n]+)/);
-            if (parts && parts.length >= 3) {
-                foods.push({
-                    name: parts[1].trim(),
-                    benefits: parts[2].trim()
-                });
+        try {
+            // 推奨食品セクションを探す
+            if (!text.includes('### 推奨食品')) {
+                console.log('extractRecommendedFoods: 推奨食品セクションが見つかりませんでした'); // デバッグ用ログ
+                return foods;
             }
-        });
+
+            // 推奨食品セクション以降のテキストを取得
+            const foodSectionText = text.substring(text.indexOf('### 推奨食品'));
+            console.log('extractRecommendedFoods: セクションテキスト', {
+                length: foodSectionText.length,
+                preview: foodSectionText.substring(0, 100) + '...'
+            }); // デバッグ用ログ
+
+            // 箇条書きアイテムを抽出
+            const lines = foodSectionText.split('\n');
+            for (let i = 1; i < lines.length; i++) { // 1から開始して「### 推奨食品」の行をスキップ
+                const line = lines[i].trim();
+
+                // 空行はスキップ
+                if (!line) continue;
+
+                // 箇条書きの行を検出
+                if (line.startsWith('-') || line.startsWith('*') || line.startsWith('•')) {
+                    const content = line.substring(1).trim();
+                    console.log('extractRecommendedFoods: 箇条書き検出', { content }); // デバッグ用ログ
+
+                    // 食品名と利点を分離
+                    const colonIndex = content.indexOf('：');
+                    const colonIndex2 = content.indexOf(':');
+                    const separatorIndex = colonIndex !== -1 ? colonIndex : colonIndex2;
+
+                    if (separatorIndex !== -1) {
+                        foods.push({
+                            name: content.substring(0, separatorIndex).trim(),
+                            benefits: content.substring(separatorIndex + 1).trim()
+                        });
+                    } else if (content) {
+                        // 区切りがない場合は食品名のみとして扱う
+                        foods.push({
+                            name: content,
+                            benefits: '栄養バランスの向上に役立ちます'
+                        });
+                    }
+                }
+
+                // 次のセクションが始まったら終了
+                if (i > 1 && line.startsWith('###') && !line.includes('推奨食品')) {
+                    break;
+                }
+            }
+
+            console.log('extractRecommendedFoods: 抽出結果', { count: foods.length }); // デバッグ用ログ
+        } catch (error) {
+            console.error('extractRecommendedFoods: エラー発生', error);
+            // エラーが発生した場合でも空の配列を返す
+        }
 
         return foods;
     }

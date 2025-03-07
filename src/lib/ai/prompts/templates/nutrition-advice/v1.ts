@@ -12,27 +12,30 @@ export const template = `
 現在の栄養状態は良好です。
 {{/if}}
 
-{{#if isSummary}}
-以下の点を考慮した簡潔なアドバイスを作成してください:
-1. 妊娠周期、栄養摂取状況、不足している栄養素、季節要因を考慮した
-アドバイスを2文程度、親しみやすく、要点を絞った内容で作成してください。
-専門用語の使用は最小限に抑え、温かい口調で作成してください。
-{{else}}
-以下の点を含む詳細なアドバイスを作成してください:
-1. 妊娠{{pregnancyWeek}}週目の胎児の発達状況
-2. この時期に特に重要な栄養素とその理由
-3. {{#if deficientNutrients.length}}
-不足している栄養素（{{#each deficientNutrients}}{{#if @index}}、{{/if}}{{this}}{{/each}}）を補うための具体的な食品例とレシピのアイデア
-{{else}}
-全体的な栄養バランスを維持するための詳細なアドバイスと食品例
-{{/if}}
-4. {{currentSeason}}の旬の食材を取り入れた具体的な提案
+以下のJSON形式で回答してください：
 
-さらに、レスポンスの最後に「### 推奨食品リスト」というセクションを作成し、箇条書きで5-7つの具体的な食品と、その栄養価や調理法のヒントを簡潔に列挙してください。特に{{currentSeason}}の旬の食材を含めてください。
+\`\`\`detail
+{
+  "advice_summary": "妊娠周期、栄養状態、季節を考慮した簡潔なアドバイスを100-150文字程度で記述してください。",
+  "advice_detail": "妊娠{{pregnancyWeek}}週目の胎児の発達状況、この時期に特に重要な栄養素とその理由、{{#if deficientNutrients.length}}不足している栄養素を補うための具体的な食品例{{else}}全体的な栄養バランスを維持するための詳細なアドバイス{{/if}}、{{currentSeason}}の旬の食材を取り入れた具体的な提案を300-500文字程度で記述してください。",
+  "recommended_foods": [
+    {
+      "name": "食品名1",
+      "description": "その栄養価や調理法のヒントを簡潔に"
+    },
+    {
+      "name": "食品名2",
+      "description": "その栄養価や調理法のヒントを簡潔に"
+    },
+    // 5-7つの食品を列挙してください
+  ]
+}
+\`\`\`
 
-アドバイスは300-500字程度、詳細ながらも理解しやすい内容で作成してください。
+特に{{currentSeason}}の旬の食材を含めてください。
 専門用語を使う場合は、簡単な説明を添えてください。
-{{/if}}
+
+【重要】必ずJSON形式で回答し、上記の3つのフィールド（advice_summary、advice_detail、recommended_foods）を全て含めてください。
 `;
 
 export default template;
@@ -40,8 +43,8 @@ export default template;
 export const metadata = {
     id: 'nutrition-advice',
     version: 'v1',
-    createdAt: new Date('2023-04-01'),
-    updatedAt: new Date('2023-04-01'),
+    createdAt: new Date('2025-03-06'),
+    updatedAt: new Date('2025-03-06'),
     isActive: true,
     changelog: '初期バージョン'
 }; 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, Clock, Calendar, RefreshCw, History } from 'lucide-react';
 import { toast } from 'sonner';
+import { getJapanDate } from '@/lib/utils/date-utils';
 
 // 新しいダッシュボードコンポーネントをインポート
 import MealHistoryList from '@/components/dashboard/meal-history-list';
@@ -41,7 +42,8 @@ export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
     const [nutritionData, setNutritionData] = useState<any>(null)
-    const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+    // 日本時間の現在日付を取得
+    const [currentDate, setCurrentDate] = useState<string>(getJapanDate());
     const [activeTab, setActiveTab] = useState<string>('today');
     const [adviceHistory, setAdviceHistory] = useState<AdviceHistoryItem[]>([]);
     const [showAdviceHistory, setShowAdviceHistory] = useState(false);
@@ -149,8 +151,11 @@ export default function DashboardPage() {
             setRefreshingAdvice(true);
             toast.loading('栄養アドバイスを更新中...');
 
+            // 日本時間の現在日付を取得
+            const today = getJapanDate();
+
             // 強制的に新しいアドバイスを生成するモードでAPIを呼び出し
-            const response = await fetch('/api/nutrition-advice?detail=true&mode=force_update');
+            const response = await fetch(`/api/nutrition-advice?detail=true&force=true&date=${today}`);
 
             if (!response.ok) {
                 const errorData = await response.json();

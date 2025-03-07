@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { AdviceState } from "@/types/nutrition";
 import ReactMarkdown from "react-markdown";
 import Link from 'next/link';
+import { format } from 'date-fns';
+import { getJapanDate } from '@/lib/utils/date-utils';
 
 export function DetailedNutritionAdvice() {
     // 1. 状態管理
@@ -28,8 +30,11 @@ export function DetailedNutritionAdvice() {
             setState(prev => ({ ...prev, loading: true, error: null }));
             console.log('DetailedNutritionAdvice: データ取得開始'); // デバッグ用ログ
 
+            // 日本時間の現在日付を取得
+            const today = getJapanDate();
+
             // Supabaseから直接データを取得する代わりに、APIを使用
-            const response = await fetch("/api/nutrition-advice?detail=true");
+            const response = await fetch(`/api/nutrition-advice?detail=true&date=${today}`);
             console.log('DetailedNutritionAdvice: APIレスポンス', response.status); // デバッグ用ログ
 
             if (!response.ok) {
