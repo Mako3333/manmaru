@@ -64,6 +64,7 @@ export const POST = withErrorHandling(async (request: Request) => {
 
         return NextResponse.json({
             success: true,
+            enhancedFoods: result.foods,
             ...result
         });
     } catch (error) {

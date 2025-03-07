@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { AIModelFactory } from './model-factory';
 import { PromptService, PromptType } from './prompts/prompt-service';
 import { AIError, ErrorCode } from '@/lib/errors/ai-error';
+import { NutritionDatabase } from '@/lib/nutrition/database';
+import { FoodItem, NutritionData } from '@/types/nutrition';
 
 // 食品分析結果の型とスキーマ
 export interface FoodAnalysisResult {
@@ -62,9 +64,11 @@ export interface FoodInput {
 export class AIService {
     private static instance: AIService;
     private promptService: PromptService;
+    private nutritionDatabase: NutritionDatabase;
 
     private constructor() {
         this.promptService = PromptService.getInstance();
+        this.nutritionDatabase = NutritionDatabase.getInstance();
     }
 
     /**
@@ -183,11 +187,62 @@ export class AIService {
             );
 
             // JSONパース処理
-            const result = this.parseJSONResponse<FoodAnalysisResult>(
-                responseText,
-                foodAnalysisSchema,
-                'foods'
-            );
+            let result: FoodAnalysisResult;
+            try {
+                result = this.parseJSONResponse<FoodAnalysisResult>(
+                    responseText,
+                    foodAnalysisSchema,
+                    'foods'
+                );
+
+                // foodsフィールドの存在確認（念のため）
+                if (!result.foods || !Array.isArray(result.foods) || result.foods.length === 0) {
+                    console.warn('AIService: foods配列が空または存在しないため、入力データから自動生成します');
+                    result.foods = validFoods.map(food => ({
+                        name: food.name.trim(),
+                        quantity: food.quantity?.trim() || '', // undefinedの場合は空文字列に変換
+                        confidence: 0.7
+                    }));
+                }
+            } catch (parseError) {
+                console.error('AIService: JSONパースエラー、フォールバック処理を実行:', parseError);
+
+                // パースエラーが発生した場合のフォールバック処理
+                // 入力された食品をそのまま使用して栄養計算を行う
+                const foodItems: FoodItem[] = validFoods.map(food => ({
+                    name: food.name.trim(),
+                    quantity: food.quantity?.trim(), // ここは FoodItem の定義に合わせる
+                    confidence: 0.7  // デフォルトの信頼度を明示的に設定
+                }));
+
+                // 栄養データベースを使用して栄養計算
+                const nutritionData = await this.nutritionDatabase.calculateNutrition(foodItems);
+
+                // 結果の構築（FoodItemからFoodAnalysisResultの形式に変換）
+                result = {
+                    foods: foodItems.map(item => ({
+                        name: item.name,
+                        quantity: item.quantity || '', // undefinedの場合は空文字列に変換
+                        confidence: 0.7 // FoodAnalysisResultでは必須なので、常に値を設定
+                    })),
+                    nutrition: {
+                        calories: nutritionData.calories || 0,
+                        protein: nutritionData.protein || 0,
+                        iron: nutritionData.iron || 0,
+                        folic_acid: nutritionData.folic_acid || 0,
+                        calcium: nutritionData.calcium || 0,
+                        vitamin_d: nutritionData.vitamin_d || 0,
+                        confidence_score: nutritionData.confidence_score || 0.5 // undefinedの場合はデフォルト値を設定
+                    }
+                };
+
+                // 結果の検証
+                console.log('AIService: フォールバック処理による結果:', {
+                    foodsCount: result.foods.length,
+                    hasNutrition: !!result.nutrition,
+                    calories: result.nutrition?.calories
+                });
+            }
 
             // 結果の検証と修正
             // 栄養素の値が負の場合は0に修正
@@ -202,7 +257,70 @@ export class AIService {
                 }
             }
 
-            console.log('AIService: テキスト入力解析結果:', result);
+            // 栄養データベースを使用した栄養計算の補完
+            // AIの結果をさらに正確にするために栄養データベースの情報も活用
+            try {
+                // 食品リストをFoodItem形式に変換
+                const foodItems: FoodItem[] = result.foods.map(food => ({
+                    name: food.name,
+                    quantity: food.quantity, // すでにstringなので変換不要
+                    confidence: food.confidence
+                }));
+
+                // 栄養データベースによる栄養計算
+                const nutritionData = await this.nutritionDatabase.calculateNutrition(foodItems);
+
+                // AIの結果にデータベースの結果を反映（信頼度が高い場合）
+                // AIの結果を優先しつつ、不足している情報をデータベースから補完
+                if (nutritionData.confidence_score && nutritionData.confidence_score > 0.6) {
+                    result.nutrition = {
+                        ...result.nutrition,
+                        calories: nutritionData.calories || 0,
+                        protein: nutritionData.protein || 0,
+                        iron: nutritionData.iron || 0,
+                        folic_acid: nutritionData.folic_acid || 0,
+                        calcium: nutritionData.calcium || 0,
+                        vitamin_d: nutritionData.vitamin_d || result.nutrition.vitamin_d || 0,
+                        confidence_score: Math.max(
+                            result.nutrition.confidence_score,
+                            nutritionData.confidence_score || 0
+                        )
+                    };
+                }
+            } catch (dbError) {
+                console.error('AIService: 栄養データベース計算エラー:', dbError);
+                // データベース計算でエラーが発生しても、AIの結果をそのまま使用
+            }
+
+            // foods フィールドが存在しない場合に追加（通常ありえないが念のため）
+            if (!result.foods) {
+                result.foods = validFoods.map(food => ({
+                    name: food.name.trim(),
+                    quantity: food.quantity?.trim() || '', // undefinedの場合は空文字列に変換
+                    confidence: 0.5  // デフォルトの信頼度
+                }));
+            }
+
+            // 最終確認: foodsフィールドが必ず配列で存在することを保証
+            if (!result.foods) result.foods = [];
+
+            // 最終確認: nutritionフィールドが存在することを保証
+            if (!result.nutrition) {
+                result.nutrition = {
+                    calories: 0,
+                    protein: 0,
+                    iron: 0,
+                    folic_acid: 0,
+                    calcium: 0,
+                    confidence_score: 0.5
+                };
+            }
+
+            console.log('AIService: テキスト入力解析結果:', {
+                foodsCount: result.foods.length,
+                nutrition: result.nutrition
+            });
+
             return result;
         } catch (error) {
             console.error('AIService: テキスト入力解析エラー:', error);
@@ -287,37 +405,144 @@ export class AIService {
         schema?: z.ZodSchema<T>,
         requiredField?: string
     ): T {
-        // JSONパターンの抽出
-        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
-
-        if (!jsonMatch) {
-            throw new AIError(
-                'JSONレスポンスの形式が不正です',
-                ErrorCode.RESPONSE_PARSE_ERROR,
-                responseText
-            );
-        }
-
-        // JSON抽出
-        const jsonStr = (jsonMatch[1] || jsonMatch[2]).trim();
-
         try {
-            // JSONパース
-            const parsed = JSON.parse(jsonStr);
+            // JSONパターンの抽出
+            const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
 
-            // 必須フィールドの確認
-            if (requiredField && !parsed[requiredField]) {
+            if (!jsonMatch) {
+                console.error('AIService: JSON形式が見つかりません:', responseText);
                 throw new AIError(
-                    `必須フィールド "${requiredField}" が見つかりません`,
-                    ErrorCode.VALIDATION_ERROR,
-                    { response: parsed }
+                    'JSONレスポンスの形式が不正です',
+                    ErrorCode.RESPONSE_PARSE_ERROR,
+                    responseText
                 );
             }
 
-            // スキーマ検証（オプション）
+            // JSON抽出
+            const jsonStr = (jsonMatch[1] || jsonMatch[2]).trim();
+            console.log('AIService: 抽出されたJSON文字列:', jsonStr.substring(0, 200) + '...');
+
+            // JSONパース
+            let parsed: any;
+            try {
+                parsed = JSON.parse(jsonStr);
+            } catch (parseError) {
+                console.error('AIService: JSONパースエラー:', parseError);
+
+                // JSON構文エラーの場合は、文字列を修正して再試行
+                const fixedJsonStr = this.attemptToFixJson(jsonStr);
+                if (fixedJsonStr !== jsonStr) {
+                    try {
+                        parsed = JSON.parse(fixedJsonStr);
+                        console.log('AIService: 修正後のJSONをパースしました');
+                    } catch (secondError) {
+                        console.error('AIService: 修正JSON再パースでもエラー:', secondError);
+                        throw new AIError(
+                            'JSONの解析に失敗しました',
+                            ErrorCode.RESPONSE_PARSE_ERROR,
+                            { error: parseError, text: jsonStr }
+                        );
+                    }
+                } else {
+                    throw new AIError(
+                        'JSONの解析に失敗しました',
+                        ErrorCode.RESPONSE_PARSE_ERROR,
+                        { error: parseError, text: jsonStr }
+                    );
+                }
+            }
+
+            // 必須フィールドの確認と自動修正
+            if (requiredField && !parsed[requiredField]) {
+                console.warn(`AIService: 必須フィールド "${requiredField}" が見つかりません - 自動修正します`);
+
+                // 特定のフィールドが欠落している場合の対処
+                if (requiredField === 'foods') {
+                    // foodsフィールドがない場合は空の配列を設定
+                    parsed.foods = [];
+
+                    // 代替フィールドを探す試み
+                    if (parsed.food) {
+                        console.log('AIService: "food" フィールドを "foods" として使用します');
+                        if (Array.isArray(parsed.food)) {
+                            parsed.foods = parsed.food;
+                        } else if (typeof parsed.food === 'object') {
+                            parsed.foods = [parsed.food];
+                        }
+                    } else if (parsed.items) {
+                        console.log('AIService: "items" フィールドを "foods" として使用します');
+                        if (Array.isArray(parsed.items)) {
+                            parsed.foods = parsed.items;
+                        }
+                    } else if (parsed.foodItems) {
+                        console.log('AIService: "foodItems" フィールドを "foods" として使用します');
+                        if (Array.isArray(parsed.foodItems)) {
+                            parsed.foods = parsed.foodItems;
+                        }
+                    }
+                }
+
+                // 他のフィールドの対処も必要に応じて追加
+            }
+
+            // スキーマ検証（オプション）とデータ修正
             if (schema) {
                 const result = schema.safeParse(parsed);
                 if (!result.success) {
+                    console.error('AIService: スキーマ検証エラー:', result.error.issues);
+
+                    // FoodAnalysisResult形式のスキーマエラー時の特別処理
+                    if (requiredField === 'foods') {
+                        // 必須項目の設定
+                        if (!parsed.foods) parsed.foods = [];
+
+                        // foods配列のアイテムを確認、修正
+                        if (Array.isArray(parsed.foods)) {
+                            parsed.foods = parsed.foods.map((item: any) => ({
+                                name: item.name || "不明な食品",
+                                quantity: item.quantity || "",
+                                confidence: item.confidence || 0.5
+                            }));
+                        }
+
+                        // nutritionフィールド確認、修正
+                        if (!parsed.nutrition) {
+                            parsed.nutrition = {
+                                calories: 0,
+                                protein: 0,
+                                iron: 0,
+                                folic_acid: 0,
+                                calcium: 0,
+                                vitamin_d: 0,
+                                confidence_score: 0.5
+                            };
+                        } else {
+                            // 各栄養素フィールドが存在することを確認
+                            const nutritionDefaults = {
+                                calories: 0,
+                                protein: 0,
+                                iron: 0,
+                                folic_acid: 0,
+                                calcium: 0,
+                                vitamin_d: 0,
+                                confidence_score: 0.5
+                            };
+
+                            parsed.nutrition = {
+                                ...nutritionDefaults,
+                                ...parsed.nutrition
+                            };
+                        }
+
+                        // 再検証
+                        const recheck = schema.safeParse(parsed);
+                        if (recheck.success) {
+                            console.log('AIService: 自動修正によりスキーマ検証に成功しました');
+                            return recheck.data;
+                        }
+                    }
+
+                    // それでも失敗する場合はエラー
                     throw new AIError(
                         'データ検証エラー',
                         ErrorCode.VALIDATION_ERROR,
@@ -329,13 +554,45 @@ export class AIService {
 
             return parsed;
         } catch (error) {
+            // AIErrorをそのまま再スロー
             if (error instanceof AIError) throw error;
 
+            // その他のエラーはAIErrorに変換
             throw new AIError(
-                'JSONの解析に失敗しました',
+                'JSONの解析処理中にエラーが発生しました',
                 ErrorCode.RESPONSE_PARSE_ERROR,
-                { error, text: jsonStr }
+                error
             );
+        }
+    }
+
+    /**
+     * JSON文字列の修正を試みる
+     */
+    private attemptToFixJson(jsonStr: string): string {
+        try {
+            // 一般的なJSON構文エラーの修正
+
+            // 1. 不要なテキストの除去
+            let fixed = jsonStr.replace(/[\r\n\t]+/g, ' ');
+
+            // 2. クォーテーションの修正
+            fixed = fixed.replace(/(['"])([a-zA-Z0-9_]+)(['"]):/g, '"$2":');
+
+            // 3. 欠落したクォーテーションの追加
+            fixed = fixed.replace(/:([a-zA-Z]+)/g, ':"$1"');
+
+            // 4. 末尾のカンマを修正
+            fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+
+            // 5. 誤った構文の修正
+            fixed = fixed.replace(/([{,])\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+
+            console.log('AIService: JSON修正を試みました');
+            return fixed;
+        } catch (error) {
+            console.error('AIService: JSON修正エラー:', error);
+            return jsonStr; // 修正に失敗した場合は元の文字列を返す
         }
     }
 
@@ -524,4 +781,4 @@ export class AIService {
             .replace(/\n{3,}/g, '\n\n')      // 3つ以上の連続改行を2つに
             .trim();
     }
-} 
+}
