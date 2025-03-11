@@ -28,9 +28,10 @@ const RequestSchema = z.object({
 type SupabaseClient = any; // 実際の型が利用可能な場合は置き換えてください
 
 // Supabaseクライアント作成関数
-function createClient(): SupabaseClient {
-    // サーバーサイドでのクライアント作成
-    return createRouteHandlerClient({ cookies });
+async function createClient(): Promise<SupabaseClient> {
+    // cookies()を非同期で処理
+    const cookieStore = cookies();
+    return createRouteHandlerClient({ cookies: () => cookieStore });
 }
 
 // 過去の栄養データを取得する関数（ここに追加）
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
         console.log('栄養アドバイスAPI: リクエスト日付 =', requestDate);
         console.log('栄養アドバイスAPI: アドバイスタイプ =', adviceType);
 
-        const supabase = createClient();
+        const supabase = await createClient();
 
         // ユーザー認証確認
         const { data: { session } } = await supabase.auth.getSession();
@@ -438,7 +439,8 @@ function calculateTrimester(pregnancyWeek: number): number {
 // read状態を更新するPATCHエンドポイント
 export async function PATCH(request: Request) {
     try {
-        const supabase = createRouteHandlerClient({ cookies });
+        const cookieStore = cookies();
+        const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
         // ユーザー認証確認
         const { data: { session } } = await supabase.auth.getSession();
