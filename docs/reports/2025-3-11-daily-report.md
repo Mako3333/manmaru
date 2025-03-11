@@ -560,3 +560,250 @@
 
 これらの機能強化により、manmaruアプリはより使いやすく、正確で、パーソナライズされた栄養管理ツールとして妊婦の健康をサポートしていきます。
 ◤◢◤◢◤◢◤◢◤◢◤◢◤◢
+
+## 7. 実装の追加改善
+
+本日、前回の実装から発生していた問題点を特定し、以下の改善を実施しました。
+
+### 7.1 データベースURL処理の最適化
+
+#### 背景
+- クライアントサイドとサーバーサイドでデータベースファイルへのアクセス方法が異なる
+- 相対パスと絶対URLの扱いに関するエラーが発生していた
+- 開発環境と本番環境で一貫した動作が必要だった
+
+#### 実施した変更
+1. **環境に応じたURL構築ロジックの改善**
+   - クライアントサイドとサーバーサイドの判定ロジックを見直し
+   ```typescript
+   // データベースファイルのパスを環境に応じて適切に構築
+   let baseUrl: string;
+   
+   if (typeof window !== 'undefined') {
+     // クライアントサイド
+     baseUrl = window.location.origin;
+   } else {
+     // サーバーサイド - 環境変数またはデフォルト値を使用
+     baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+   }
+   
+   const dbUrl = `${baseUrl}/data/food_nutrition_database.json`;
+   ```
+
+2. **ファイル配置の最適化**
+   - データベースファイルを`public/data`ディレクトリに配置
+   - アプリケーションからのアクセスを一貫して`/data/food_nutrition_database.json`に統一
+   - ファイル操作コマンドの作成と実行
+   ```bash
+   mkdir -p public/data
+   copy src/data/food_nutrition_database.json public/data/
+   ```
+
+3. **エラーハンドリングの強化**
+   - データベースファイル読み込み失敗時の処理を改善
+   - 重大なエラーを適切にロギングしつつ、アプリケーション全体が停止しない仕組みを実装
+   ```typescript
+   try {
+     // データベースファイルの読み込み
+     const response = await fetch(dbUrl);
+     if (!response.ok) {
+       throw new Error(`Failed to load database: ${response.statusText}`);
+     }
+     const data = await response.json();
+     this.foodDatabase = data.foods || data;
+     
+     console.log(`データベースの読み込み完了: ${Object.keys(this.foodDatabase).length}件`);
+   } catch (error) {
+     this.loadingError = error instanceof Error ? error : new Error(String(error));
+     console.error('食品データベースの読み込みに失敗しました:', this.loadingError);
+   }
+   ```
+
+### 7.2 食品検索ロジックの大幅強化
+
+#### 背景
+- 一部の食品名（例：八宝菜、豆腐ハンバーグ）が正確に検索できなかった
+- 日本語特有の表記ゆれや部分一致の問題があった
+- 複合語や類似食品の検索精度向上が必要だった
+
+#### 実施した変更
+1. **多段階検索アルゴリズムの実装**
+   - 6段階の検索手法を順次適用する検索ロジックを実装
+   ```typescript
+   private findFoodItem(name: string): DatabaseFoodItem | null {
+     const normalizedSearchName = this.normalizeFoodName(name);
+     
+     // 検索ログの追加
+     console.info(`食品検索: "${name}" (正規化: "${normalizedSearchName}")`);
+     
+     // ステップ1: 完全一致検索
+     if (this.foodDatabase[name]) {
+       console.info(`完全一致で見つかりました: ${name}`);
+       return this.foodDatabase[name];
+     }
+     
+     // 以下、様々な検索手法を順次適用
+     for (const key of Object.keys(this.foodDatabase)) {
+       // ステップ2〜6: 各種検索手法
+       // ...
+     }
+     
+     console.warn(`食品が見つかりません: ${name}`);
+     return null;
+   }
+   ```
+
+2. **日本語の音読み・訓読みマッピングの実装**
+   - 「えび」で「海老」を検索、「とうふ」で「豆腐」を検索できるように改善
+   ```typescript
+   private couldBePhoneticMatch(searchName: string, dbKey: string): boolean {
+     // 簡易的な音読み・訓読みマッピング
+     const phoneticMappings: Record<string, string[]> = {
+       'えび': ['海老', 'エビ'],
+       'とうふ': ['豆腐'],
+       'はっぽうさい': ['八宝菜'],
+       'ぴらふ': ['ピラフ'],
+       'たまご': ['卵', '玉子'],
+       // ...他のマッピング
+     };
+     
+     const normalizedSearch = this.normalizeFoodName(searchName);
+     
+     // 直接のマッピングチェック
+     for (const [phonetic, kanji] of Object.entries(phoneticMappings)) {
+       if (normalizedSearch.includes(phonetic) && kanji.some(k => dbKey.includes(k))) {
+         return true;
+       }
+       if (kanji.some(k => searchName.includes(k)) && dbKey.includes(phonetic)) {
+         return true;
+       }
+     }
+     
+     return false;
+   }
+   ```
+
+3. **キーワード分割検索の強化**
+   - 複合語（例：豆腐ハンバーグ）を適切に分割して検索する機能を追加
+   ```typescript
+   // 検索キーワードの分割による検索
+   const nameParts = name.split(/[　\s]/);  // 空白や全角スペースで分割
+   if (nameParts.length > 1) {
+     for (const part of nameParts) {
+       if (part.length > 1 && (key.includes(part) || normalizedKey.includes(this.normalizeFoodName(part)))) {
+         console.info(`検索キーワード分割で見つかりました: ${name} -> ${key} (検索キーワード: ${part})`);
+         return food;
+       }
+     }
+   }
+   ```
+
+### 7.3 エラーハンドリングとUI連携の改善
+
+#### 背景
+- データベース検索に失敗しても成功を返していて、ユーザーに誤った情報が表示されていた
+- 栄養素が正確に計算されない場合も正常レスポンスとして処理されていた
+- エラー情報がユーザーに適切に伝わらなかった
+
+#### 実施した変更
+1. **栄養計算結果の妥当性検証**
+   - 計算結果に最低限の栄養素が含まれているかをチェック
+   ```typescript
+   // 栄養値が正しく計算されたか確認
+   const hasValidNutrition = 
+     result.nutrition.calories > 100 || 
+     result.nutrition.protein > 0 ||
+     result.nutrition.iron > 0 ||
+     result.nutrition.folic_acid > 0 ||
+     result.nutrition.calcium > 0;
+   
+   // 栄養値が無効な場合はエラーを返す
+   if (!hasValidNutrition) {
+     console.warn('API: 栄養計算の結果が不十分 - デフォルト値のみ使用されています');
+     return NextResponse.json(
+       {
+         success: false,
+         error: '栄養計算ができませんでした。入力された食品が見つかりません。',
+         errorCode: 'FOOD_NOT_FOUND',
+         data: null
+       },
+       { status: 400 }
+     );
+   }
+   ```
+
+2. **メタデータとエラー情報の強化**
+   - レスポンスにメタデータを追加し、処理状況を詳細に伝える
+   ```typescript
+   // 見つからなかった食品の情報を追加
+   const notFoundFoods = result.meta?.notFoundFoods || [];
+   if (notFoundFoods.length > 0) {
+     console.warn(`API: 見つからなかった食品: ${notFoundFoods.join(', ')}`);
+     result.meta = {
+       ...result.meta,
+       notFoundFoods,
+       warning: '一部の食品が見つかりませんでした。結果は近似値です。'
+     };
+   }
+   
+   // メタデータを含めた完全なレスポンスを返す
+   return NextResponse.json({ 
+     success: true, 
+     ...result,
+     meta: {
+       ...result.meta,
+       calculationTime: new Date().toISOString()
+     }
+   });
+   ```
+
+3. **型定義の改善**
+   - `NutritionData`インターフェースの拡張と再設計
+   ```typescript
+   export interface NutritionData extends BasicNutritionData {
+     overall_score: number;
+     deficient_nutrients: string[];
+     sufficient_nutrients: string[];
+     daily_records: {
+       date: string;
+       calories: number;
+       protein: number;
+       fat: number;
+       carbs: number;
+       score: number;
+     }[];
+     // 見つからなかった食品のリスト
+     notFoundFoods?: string[];
+   }
+   ```
+
+### 7.4 今回の改善の効果
+
+#### 成果
+1. **検索精度の向上**
+   - 「豆腐ハンバーグ」が正確に検索でき、`洋風料理　ハンバーグステーキ類　豆腐ハンバーグ`を見つけるようになった
+   - 「八宝菜」が`中国料理　菜類　八宝菜`として検索可能に
+   - 日本語の表記ゆれに強い検索システムを実現
+
+2. **安定性と信頼性の向上**
+   - データベースファイルの読み込みが安定して動作するように
+   - エラー発生時に適切なエラーメッセージが表示されるように
+   - 不正確なデータの表示を防止
+
+3. **デバッグ性とメンテナンス性の向上**
+   - 詳細なログ出力により問題の原因特定が容易に
+   - 型定義の改善によりコードの安全性が向上
+   - メタデータの追加により処理状態の把握が容易に
+
+#### 今後の課題
+1. **パフォーマンスのさらなる最適化**
+   - 検索アルゴリズムの効率化
+   - データベースのロード時間短縮
+
+2. **検索精度のさらなる向上**
+   - 機械学習ベースの類似度計算の導入検討
+   - より多様な食品表現への対応
+
+3. **ユーザーフィードバックの活用**
+   - 検索失敗例の収集と分析
+   - ユーザー入力パターンに基づく検索改善
