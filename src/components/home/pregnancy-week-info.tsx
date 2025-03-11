@@ -281,16 +281,6 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
                         </div>
                     </motion.div>
 
-                    {/* 今週のポイント */}
-                    <motion.div
-                        className={`p-4 rounded-lg border ${trimesterInfo.borderColor} ${trimesterInfo.bgColor}`}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.2 }}
-                    >
-                        <div className={`font-semibold ${trimesterInfo.textColor} mb-1`}>今週のポイント</div>
-                        <div className={`text-sm ${trimesterInfo.textColor} opacity-90`}>{trimesterInfo.description}</div>
-                    </motion.div>
                 </div>
             </CardContent>
         </Card>

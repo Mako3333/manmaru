@@ -510,11 +510,7 @@ export default function DashboardPage() {
                             />
                         </div>
 
-                        {/* 食事履歴 */}
-                        <div className="mt-6">
-                            <h2 className="text-xl font-bold mb-4">食事履歴</h2>
-                            <MealHistoryList userId={profile.user_id} />
-                        </div>
+
                     </TabsContent>
 
                     <TabsContent value="week" className="mt-4">

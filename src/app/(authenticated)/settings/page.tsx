@@ -156,44 +156,6 @@ export default function SettingsPage() {
                     </div>
                 </section>
 
-                {/* アカウント設定 */}
-                <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-gray-100">
-                        <h2 className="text-lg font-semibold text-gray-800">アカウント</h2>
-                    </div>
-
-                    <div className="p-4 space-y-4">
-                        <div className="flex justify-between items-center py-2">
-                            <span className="text-gray-700">利用規約</span>
-                            <button
-                                onClick={() => router.push('/terms')}
-                                className="text-green-600 text-sm"
-                            >
-                                表示
-                            </button>
-                        </div>
-
-                        <div className="flex justify-between items-center py-2 border-t border-gray-100">
-                            <span className="text-gray-700">プライバシーポリシー</span>
-                            <button
-                                onClick={() => router.push('/privacy')}
-                                className="text-green-600 text-sm"
-                            >
-                                表示
-                            </button>
-                        </div>
-
-                        <div className="flex justify-between items-center py-2 border-t border-gray-100">
-                            <span className="text-gray-700">お問い合わせ</span>
-                            <button
-                                onClick={() => router.push('/contact')}
-                                className="text-green-600 text-sm"
-                            >
-                                表示
-                            </button>
-                        </div>
-                    </div>
-                </section>
 
                 {/* ログアウトボタン */}
                 <Button
