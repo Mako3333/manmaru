@@ -119,7 +119,23 @@ export interface NutritionDatabaseLLMAPI {
         isReady: boolean;
         itemCount: number;
         lastUpdated: Date | null;
+        error: Error | null;
     };
+
+    /**
+     * 食品リストから栄養データを計算
+     */
+    calculateNutrition(foods: FoodItem[]): Promise<NutritionData>;
+
+    /**
+     * 外部データベースを読み込む
+     */
+    loadExternalDatabase(forceReload?: boolean): Promise<void>;
+
+    /**
+     * データベースが完全に読み込まれているか確認
+     */
+    isFullyLoaded(): boolean;
 }
 
 /**
@@ -148,9 +164,22 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
     }> = new Map();
 
     private constructor() {
-        this.foodDatabase = FOOD_DATABASE;
-        this.initIndices();
-        this.buildIndices();
+        try {
+            console.log('NutritionDatabase: コンストラクタ実行');
+            this.foodDatabase = FOOD_DATABASE;
+            this.initIndices();
+            this.buildIndices();
+            console.log(`NutritionDatabase: 初期化完了 (${Object.keys(this.foodDatabase).length}件のデータ)`);
+        } catch (error) {
+            console.error('NutritionDatabase: 初期化エラー:', error);
+            // 初期化エラーでもデフォルトデータベースは設定
+            this.foodDatabase = FOOD_DATABASE;
+            throw new FoodAnalysisError(
+                'データベースの初期化に失敗しました',
+                ErrorCode.DB_INIT_ERROR,
+                error instanceof Error ? error : new Error(String(error))
+            );
+        }
     }
 
     /**
@@ -158,7 +187,17 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
      */
     static getInstance(): NutritionDatabase {
         if (!NutritionDatabase.instance) {
-            NutritionDatabase.instance = new NutritionDatabase();
+            try {
+                console.log('NutritionDatabase: インスタンス作成');
+                NutritionDatabase.instance = new NutritionDatabase();
+            } catch (error) {
+                console.error('NutritionDatabase: インスタンス作成エラー:', error);
+                throw new FoodAnalysisError(
+                    'データベースインスタンスの作成に失敗しました',
+                    ErrorCode.DB_INIT_ERROR,
+                    error instanceof Error ? error : new Error(String(error))
+                );
+            }
         }
         return NutritionDatabase.instance;
     }
@@ -168,107 +207,63 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
      * スロットリングとキャッシュ機構を追加
      */
     public async loadExternalDatabase(forceReload = false): Promise<void> {
-        // 既にロードされている場合は処理をスキップ（キャッシュが有効）
-        if (this.isFullDatabaseLoaded && !forceReload) {
-            // キャッシュの有効期限（30分 = 1800000ms）
-            const CACHE_VALIDITY_TIME = 1800000;
-            const currentTime = Date.now();
-
-            // キャッシュが有効期限内なら再読み込みしない
-            if (currentTime - this.lastLoadTime < CACHE_VALIDITY_TIME) {
-                console.log('キャッシュからデータベースを使用します');
+        try {
+            // 既に読み込み中なら待機
+            if (this.loadPromise) {
+                await this.loadPromise;
                 return;
             }
-        }
 
-        // 同時に複数のロードリクエストがあった場合に1回だけ実行
-        if (this.loadPromise) {
-            return this.loadPromise;
-        }
+            // キャッシュが有効ならスキップ
+            if (!forceReload && this.isFullDatabaseLoaded && (Date.now() - this.lastLoadTime) < NutritionDatabase.CACHE_VALIDITY_TIME) {
+                console.log('NutritionDatabase: キャッシュが有効なのでスキップします');
+                return;
+            }
 
-        this.loadingError = null;
+            console.log('食品データベースを読み込み中...');
 
-        // 読み込み処理をPromiseに格納
-        this.loadPromise = new Promise<void>(async (resolve, reject) => {
-            try {
-                console.log('食品データベースを読み込み中...');
-                const response = await fetch('/data/food_nutrition_database.json');
+            // この処理を Promise として保存
+            this.loadPromise = (async () => {
+                try {
+                    // 絶対URLの生成
+                    let baseUrl: string;
 
-                if (!response.ok) {
-                    throw new Error(`データの読み込みに失敗しました: ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (data && data.foods) {
-                    console.log(`データベースから${Object.keys(data.foods).length}件の食品データを読み込みました`);
-
-                    // 大きなデータセットを効率的に処理するためにバッチ処理
-                    const BATCH_SIZE = 1000; // 一度に処理するアイテム数
-                    const keys = Object.keys(data.foods);
-                    const processedFoods: Record<string, DatabaseFoodItem> = {};
-
-                    // 進捗表示用
-                    let processedCount = 0;
-                    const totalCount = keys.length;
-
-                    for (let i = 0; i < keys.length; i += BATCH_SIZE) {
-                        const batchKeys = keys.slice(i, i + BATCH_SIZE);
-
-                        // バッチ処理のパフォーマンス計測
-                        const batchStartTime = performance.now();
-
-                        // このバッチのデータを抽出
-                        const batchData: Record<string, DatabaseFoodItem> = {};
-                        batchKeys.forEach(key => {
-                            batchData[key] = data.foods[key];
-                        });
-
-                        // カテゴリ割り当てと処理
-                        const processedBatch = this.processAndAssignCategories(batchData);
-
-                        // 結果をマージ
-                        Object.assign(processedFoods, processedBatch);
-
-                        processedCount += batchKeys.length;
-                        const progress = Math.round((processedCount / totalCount) * 100);
-
-                        const batchEndTime = performance.now();
-                        console.log(`バッチ処理 ${i / BATCH_SIZE + 1}/${Math.ceil(keys.length / BATCH_SIZE)}: ${progress}% 完了 (${Math.round(batchEndTime - batchStartTime)}ms)`);
-
-                        // UIのブロックを防ぐために非同期処理の間に小さな遅延を入れる
-                        await new Promise(r => setTimeout(r, 0));
+                    if (typeof window !== 'undefined') {
+                        // クライアントサイド
+                        baseUrl = window.location.origin;
+                    } else {
+                        // サーバーサイド - 環境変数またはデフォルト値を使用
+                        baseUrl = 'http://localhost:3000';
                     }
 
-                    // 既存のデータベースとマージ
-                    this.foodDatabase = {
-                        ...this.foodDatabase,
-                        ...processedFoods
-                    };
+                    const dbUrl = `${baseUrl}/data/food_nutrition_database.json`;
+                    console.info(`データベースの読み込みを開始: ${dbUrl}`);
 
-                    // 最終読み込み時間を更新
-                    this.lastLoadTime = Date.now();
+                    const response = await fetch(dbUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to load database: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    this.foodDatabase = data.foods || data;
+
                     this.isFullDatabaseLoaded = true;
-
-                    // インデックスを再構築
+                    this.lastLoadTime = Date.now();
                     this.buildIndices();
 
-                    console.log(`データベース読み込み完了: 合計 ${Object.keys(this.foodDatabase).length} 件`);
-                } else {
-                    throw new Error('有効なデータが見つかりませんでした');
+                    console.log(`データベースの読み込み完了: ${Object.keys(this.foodDatabase).length}件`);
+                } catch (error) {
+                    this.loadingError = error instanceof Error ? error : new Error(String(error));
+                    console.error('食品データベースの読み込みに失敗しました:', this.loadingError);
+                } finally {
+                    this.loadPromise = null;
                 }
+            })();
 
-                resolve();
-            } catch (error) {
-                console.error('食品データベースの読み込みに失敗しました:', error);
-                this.loadingError = error instanceof Error ? error : new Error(String(error));
-                reject(error);
-            } finally {
-                this.loadPromise = null;
-            }
-        });
-
-        return this.loadPromise;
+            await this.loadPromise;
+        } catch (error) {
+            console.error('データベース読み込み中に重大なエラーが発生:', error);
+            this.loadingError = error instanceof Error ? error : new Error(String(error));
+        }
     }
 
     /**
@@ -514,59 +509,121 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
      * @param foodName 食品名
      * @returns 食品の栄養データ
      */
-    findFoodByName(foodName: string): DatabaseFoodItem | null {
-        // 入力値の正規化
-        const normalizedInput = foodName.toLowerCase().trim();
+    private findFoodItem(name: string): DatabaseFoodItem | null {
+        const normalizedSearchName = this.normalizeFoodName(name);
 
-        // 完全一致検索
-        if (this.foodDatabase[foodName]) {
-            return this.foodDatabase[foodName];
+        // 検索ログの追加
+        console.info(`食品検索: "${name}" (正規化: "${normalizedSearchName}")`);
+
+        // ステップ1: 完全一致検索
+        if (this.foodDatabase[name]) {
+            console.info(`完全一致で見つかりました: ${name}`);
+            return this.foodDatabase[name];
         }
 
-        // スコアベースの部分一致検索
-        let bestMatch: DatabaseFoodItem | null = null;
-        let bestScore = 0;
+        // ステップ2: データベース内の全エントリを検査
+        const allKeys = Object.keys(this.foodDatabase);
+        console.info(`データベース内のエントリ数: ${allKeys.length}`);
 
-        for (const key in this.foodDatabase) {
+        // 一部のエントリをログ出力（デバッグ用）
+        if (allKeys.length > 0) {
+            console.info(`データベースの一部エントリ: ${allKeys.slice(0, 3).join(', ')}`);
+        }
+
+        // ステップ3: 詳細な検索アルゴリズムの実装
+        for (const key of allKeys) {
             const food = this.foodDatabase[key];
-            let currentScore = 0;
+            const normalizedKey = this.normalizeFoodName(key);
 
-            // 名前の部分一致スコア計算
-            const foodNameLower = food.name.toLowerCase();
-            if (foodNameLower === normalizedInput) {
-                currentScore = 100; // 完全一致（大文字小文字無視）
-            } else if (foodNameLower.includes(normalizedInput)) {
-                currentScore = 80; // 部分一致（含む）
-            } else if (normalizedInput.includes(foodNameLower)) {
-                currentScore = 60; // 逆部分一致（含まれる）
+            // 3.1: キー完全一致
+            if (key === name) {
+                console.info(`キー完全一致で見つかりました: ${name} -> ${key}`);
+                return food;
             }
 
-            // 別名の部分一致スコア計算
-            if (food.aliases && currentScore < 100) {
-                for (const alias of food.aliases) {
-                    const aliasLower = alias.toLowerCase();
-                    if (aliasLower === normalizedInput) {
-                        currentScore = Math.max(currentScore, 90); // 別名完全一致
-                        break;
-                    } else if (aliasLower.includes(normalizedInput)) {
-                        currentScore = Math.max(currentScore, 70); // 別名部分一致
-                        break;
-                    } else if (normalizedInput.includes(aliasLower)) {
-                        currentScore = Math.max(currentScore, 50); // 別名逆部分一致
-                        break;
+            // 3.2: エイリアス一致
+            if (food.aliases && food.aliases.includes(name)) {
+                console.info(`エイリアス一致で見つかりました: ${name} -> ${key} (エイリアス: ${food.aliases.join(', ')})`);
+                return food;
+            }
+
+            // 3.3: 正規化した名前の部分一致
+            if (normalizedKey.includes(normalizedSearchName) || normalizedSearchName.includes(normalizedKey)) {
+                console.info(`正規化部分一致で見つかりました: ${name} (${normalizedSearchName}) -> ${key} (${normalizedKey})`);
+                return food;
+            }
+
+            // 3.4: キーワード分割による検索
+            const keyParts = key.split(/[　\s]/);  // 空白や全角スペースで分割
+            for (const part of keyParts) {
+                const normalizedPart = this.normalizeFoodName(part);
+                if (normalizedPart === normalizedSearchName ||
+                    (normalizedPart.length > 2 && (normalizedPart.includes(normalizedSearchName) || normalizedSearchName.includes(normalizedPart)))) {
+                    console.info(`キーワード分割で見つかりました: ${name} -> ${key} (キーワード: ${part})`);
+                    return food;
+                }
+            }
+
+            // 3.5: 検索キーワードの分割による検索
+            const nameParts = name.split(/[　\s]/);  // 空白や全角スペースで分割
+            if (nameParts.length > 1) {
+                for (const part of nameParts) {
+                    if (part.length > 1 && (key.includes(part) || normalizedKey.includes(this.normalizeFoodName(part)))) {
+                        console.info(`検索キーワード分割で見つかりました: ${name} -> ${key} (検索キーワード: ${part})`);
+                        return food;
                     }
                 }
             }
 
-            // より良いマッチがあれば更新
-            if (currentScore > bestScore) {
-                bestScore = currentScore;
-                bestMatch = food;
+            // 3.6: 日本語の音読み・訓読みによる検索
+            // 例：「えび」で「海老」を検索、「とうふ」で「豆腐」を検索
+            if (this.couldBePhoneticMatch(name, key)) {
+                console.info(`音読み・訓読み一致で見つかりました: ${name} -> ${key}`);
+                return food;
             }
         }
 
-        // スコアが一定以上の場合のみ返す
-        return bestScore >= 50 ? bestMatch : null;
+        console.warn(`食品が見つかりません: ${name}`);
+        return null;
+    }
+
+    private couldBePhoneticMatch(searchName: string, dbKey: string): boolean {
+        // 簡易的な音読み・訓読みマッピング
+        const phoneticMappings: Record<string, string[]> = {
+            'えび': ['海老', 'エビ'],
+            'とうふ': ['豆腐'],
+            'はっぽうさい': ['八宝菜'],
+            'ぴらふ': ['ピラフ'],
+            'たまご': ['卵', '玉子'],
+            'にく': ['肉'],
+            'ぎゅう': ['牛'],
+            'ぶた': ['豚'],
+            'とり': ['鶏', '鳥'],
+            'さかな': ['魚'],
+            'やさい': ['野菜']
+        };
+
+        const normalizedSearch = this.normalizeFoodName(searchName);
+
+        // 直接のマッピングチェック
+        for (const [phonetic, kanji] of Object.entries(phoneticMappings)) {
+            if (normalizedSearch.includes(phonetic) && kanji.some(k => dbKey.includes(k))) {
+                return true;
+            }
+            if (kanji.some(k => searchName.includes(k)) && dbKey.includes(phonetic)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private normalizeFoodName(name: string): string {
+        return name
+            .replace(/\s+/g, '') // スペースを削除
+            .replace(/[　]/g, '') // 全角スペースを削除
+            .replace(/[・]/g, '') // 中黒を削除
+            .toLowerCase(); // 小文字に変換
     }
 
     /**
@@ -658,6 +715,21 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
         try {
             console.log('栄養計算開始:', foods);
 
+            // 入力検証
+            if (!foods || !Array.isArray(foods)) {
+                throw new FoodAnalysisError(
+                    '無効な食品データ形式です',
+                    ErrorCode.VALIDATION_ERROR
+                );
+            }
+
+            if (foods.length === 0) {
+                throw new FoodAnalysisError(
+                    '食品データが入力されていません',
+                    ErrorCode.VALIDATION_ERROR
+                );
+            }
+
             // 初期値
             const nutritionData: NutritionData = {
                 calories: 0,
@@ -670,62 +742,62 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
                 overall_score: 0,
                 deficient_nutrients: [],
                 sufficient_nutrients: [],
-                daily_records: []
+                daily_records: [],
+                notFoundFoods: []
             };
 
             let totalConfidence = 0;
             let foundFoodsCount = 0;
+            let notFoundFoods: string[] = [];
 
-            // 各食品の栄養素を合計
+            // 各食品の栄養素を計算して合計
             for (const food of foods) {
-                // 食品名が空の場合はスキップ
-                if (!food.name || food.name.trim() === '') {
-                    console.log('食品名が空のためスキップ:', food);
+                // 食品名の正規化
+                const foodName = food.name.trim();
+
+                console.log('食品検索:', foodName);
+                const foodData = this.findFoodItem(foodName);
+
+                if (!foodData) {
+                    console.warn('食品データが見つかりません:', foodName);
+                    notFoundFoods.push(foodName);
                     continue;
                 }
 
-                const dbFood = this.findFoodByName(food.name);
+                foundFoodsCount++;
 
-                if (dbFood) {
-                    foundFoodsCount++;
-                    console.log('食品データ見つかりました:', food.name, '→', dbFood.name);
+                // 量の係数を計算
+                const quantity = food.quantity || '1人前';
+                const quantityFactor = this.parseQuantity(quantity, foodData.standard_quantity || '100g');
 
-                    // 量の変換係数を計算
-                    const quantityFactor = food.quantity
-                        ? this.parseQuantity(food.quantity, dbFood.standard_quantity)
-                        : 1.0;
+                // 食品の各栄養素を追加
+                nutritionData.calories += foodData.calories * quantityFactor;
+                nutritionData.protein += foodData.protein * quantityFactor;
+                nutritionData.iron += foodData.iron * quantityFactor;
+                nutritionData.folic_acid += foodData.folic_acid * quantityFactor;
+                nutritionData.calcium += foodData.calcium * quantityFactor;
 
-                    console.log('量の変換係数:', quantityFactor, food.quantity, dbFood.standard_quantity);
-
-                    // 栄養素を加算
-                    nutritionData.calories += dbFood.calories * quantityFactor;
-                    nutritionData.protein += dbFood.protein * quantityFactor;
-                    nutritionData.iron += dbFood.iron * quantityFactor;
-                    nutritionData.folic_acid += dbFood.folic_acid * quantityFactor;
-                    nutritionData.calcium += dbFood.calcium * quantityFactor;
-                    nutritionData.vitamin_d += dbFood.vitamin_d * quantityFactor;
-
-                    // 信頼度スコアを加算
-                    totalConfidence += food.confidence || 0.8;
-                } else {
-                    console.log('食品データが見つかりません:', food.name);
-                    // 見つからない場合は推定値を使用
-                    // カロリーのみ仮の値を設定（他の栄養素は0のまま）
-                    nutritionData.calories += 100; // 一般的な食品として100kcal程度と仮定
-                    totalConfidence += 0.3; // 低い信頼度
+                if (foodData.vitamin_d) {
+                    nutritionData.vitamin_d += foodData.vitamin_d * quantityFactor;
                 }
+
+                // 信頼度を追加
+                totalConfidence += food.confidence || 0.5;
             }
 
-            // 平均信頼度を計算
-            nutritionData.confidence_score = foods.length > 0
-                ? totalConfidence / foods.length
-                : 0.5;
-
-            // 見つかった食品の割合に応じて信頼度を調整
-            if (foods.length > 0) {
-                const foundRatio = foundFoodsCount / foods.length;
-                nutritionData.confidence_score *= foundRatio;
+            // データが見つからなかった場合のフォールバック
+            if (foundFoodsCount === 0) {
+                console.warn('有効な食品データが見つかりませんでした。デフォルト値を使用します。');
+                nutritionData.calories = 100;  // 最低限のカロリー値
             }
+
+            // 見つからなかった食品の情報を追加
+            nutritionData.notFoundFoods = notFoundFoods;
+
+            // 信頼度スコアを計算
+            nutritionData.confidence_score = foundFoodsCount > 0 ? totalConfidence / foundFoodsCount : 0;
+
+            console.log('データベースに見つからなかった食品:', notFoundFoods);
 
             // 栄養素の値を小数点以下2桁に丸める
             nutritionData.calories = Math.round(nutritionData.calories * 100) / 100;
@@ -742,13 +814,14 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
             this.calculateOverallScore(nutritionData);
 
             console.log('栄養計算結果:', nutritionData);
+
             return nutritionData;
         } catch (error) {
             console.error('栄養計算エラー:', error);
             throw new FoodAnalysisError(
                 '栄養計算中にエラーが発生しました',
                 ErrorCode.DB_ERROR,
-                error
+                error instanceof Error ? error : new Error(String(error))
             );
         }
     }
@@ -911,11 +984,13 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
         isReady: boolean;
         itemCount: number;
         lastUpdated: Date | null;
+        error: Error | null;
     } {
         return {
             isReady: this.isFullDatabaseLoaded,
             itemCount: Object.keys(this.foodDatabase).length,
-            lastUpdated: this.lastLoadTime ? new Date(this.lastLoadTime) : null
+            lastUpdated: this.lastLoadTime ? new Date(this.lastLoadTime) : null,
+            error: this.loadingError
         };
     }
 
@@ -932,7 +1007,7 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
             return cached;
         }
 
-        const result = this.findFoodByName(name);
+        const result = this.findFoodItem(name);
 
         // キャッシュに格納
         this.addToCache(cacheKey, result);

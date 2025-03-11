@@ -19,7 +19,14 @@ export enum ErrorCode {
     FOOD_NOT_FOUND = 'FOOD_NOT_FOUND',
 
     // その他
-    UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+    UNKNOWN_ERROR = 'UNKNOWN_ERROR',
+    VALIDATION_ERROR = 'VALIDATION_ERROR',
+    DB_INIT_ERROR = 'DB_INIT_ERROR',
+    DB_LOAD_ERROR = 'DB_LOAD_ERROR',
+    AI_MODEL_ERROR = 'AI_MODEL_ERROR',
+    NETWORK_ERROR = 'NETWORK_ERROR',
+    TIMEOUT_ERROR = 'TIMEOUT_ERROR',
+    PARSE_ERROR = 'PARSE_ERROR'
 }
 
 /**
@@ -27,13 +34,56 @@ export enum ErrorCode {
  */
 export class FoodAnalysisError extends Error {
     code: ErrorCode;
-    details: any;
+    originalError: Error | null;
+    details?: string[];
 
-    constructor(message: string, code: ErrorCode, details?: any) {
+    constructor(
+        message: string,
+        code: ErrorCode = ErrorCode.UNKNOWN_ERROR,
+        originalError: Error | null = null,
+        details?: string[]
+    ) {
         super(message);
         this.name = 'FoodAnalysisError';
         this.code = code;
+        this.originalError = originalError;
         this.details = details;
+
+        // エラーログの詳細化
+        console.error(`FoodAnalysisError [${code}]: ${message}`, {
+            details,
+            originalError: originalError ? {
+                name: originalError.name,
+                message: originalError.message,
+                stack: originalError.stack
+            } : null
+        });
+    }
+
+    /**
+     * ユーザーフレンドリーなエラーメッセージを取得
+     */
+    getUserFriendlyMessage(): string {
+        switch (this.code) {
+            case ErrorCode.VALIDATION_ERROR:
+                return '入力データが正しくありません。食品名と量を確認してください。';
+            case ErrorCode.DB_ERROR:
+                return 'データベース処理中にエラーが発生しました。しばらく経ってからお試しください。';
+            case ErrorCode.DB_INIT_ERROR:
+                return '栄養データベースの初期化に失敗しました。ページを再読み込みしてください。';
+            case ErrorCode.DB_LOAD_ERROR:
+                return '栄養データベースの読み込みに失敗しました。インターネット接続を確認してください。';
+            case ErrorCode.AI_MODEL_ERROR:
+                return 'テキスト解析中にエラーが発生しました。別の表現で入力してみてください。';
+            case ErrorCode.NETWORK_ERROR:
+                return 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+            case ErrorCode.TIMEOUT_ERROR:
+                return '処理がタイムアウトしました。しばらく経ってからお試しください。';
+            case ErrorCode.PARSE_ERROR:
+                return 'データの解析に失敗しました。入力形式を確認してください。';
+            default:
+                return 'エラーが発生しました。しばらく経ってからお試しください。';
+        }
     }
 }
 

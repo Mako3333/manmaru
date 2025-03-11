@@ -27,6 +27,8 @@ export interface NutritionData extends BasicNutritionData {
         carbs: number;
         score: number;
     }[];
+    // 見つからなかった食品のリスト
+    notFoundFoods?: string[];
 }
 
 export interface NutrientSummary {

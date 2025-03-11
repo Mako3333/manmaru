@@ -2,102 +2,173 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { FoodItemSchema } from "@/lib/nutrition/nutritionUtils";
 import { NutritionDatabase } from "@/lib/nutrition/database";
+import { AIService } from '@/lib/ai/ai-service';
+import { FoodAnalysisError, ErrorCode } from '@/lib/errors/food-analysis-error';
 
 // リクエストの型定義
 const RequestSchema = z.object({
     foods: z.array(FoodItemSchema)
 });
 
-// レスポンスキャッシュのための一時的なストレージ（メモリ内）
-// 注: 大規模アプリでは、Redisなどの外部キャッシュサービスを検討すべき
-const responseCache = new Map<string, {
-    timestamp: number,
-    result: any
-}>();
-
-// キャッシュ有効期限（5分 = 300000ms）
-const CACHE_VALIDITY_TIME = 300000;
+// テンポラリキャッシュストレージ
+const responseCache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_VALIDITY_MS = 300000; // 5分間有効
+const MAX_CACHE_SIZE = 100; // 最大キャッシュエントリ数
 
 /**
  * 栄養素計算APIエンドポイント
  */
 export async function POST(req: Request) {
+    console.log('API: 栄養計算リクエスト受信');
+
     try {
-        // リクエストデータの検証
-        const body = await req.json();
-        const validatedData = RequestSchema.parse(body);
-        const { foods } = validatedData;
-
-        // 食品データのバリデーション
-        if (!foods || foods.length === 0) {
-            return Response.json({ error: '食品データが必要です' }, { status: 400 });
-        }
-
-        // キャッシュキーの生成（食品名と量の組み合わせからハッシュを作成）
-        const cacheKey = generateCacheKey(foods);
-
-        // キャッシュをチェック
-        const cachedResult = getFromCache(cacheKey);
-        if (cachedResult) {
-            console.log('栄養計算API: キャッシュから結果を返します');
-            return NextResponse.json({
-                nutrition: cachedResult,
-                cached: true
-            });
-        }
-
-        // NutritionDatabaseのインスタンスを取得
-        const nutritionDb = NutritionDatabase.getInstance();
-
-        // データベースの初期化状態を確認
-        const dbStatus = nutritionDb.getDatabaseStatus();
-        if (!dbStatus.isReady) {
-            console.log('栄養計算API: データベースを初期化します');
-            await nutritionDb.loadExternalDatabase();
-        }
-
-        // 栄養計算を実行
-        console.log('栄養計算API: 計算を実行します');
-        const nutritionData = await nutritionDb.calculateNutrition(foods);
-
-        // 結果をキャッシュに保存
-        addToCache(cacheKey, nutritionData);
-
-        // 結果を返す
-        return NextResponse.json({
-            nutrition: nutritionData
+        const body = await req.json().catch(error => {
+            console.error('API: リクエストJSONパースエラー:', error);
+            throw new FoodAnalysisError(
+                'リクエストデータの形式が不正です',
+                ErrorCode.PARSE_ERROR,
+                error
+            );
         });
 
-    } catch (error) {
-        console.error('栄養計算エラー:', error);
+        const foods = body.foods;
 
-        // Zodエラーの場合（リクエストデータが不正）
-        if (error instanceof z.ZodError) {
-            return Response.json({
-                error: 'リクエストデータが不正です',
-                details: error.errors
-            }, { status: 400 });
+        // バリデーション
+        if (!Array.isArray(foods)) {
+            console.error('API: 無効な食品データ形式:', foods);
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "食品データは配列形式で指定してください"
+                },
+                { status: 400 }
+            );
         }
 
-        // その他のエラー
-        return Response.json({
-            error: '栄養計算中にエラーが発生しました',
-            details: (error as Error).message
-        }, { status: 500 });
+        if (foods.length === 0) {
+            console.error('API: 空の食品データ');
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "食品データが必要です"
+                },
+                { status: 400 }
+            );
+        }
+
+        // 空の食品名をフィルタリング
+        const validFoods = foods.filter(food => food.name && food.name.trim() !== '');
+
+        if (validFoods.length === 0) {
+            console.error('API: 有効な食品名なし');
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "有効な食品名が入力されていません"
+                },
+                { status: 400 }
+            );
+        }
+
+        // キャッシュキー生成
+        const cacheKey = generateCacheKey(validFoods);
+
+        // キャッシュチェック
+        const cachedResult = getFromCache(cacheKey);
+        if (cachedResult) {
+            console.log("API: キャッシュから栄養計算結果を取得");
+            return NextResponse.json({ success: true, ...cachedResult });
+        }
+
+        // AIサービスを使用して栄養を計算
+        console.log('API: AIサービスで栄養計算を実行');
+        const aiService = AIService.getInstance();
+        const result = await aiService.analyzeTextInput(validFoods);
+
+        // 栄養値が正しく計算されたか確認
+        const hasValidNutrition =
+            result.nutrition.calories > 100 ||
+            result.nutrition.protein > 0 ||
+            result.nutrition.iron > 0 ||
+            result.nutrition.folic_acid > 0 ||
+            result.nutrition.calcium > 0;
+
+        // 栄養値が無効な場合はエラーを返す
+        if (!hasValidNutrition) {
+            console.warn('API: 栄養計算の結果が不十分 - デフォルト値のみ使用されています');
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: '栄養計算ができませんでした。入力された食品が見つかりません。',
+                    errorCode: 'FOOD_NOT_FOUND',
+                    data: null
+                },
+                { status: 400 }
+            );
+        }
+
+        // 見つからなかった食品の情報を追加
+        const notFoundFoods = result.meta?.notFoundFoods || [];
+        if (notFoundFoods.length > 0) {
+            console.warn(`API: 見つからなかった食品: ${notFoundFoods.join(', ')}`);
+            result.meta = {
+                ...result.meta,
+                notFoundFoods,
+                warning: '一部の食品が見つかりませんでした。結果は近似値です。'
+            };
+        }
+
+        // キャッシュに結果を保存
+        addToCache(cacheKey, result);
+
+        console.log('API: 栄養計算成功');
+        return NextResponse.json({
+            success: true,
+            ...result,
+            meta: {
+                ...result.meta,
+                calculationTime: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error("API: 栄養計算エラー:", error);
+
+        // エラーの種類に応じたレスポンス
+        if (error instanceof FoodAnalysisError) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: error.getUserFriendlyMessage(),
+                    code: error.code
+                },
+                { status: error.code === ErrorCode.VALIDATION_ERROR ? 400 : 500 }
+            );
+        } else {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "栄養計算に失敗しました。しばらく経ってからお試しください。"
+                },
+                { status: 500 }
+            );
+        }
     }
 }
 
 /**
- * 食品リストからキャッシュキーを生成
+ * キャッシュキーを生成
  */
 function generateCacheKey(foods: any[]): string {
-    // 食品名と量のみを含むシンプルな配列に変換してJSON文字列化
-    const simplifiedFoods = foods.map(food => ({
-        name: food.name,
-        quantity: food.quantity || ''
-    }));
+    // 食品名と量に基づくキャッシュキーを生成
+    const sortedFoods = [...foods].sort((a, b) =>
+        a.name.localeCompare(b.name)
+    );
 
-    return JSON.stringify(simplifiedFoods);
+    const key = sortedFoods.map(food =>
+        `${food.name}:${food.quantity || 'default'}`
+    ).join('|');
+
+    return key;
 }
 
 /**
@@ -106,29 +177,27 @@ function generateCacheKey(foods: any[]): string {
 function getFromCache(key: string): any | null {
     const cached = responseCache.get(key);
 
-    if (cached) {
-        const currentTime = Date.now();
-        // キャッシュが有効期限内なら結果を返す
-        if (currentTime - cached.timestamp < CACHE_VALIDITY_TIME) {
-            return cached.result;
-        } else {
-            // 期限切れならキャッシュから削除
-            responseCache.delete(key);
-        }
+    if (!cached) return null;
+
+    // キャッシュ有効期限チェック
+    const now = Date.now();
+    if (now - cached.timestamp > CACHE_VALIDITY_MS) {
+        responseCache.delete(key);
+        return null;
     }
 
-    return null;
+    return cached.data;
 }
 
 /**
- * キャッシュに結果を保存
+ * キャッシュに結果を追加
  */
 function addToCache(key: string, data: any): void {
-    // キャッシュサイズ制限（100エントリーまで）
-    if (responseCache.size >= 100) {
-        // 最も古いエントリーを削除
-        let oldestKey: string | null = null;
-        let oldestTime = Infinity;
+    // キャッシュサイズ制限チェック
+    if (responseCache.size >= MAX_CACHE_SIZE) {
+        // 最も古いエントリを削除
+        let oldestKey = null;
+        let oldestTime = Date.now();
 
         for (const [k, v] of responseCache.entries()) {
             if (v.timestamp < oldestTime) {
@@ -142,8 +211,9 @@ function addToCache(key: string, data: any): void {
         }
     }
 
+    // キャッシュに追加
     responseCache.set(key, {
-        timestamp: Date.now(),
-        result: data
+        data,
+        timestamp: Date.now()
     });
 }

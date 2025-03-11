@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { AIModelFactory } from './model-factory';
 import { PromptService, PromptType } from './prompts/prompt-service';
-import { AIError, ErrorCode } from '@/lib/errors/ai-error';
+import { AIError, ErrorCode as AIErrorCode } from '@/lib/errors/ai-error';
 import { NutritionDatabase, NutritionDatabaseLLMAPI } from '@/lib/nutrition/database';
 import { FoodItem, NutritionData, DatabaseFoodItem } from '@/types/nutrition';
+import { FoodAnalysisError, ErrorCode as FoodErrorCode } from '@/lib/errors/food-analysis-error';
 
 // 食品分析結果の型とスキーマ
 export interface FoodAnalysisResult {
@@ -20,6 +21,14 @@ export interface FoodAnalysisResult {
         calcium: number;
         vitamin_d?: number;
         confidence_score: number;
+    };
+    meta?: {
+        notFoundFoods?: string[];
+        warning?: string;
+        source?: string;
+        searchDetail?: string;
+        calculationTime?: string;
+        [key: string]: any;
     };
 }
 
@@ -67,30 +76,18 @@ export class AIService {
     private nutritionDatabase: NutritionDatabaseLLMAPI;
 
     private constructor() {
-        this.promptService = PromptService.getInstance();
-        this.nutritionDatabase = NutritionDatabase.getInstance();
-
-        // データベースの初期化を確認
-        this.initializeDatabase();
-    }
-
-    /**
-     * データベースの初期化を確認し、必要なら初期化を行う
-     * @private
-     */
-    private async initializeDatabase(): Promise<void> {
-        // データベースの状態を確認
-        const status = this.nutritionDatabase.getDatabaseStatus();
-
-        // データベースが準備できていない場合は読み込みを行う
-        if (!status.isReady) {
-            console.log('AIService: 栄養データベースを初期化中...');
-            if (this.nutritionDatabase instanceof NutritionDatabase) {
-                await (this.nutritionDatabase as NutritionDatabase).loadExternalDatabase();
-                console.log('AIService: 栄養データベースの初期化が完了しました');
-            }
-        } else {
-            console.log('AIService: 栄養データベースは既に初期化済みです');
+        console.log('AIService: インスタンス作成');
+        try {
+            this.promptService = PromptService.getInstance();
+            this.nutritionDatabase = NutritionDatabase.getInstance();
+            console.log('AIService: 栄養データベースインスタンス取得成功');
+        } catch (error) {
+            console.error('AIService: 栄養データベースインスタンス取得エラー:', error);
+            throw new FoodAnalysisError(
+                '栄養データベースの初期化に失敗しました',
+                FoodErrorCode.DB_INIT_ERROR,
+                error instanceof Error ? error : new Error(String(error))
+            );
         }
     }
 
@@ -102,6 +99,32 @@ export class AIService {
             AIService.instance = new AIService();
         }
         return AIService.instance;
+    }
+
+    /**
+     * データベースの初期化状態を確認
+     */
+    private async ensureDatabaseInitialized(): Promise<void> {
+        try {
+            const status = this.nutritionDatabase.getDatabaseStatus();
+            console.log('AIService: データベース状態確認:', status);
+
+            if (!status.isReady && status.itemCount <= 10) {
+                console.log('AIService: 拡張データベースを読み込みます');
+                await this.nutritionDatabase.loadExternalDatabase();
+
+                // 読み込み後の状態を再確認
+                const newStatus = this.nutritionDatabase.getDatabaseStatus();
+                console.log('AIService: データベース読み込み後の状態:', newStatus);
+
+                if (!newStatus.isReady) {
+                    console.warn('AIService: 拡張データベースの読み込みに失敗しましたが、基本データベースで続行します');
+                }
+            }
+        } catch (error) {
+            console.error('AIService: データベース初期化確認エラー:', error);
+            // 初期化エラーでも処理は続行（基本データベースを使用）
+        }
     }
 
     /**
@@ -141,7 +164,7 @@ export class AIService {
 
             throw new AIError(
                 '食事分析中にエラーが発生しました',
-                ErrorCode.AI_MODEL_ERROR,
+                AIErrorCode.AI_MODEL_ERROR,
                 error
             );
         }
@@ -160,11 +183,9 @@ export class AIService {
 
         // 入力データの検証
         if (!foods || foods.length === 0) {
-            throw new AIError(
+            throw new FoodAnalysisError(
                 '食品データが必要です',
-                ErrorCode.VALIDATION_ERROR,
-                null,
-                ['少なくとも1つの食品を入力してください']
+                FoodErrorCode.VALIDATION_ERROR
             );
         }
 
@@ -172,19 +193,14 @@ export class AIService {
         const validFoods = foods.filter(food => food.name && food.name.trim() !== '');
 
         if (validFoods.length === 0) {
-            throw new AIError(
+            throw new FoodAnalysisError(
                 '有効な食品データが必要です',
-                ErrorCode.VALIDATION_ERROR,
-                null,
-                ['少なくとも1つの有効な食品名を入力してください']
+                FoodErrorCode.VALIDATION_ERROR
             );
         }
 
-        // データベースの状態を確認
-        const dbStatus = this.nutritionDatabase.getDatabaseStatus();
-        if (!dbStatus.isReady) {
-            await this.initializeDatabase();
-        }
+        // データベース初期化確認
+        await this.ensureDatabaseInitialized();
 
         // 食品データをテキスト形式に変換
         const foodsText = validFoods.map(food =>
@@ -246,10 +262,10 @@ export class AIService {
             return result;
         } catch (error) {
             console.error('AIService: テキスト解析エラー:', error);
-            throw new AIError(
-                'テキスト解析に失敗しました',
-                ErrorCode.AI_MODEL_ERROR,
-                error as Error
+            throw new FoodAnalysisError(
+                'テキスト解析中にエラーが発生しました',
+                FoodErrorCode.AI_MODEL_ERROR,
+                error instanceof Error ? error : new Error(String(error))
             );
         }
     }
@@ -272,7 +288,7 @@ export class AIService {
         if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
             throw new AIError(
                 '栄養データベースが適切に初期化されていません',
-                ErrorCode.NUTRITION_CALCULATION_ERROR
+                AIErrorCode.NUTRITION_CALCULATION_ERROR
             );
         }
 
@@ -280,22 +296,32 @@ export class AIService {
         const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
 
         // 結果の構築
-        return {
-            foods: foodItems.map(item => ({
-                name: item.name,
-                quantity: item.quantity || '',
-                confidence: item.confidence || 0.7
+        const result: FoodAnalysisResult = {
+            foods: foodItems.map(food => ({
+                name: food.name,
+                quantity: food.quantity || '1人前',
+                confidence: food.confidence || 0.7
             })),
             nutrition: {
-                calories: nutritionData.calories || 0,
-                protein: nutritionData.protein || 0,
-                iron: nutritionData.iron || 0,
-                folic_acid: nutritionData.folic_acid || 0,
-                calcium: nutritionData.calcium || 0,
-                vitamin_d: nutritionData.vitamin_d || 0,
+                calories: nutritionData.calories,
+                protein: nutritionData.protein,
+                iron: nutritionData.iron,
+                folic_acid: nutritionData.folic_acid,
+                calcium: nutritionData.calcium,
+                vitamin_d: nutritionData.vitamin_d,
                 confidence_score: nutritionData.confidence_score || 0.5
+            },
+            meta: {
+                notFoundFoods: nutritionData.notFoundFoods || [],
+                source: 'database',
+                searchDetail: (nutritionData.notFoundFoods || []).length > 0
+                    ? '一部の食品がデータベースに見つかりませんでした'
+                    : 'すべての食品がデータベースで見つかりました',
+                calculationTime: new Date().toISOString()
             }
         };
+
+        return result;
     }
 
     /**
@@ -419,7 +445,7 @@ export class AIService {
 
             throw new AIError(
                 '栄養アドバイス生成中にエラーが発生しました',
-                ErrorCode.AI_MODEL_ERROR,
+                AIErrorCode.AI_MODEL_ERROR,
                 error
             );
         }
@@ -441,7 +467,7 @@ export class AIService {
                 console.error('AIService: JSON形式が見つかりません:', responseText);
                 throw new AIError(
                     'JSONレスポンスの形式が不正です',
-                    ErrorCode.RESPONSE_PARSE_ERROR,
+                    AIErrorCode.RESPONSE_PARSE_ERROR,
                     responseText
                 );
             }
@@ -467,14 +493,14 @@ export class AIService {
                         console.error('AIService: 修正JSON再パースでもエラー:', secondError);
                         throw new AIError(
                             'JSONの解析に失敗しました',
-                            ErrorCode.RESPONSE_PARSE_ERROR,
+                            AIErrorCode.RESPONSE_PARSE_ERROR,
                             { error: parseError, text: jsonStr }
                         );
                     }
                 } else {
                     throw new AIError(
                         'JSONの解析に失敗しました',
-                        ErrorCode.RESPONSE_PARSE_ERROR,
+                        AIErrorCode.RESPONSE_PARSE_ERROR,
                         { error: parseError, text: jsonStr }
                     );
                 }
@@ -506,6 +532,15 @@ export class AIService {
                         console.log('AIService: "foodItems" フィールドを "foods" として使用します');
                         if (Array.isArray(parsed.foodItems)) {
                             parsed.foods = parsed.foodItems;
+                        }
+                    } else if (parsed.enhancedFoods) {
+                        console.log('AIService: "enhancedFoods" フィールドを "foods" として使用します');
+                        if (Array.isArray(parsed.enhancedFoods)) {
+                            parsed.foods = parsed.enhancedFoods.map((item: any) => ({
+                                name: item.name || "不明な食品",
+                                quantity: item.quantity || "1人前",
+                                confidence: item.confidence || 0.7
+                            }));
                         }
                     }
                 }
@@ -573,7 +608,7 @@ export class AIService {
                     // それでも失敗する場合はエラー
                     throw new AIError(
                         'データ検証エラー',
-                        ErrorCode.VALIDATION_ERROR,
+                        AIErrorCode.VALIDATION_ERROR,
                         { errors: result.error.issues, data: parsed }
                     );
                 }
@@ -588,7 +623,7 @@ export class AIService {
             // その他のエラーはAIErrorに変換
             throw new AIError(
                 'JSONの解析処理中にエラーが発生しました',
-                ErrorCode.RESPONSE_PARSE_ERROR,
+                AIErrorCode.RESPONSE_PARSE_ERROR,
                 error
             );
         }
@@ -808,5 +843,41 @@ export class AIService {
             .replace(/^[#\s]+|[#\s]+$/g, '') // 先頭と末尾の#や空白を削除
             .replace(/\n{3,}/g, '\n\n')      // 3つ以上の連続改行を2つに
             .trim();
+    }
+
+    private generatePrompt(foods: string[], mealType: string): string {
+        return `
+以下の食事内容の栄養価を分析してください。必ず指定されたJSON形式で回答してください。
+
+食事タイプ: ${mealType}
+食事内容:
+${foods.join('\n')}
+
+レスポンス形式:
+{
+    "foods": [
+        {
+            "name": "食品名",
+            "amount": "量（g）",
+            "calories": "カロリー（kcal）",
+            "protein": "タンパク質（g）",
+            "fat": "脂質（g）",
+            "carbohydrate": "炭水化物（g）",
+            "confidence": "信頼度（0-1）"
+        }
+    ],
+    "analysis": {
+        "total_calories": "合計カロリー（kcal）",
+        "total_protein": "合計タンパク質（g）",
+        "total_fat": "合計脂質（g）",
+        "total_carbohydrate": "合計炭水化物（g）"
+    }
+}
+
+注意：
+- 必ず"foods"フィールドを含めてください
+- 各食品の量は一般的な1人前の量を想定してください
+- 信頼度は分析の確実性を0から1の値で示してください
+`;
     }
 }
