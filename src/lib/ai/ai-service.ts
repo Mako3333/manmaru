@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { AIModelFactory } from './model-factory';
 import { PromptService, PromptType } from './prompts/prompt-service';
 import { AIError, ErrorCode } from '@/lib/errors/ai-error';
-import { NutritionDatabase } from '@/lib/nutrition/database';
-import { FoodItem, NutritionData } from '@/types/nutrition';
+import { NutritionDatabase, NutritionDatabaseLLMAPI } from '@/lib/nutrition/database';
+import { FoodItem, NutritionData, DatabaseFoodItem } from '@/types/nutrition';
 
 // 食品分析結果の型とスキーマ
 export interface FoodAnalysisResult {
@@ -64,11 +64,34 @@ export interface FoodInput {
 export class AIService {
     private static instance: AIService;
     private promptService: PromptService;
-    private nutritionDatabase: NutritionDatabase;
+    private nutritionDatabase: NutritionDatabaseLLMAPI;
 
     private constructor() {
         this.promptService = PromptService.getInstance();
         this.nutritionDatabase = NutritionDatabase.getInstance();
+
+        // データベースの初期化を確認
+        this.initializeDatabase();
+    }
+
+    /**
+     * データベースの初期化を確認し、必要なら初期化を行う
+     * @private
+     */
+    private async initializeDatabase(): Promise<void> {
+        // データベースの状態を確認
+        const status = this.nutritionDatabase.getDatabaseStatus();
+
+        // データベースが準備できていない場合は読み込みを行う
+        if (!status.isReady) {
+            console.log('AIService: 栄養データベースを初期化中...');
+            if (this.nutritionDatabase instanceof NutritionDatabase) {
+                await (this.nutritionDatabase as NutritionDatabase).loadExternalDatabase();
+                console.log('AIService: 栄養データベースの初期化が完了しました');
+            }
+        } else {
+            console.log('AIService: 栄養データベースは既に初期化済みです');
+        }
     }
 
     /**
@@ -125,7 +148,7 @@ export class AIService {
     }
 
     /**
-     * テキスト入力による食品解析を行う
+     * テキスト入力の解析を行う
      * @param foods 食品リスト
      * @param mealType 食事タイプ（オプション）
      */
@@ -155,6 +178,12 @@ export class AIService {
                 null,
                 ['少なくとも1つの有効な食品名を入力してください']
             );
+        }
+
+        // データベースの状態を確認
+        const dbStatus = this.nutritionDatabase.getDatabaseStatus();
+        if (!dbStatus.isReady) {
+            await this.initializeDatabase();
         }
 
         // 食品データをテキスト形式に変換
@@ -205,134 +234,133 @@ export class AIService {
                     }));
                 }
             } catch (parseError) {
-                console.error('AIService: JSONパースエラー、フォールバック処理を実行:', parseError);
+                console.error('AIService: JSONパースエラー、データベースを使用してフォールバック処理を実行:', parseError);
 
-                // パースエラーが発生した場合のフォールバック処理
-                // 入力された食品をそのまま使用して栄養計算を行う
-                const foodItems: FoodItem[] = validFoods.map(food => ({
-                    name: food.name.trim(),
-                    quantity: food.quantity?.trim(), // ここは FoodItem の定義に合わせる
-                    confidence: 0.7  // デフォルトの信頼度を明示的に設定
-                }));
-
-                // 栄養データベースを使用して栄養計算
-                const nutritionData = await this.nutritionDatabase.calculateNutrition(foodItems);
-
-                // 結果の構築（FoodItemからFoodAnalysisResultの形式に変換）
-                result = {
-                    foods: foodItems.map(item => ({
-                        name: item.name,
-                        quantity: item.quantity || '', // undefinedの場合は空文字列に変換
-                        confidence: 0.7 // FoodAnalysisResultでは必須なので、常に値を設定
-                    })),
-                    nutrition: {
-                        calories: nutritionData.calories || 0,
-                        protein: nutritionData.protein || 0,
-                        iron: nutritionData.iron || 0,
-                        folic_acid: nutritionData.folic_acid || 0,
-                        calcium: nutritionData.calcium || 0,
-                        vitamin_d: nutritionData.vitamin_d || 0,
-                        confidence_score: nutritionData.confidence_score || 0.5 // undefinedの場合はデフォルト値を設定
-                    }
-                };
-
-                // 結果の検証
-                console.log('AIService: フォールバック処理による結果:', {
-                    foodsCount: result.foods.length,
-                    hasNutrition: !!result.nutrition,
-                    calories: result.nutrition?.calories
-                });
+                // 最適化: データベースAPIを使用した栄養計算
+                result = await this.calculateNutritionUsingDatabase(validFoods);
             }
 
-            // 結果の検証と修正
-            // 栄養素の値が負の場合は0に修正
-            if (result.nutrition) {
-                result.nutrition.calories = Math.max(0, result.nutrition.calories);
-                result.nutrition.protein = Math.max(0, result.nutrition.protein);
-                result.nutrition.iron = Math.max(0, result.nutrition.iron);
-                result.nutrition.folic_acid = Math.max(0, result.nutrition.folic_acid);
-                result.nutrition.calcium = Math.max(0, result.nutrition.calcium);
-                if (result.nutrition.vitamin_d !== undefined) {
-                    result.nutrition.vitamin_d = Math.max(0, result.nutrition.vitamin_d);
-                }
-            }
-
-            // 栄養データベースを使用した栄養計算の補完
-            // AIの結果をさらに正確にするために栄養データベースの情報も活用
-            try {
-                // 食品リストをFoodItem形式に変換
-                const foodItems: FoodItem[] = result.foods.map(food => ({
-                    name: food.name,
-                    quantity: food.quantity, // すでにstringなので変換不要
-                    confidence: food.confidence
-                }));
-
-                // 栄養データベースによる栄養計算
-                const nutritionData = await this.nutritionDatabase.calculateNutrition(foodItems);
-
-                // AIの結果にデータベースの結果を反映（信頼度が高い場合）
-                // AIの結果を優先しつつ、不足している情報をデータベースから補完
-                if (nutritionData.confidence_score && nutritionData.confidence_score > 0.6) {
-                    result.nutrition = {
-                        ...result.nutrition,
-                        calories: nutritionData.calories || 0,
-                        protein: nutritionData.protein || 0,
-                        iron: nutritionData.iron || 0,
-                        folic_acid: nutritionData.folic_acid || 0,
-                        calcium: nutritionData.calcium || 0,
-                        vitamin_d: nutritionData.vitamin_d || result.nutrition.vitamin_d || 0,
-                        confidence_score: Math.max(
-                            result.nutrition.confidence_score,
-                            nutritionData.confidence_score || 0
-                        )
-                    };
-                }
-            } catch (dbError) {
-                console.error('AIService: 栄養データベース計算エラー:', dbError);
-                // データベース計算でエラーが発生しても、AIの結果をそのまま使用
-            }
-
-            // foods フィールドが存在しない場合に追加（通常ありえないが念のため）
-            if (!result.foods) {
-                result.foods = validFoods.map(food => ({
-                    name: food.name.trim(),
-                    quantity: food.quantity?.trim() || '', // undefinedの場合は空文字列に変換
-                    confidence: 0.5  // デフォルトの信頼度
-                }));
-            }
-
-            // 最終確認: foodsフィールドが必ず配列で存在することを保証
-            if (!result.foods) result.foods = [];
-
-            // 最終確認: nutritionフィールドが存在することを保証
-            if (!result.nutrition) {
-                result.nutrition = {
-                    calories: 0,
-                    protein: 0,
-                    iron: 0,
-                    folic_acid: 0,
-                    calcium: 0,
-                    confidence_score: 0.5
-                };
-            }
-
-            console.log('AIService: テキスト入力解析結果:', {
-                foodsCount: result.foods.length,
-                nutrition: result.nutrition
-            });
+            // AIの結果をさらに正確にするためにデータベースを活用
+            result = await this.enhanceResultWithDatabase(result);
 
             return result;
         } catch (error) {
-            console.error('AIService: テキスト入力解析エラー:', error);
-
-            if (error instanceof AIError) throw error;
-
+            console.error('AIService: テキスト解析エラー:', error);
             throw new AIError(
-                'テキスト入力解析中にエラーが発生しました',
+                'テキスト解析に失敗しました',
                 ErrorCode.AI_MODEL_ERROR,
-                error
+                error as Error
             );
         }
+    }
+
+    /**
+     * 食品リストから栄養計算を行う（データベース使用）
+     * @private
+     */
+    private async calculateNutritionUsingDatabase(foods: FoodInput[]): Promise<FoodAnalysisResult> {
+        console.log('AIService: データベースを使用した栄養計算を開始');
+
+        // 食品データを標準形式に変換
+        const foodItems: FoodItem[] = foods.map(food => ({
+            name: food.name.trim(),
+            quantity: food.quantity?.trim(),
+            confidence: 0.7
+        }));
+
+        // データベースがNutritionDatabaseインスタンスであることを確認してからcalculateNutritionを呼び出す
+        if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
+            throw new AIError(
+                '栄養データベースが適切に初期化されていません',
+                ErrorCode.NUTRITION_CALCULATION_ERROR
+            );
+        }
+
+        // 栄養計算を実行 (NutritionDatabaseクラスのメソッドとして呼び出す)
+        const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
+
+        // 結果の構築
+        return {
+            foods: foodItems.map(item => ({
+                name: item.name,
+                quantity: item.quantity || '',
+                confidence: item.confidence || 0.7
+            })),
+            nutrition: {
+                calories: nutritionData.calories || 0,
+                protein: nutritionData.protein || 0,
+                iron: nutritionData.iron || 0,
+                folic_acid: nutritionData.folic_acid || 0,
+                calcium: nutritionData.calcium || 0,
+                vitamin_d: nutritionData.vitamin_d || 0,
+                confidence_score: nutritionData.confidence_score || 0.5
+            }
+        };
+    }
+
+    /**
+     * 解析結果をデータベース情報で強化
+     * @private
+     */
+    private async enhanceResultWithDatabase(result: FoodAnalysisResult): Promise<FoodAnalysisResult> {
+        console.log('AIService: 解析結果をデータベース情報で強化');
+
+        // 結果の食品名を使用して、データベースから正確な栄養情報を検索
+        for (let i = 0; i < result.foods.length; i++) {
+            const food = result.foods[i];
+
+            // 完全一致検索
+            let dbFood = this.nutritionDatabase.getFoodByExactName(food.name);
+
+            // 完全一致がない場合は部分一致検索
+            if (!dbFood) {
+                const similarFoods = this.nutritionDatabase.getFoodsByPartialName(food.name, 1);
+                if (similarFoods.length > 0) {
+                    dbFood = similarFoods[0];
+                    // 類似食品が見つかった場合は情報を更新
+                    result.foods[i].name = dbFood.name;
+                    food.confidence = Math.min(food.confidence, 0.8); // 信頼度を調整
+                }
+            }
+
+            // データベースに食品が見つかった場合、信頼度を高く設定
+            if (dbFood) {
+                result.foods[i].confidence = Math.max(food.confidence, 0.9);
+            }
+        }
+
+        // 栄養計算の再実行（データベースの情報を使用）
+        if (result.foods.length > 0) {
+            // 食品データを標準形式に変換
+            const foodItems: FoodItem[] = result.foods.map(food => ({
+                name: food.name,
+                quantity: food.quantity,
+                confidence: food.confidence
+            }));
+
+            // データベースがNutritionDatabaseインスタンスであることを確認してからcalculateNutritionを呼び出す
+            if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
+                return result; // 適切なDBインスタンスがなければ現在の結果を返す
+            }
+
+            // 栄養計算を実行（NutritionDatabaseクラスのメソッドとして呼び出す）
+            const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
+
+            // より信頼性の高い栄養情報で更新
+            if (nutritionData) {
+                result.nutrition = {
+                    calories: nutritionData.calories || 0,
+                    protein: nutritionData.protein || 0,
+                    iron: nutritionData.iron || 0,
+                    folic_acid: nutritionData.folic_acid || 0,
+                    calcium: nutritionData.calcium || 0,
+                    vitamin_d: nutritionData.vitamin_d || 0,
+                    confidence_score: nutritionData.confidence_score || 0.8 // データベース使用なので信頼度は高め
+                };
+            }
+        }
+
+        return result;
     }
 
     /**

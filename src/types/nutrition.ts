@@ -215,11 +215,13 @@ export const QUANTITY_CONVERSIONS: Record<QuantityUnitType, number> = {
 // データベースアイテムの型定義
 export interface DatabaseFoodItem {
     name: string;
+    id?: string;           // 新規追加: 食品ID
     calories: number;
     protein: number;
     iron: number;
     folic_acid: number;
     calcium: number;
+    vitamin_d: number;     // 既存のフィールド
     standard_quantity: string;
     category?: FoodCategory;
     aliases?: string[];
@@ -273,3 +275,25 @@ export interface AdviceState {
         recommended_foods?: string[];
     } | null;
 }
+
+// 食品IDの先頭2桁とカテゴリのマッピング
+export const FOOD_ID_CATEGORY_MAP: Record<string, FoodCategory> = {
+    '01': FoodCategory.GRAINS,     // 穀物類
+    '02': FoodCategory.GRAINS,     // 穀物加工品
+    '03': FoodCategory.VEGETABLES, // イモ類
+    '04': FoodCategory.PROTEIN,    // 豆類
+    '05': FoodCategory.PROTEIN,    // 種実類
+    '06': FoodCategory.VEGETABLES, // 野菜類
+    '07': FoodCategory.FRUITS,     // 果物類
+    '08': FoodCategory.PROTEIN,    // キノコ類
+    '09': FoodCategory.VEGETABLES, // 藻類
+    '10': FoodCategory.PROTEIN,    // 魚介類
+    '11': FoodCategory.PROTEIN,    // 肉類
+    '12': FoodCategory.PROTEIN,    // 卵類
+    '13': FoodCategory.DAIRY,      // 乳類
+    '14': FoodCategory.SEASONINGS, // 油脂類
+    '15': FoodCategory.SEASONINGS, // 菓子類
+    '16': FoodCategory.SEASONINGS, // 嗜好飲料
+    '17': FoodCategory.SEASONINGS, // 調味料・香辛料
+    '18': FoodCategory.OTHER       // 調理加工食品類
+};
