@@ -9,6 +9,7 @@ import { CalendarIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
+import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
 
 interface PregnancyWeekInfoProps {
     className?: string;
@@ -83,21 +84,9 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
                     const dueDateObj = new Date(data.due_date);
                     setDueDate(dueDateObj);
 
-                    // 妊娠週数の計算（出産予定日から逆算：出産予定日は妊娠40週目）
-                    const today = new Date();
-                    const conceptionDate = addWeeks(dueDateObj, -40);
-                    const weeksPregnant = differenceInWeeks(today, conceptionDate);
-
-                    // 妊娠週数が正の値かつ41未満の場合のみ設定
-                    if (weeksPregnant >= 0 && weeksPregnant <= 40) {
-                        setPregnancyWeek(weeksPregnant);
-                    } else if (weeksPregnant > 40) {
-                        // 出産予定日を過ぎている場合
-                        setPregnancyWeek(40);
-                    } else {
-                        // まだ妊娠していない場合（将来の出産予定日）
-                        setPregnancyWeek(0);
-                    }
+                    // 共通関数を使用して妊娠週数を計算
+                    const week = calculatePregnancyWeek(data.due_date);
+                    setPregnancyWeek(week);
                 }
             } catch (err) {
                 console.error('プロフィール取得エラー:', err);
@@ -110,11 +99,9 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
         fetchProfileData();
     }, [supabase]);
 
-    // 現在のトライメスターを判定
+    // 現在のトライメスターを判定（共通関数を使用）
     const getCurrentTrimester = (week: number) => {
-        if (week < 14) return 1;
-        if (week < 28) return 2;
-        return 3;
+        return getTrimesterNumber(week);
     };
 
     // 週数に応じた赤ちゃんの成長情報を取得

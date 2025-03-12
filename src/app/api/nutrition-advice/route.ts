@@ -8,7 +8,7 @@ import { AIService } from '@/lib/ai/ai-service';
 import { getCurrentSeason, getJapanDate } from '@/lib/utils/date-utils';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { calculatePregnancyWeek } from '@/lib/date-utils';
+import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
 import { NextRequest } from 'next/server';
 
 // リクエストスキーマ
@@ -345,7 +345,7 @@ export async function GET(request: NextRequest) {
         const aiService = AIService.getInstance();
         const adviceResult = await aiService.getNutritionAdvice({
             pregnancyWeek,
-            trimester: calculateTrimester(pregnancyWeek),
+            trimester: getTrimesterNumber(pregnancyWeek),
             currentSeason: getCurrentSeason(),
             formattedDate: format(new Date(requestDate), 'yyyy年MM月dd日', { locale: ja }),
             deficientNutrients: deficientNutrients || [],
@@ -427,13 +427,6 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         );
     }
-}
-
-// 妊娠週数から妊娠期（トリメスター）を計算
-function calculateTrimester(pregnancyWeek: number): number {
-    if (pregnancyWeek <= 13) return 1;
-    if (pregnancyWeek <= 27) return 2;
-    return 3;
 }
 
 // read状態を更新するPATCHエンドポイント
