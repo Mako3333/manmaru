@@ -94,6 +94,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
 
     return (
         <div className="h-full relative mt-10">
+
             {loading ? (
                 <Card className="h-full bg-white shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none">
                     <CardContent className="p-5 flex items-center justify-center h-full">
@@ -116,8 +117,10 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                     </CardContent>
                 </Card>
             ) : advice ? (
+
                 <Card className="h-full bg-white shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none pt-6">
                     {/* 中央上部に配置されたバッジ */}
+
                     <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-10">
                         <div className="h-7 px-4 py-1 bg-gradient-to-r from-[#2E9E6C] to-[#1A6B47] text-white text-xs font-semibold rounded-full flex items-center justify-center shadow-[0_4px_8px_rgba(46,158,108,0.3)]">
                             今日のアドバイス

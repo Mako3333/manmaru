@@ -16,7 +16,7 @@ import PregnancyWeekInfo from './pregnancy-week-info';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight } from 'lucide-react';
+import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight, Book } from 'lucide-react';
 import { NutritionCalculator } from '@/lib/nutrition/calculator';
 import { getJapanDate } from '@/lib/utils/date-utils';
 
@@ -127,18 +127,34 @@ export default function HomeClient({ user }: HomeClientProps) {
 
     // 不足している栄養素を抽出
     const deficientNutrients = nutritionData ? [
-        { name: 'タンパク質', percent: nutritionData.protein_percent, icon: '🥩' },
-        { name: '鉄分', percent: nutritionData.iron_percent, icon: '⚙️' },
-        { name: '葉酸', percent: nutritionData.folic_acid_percent, icon: '🍃' },
-        { name: 'カルシウム', percent: nutritionData.calcium_percent, icon: '🥛' },
-        { name: 'ビタミンD', percent: nutritionData.vitamin_d_percent, icon: '☀️' }
+        { name: 'カロリー', percent: Math.round(nutritionData.calories_percent * 10) / 10, icon: '🔥', color: 'orange' },
+        { name: 'タンパク質', percent: Math.round(nutritionData.protein_percent * 10) / 10, icon: '🍖', color: 'red' },
+        { name: '鉄分', percent: Math.round(nutritionData.iron_percent * 10) / 10, icon: '⚙️', color: 'red' },
+        { name: '葉酸', percent: Math.round(nutritionData.folic_acid_percent * 10) / 10, icon: '🍃', color: 'green' },
+        { name: 'カルシウム', percent: Math.round(nutritionData.calcium_percent * 10) / 10, icon: '🦴', color: 'blue' },
+        { name: 'ビタミンD', percent: Math.round(nutritionData.vitamin_d_percent * 10) / 10, icon: '☀️', color: 'purple' }
     ].filter(nutrient => nutrient.percent < 70) : [];
 
+    // 全ての栄養素が0%かどうかを確認
+    const allNutrientsZero = nutritionData ?
+        nutritionData.calories_percent === 0 &&
+        nutritionData.protein_percent === 0 &&
+        nutritionData.iron_percent === 0 &&
+        nutritionData.folic_acid_percent === 0 &&
+        nutritionData.calcium_percent === 0 &&
+        nutritionData.vitamin_d_percent === 0 : false;
+
     // 栄養素の状態に応じた色を取得
-    const getNutrientColor = (percent: number) => {
-        if (percent < 50) return 'text-red-500';
-        if (percent < 70) return 'text-orange-500';
-        return 'text-green-500';
+    const getNutrientColor = (color: string) => {
+        switch (color) {
+            case 'red': return { bg: 'bg-red-500', text: 'text-red-600', bgLight: 'bg-red-50' };
+            case 'orange': return { bg: 'bg-orange-500', text: 'text-orange-600', bgLight: 'bg-orange-50' };
+            case 'yellow': return { bg: 'bg-yellow-500', text: 'text-yellow-600', bgLight: 'bg-yellow-50' };
+            case 'green': return { bg: 'bg-emerald-500', text: 'text-emerald-600', bgLight: 'bg-emerald-50' };
+            case 'blue': return { bg: 'bg-blue-500', text: 'text-blue-600', bgLight: 'bg-blue-50' };
+            case 'purple': return { bg: 'bg-purple-500', text: 'text-purple-600', bgLight: 'bg-purple-50' };
+            default: return { bg: 'bg-gray-500', text: 'text-gray-600', bgLight: 'bg-gray-50' };
+        }
     };
 
     return (
@@ -153,8 +169,8 @@ export default function HomeClient({ user }: HomeClientProps) {
                         </div>
                     </Link>
                 </div>
-                <div className="container mx-auto max-w-4xl mt-6">
-                    <h2 className="text-[20px] font-semibold">こんにちは、{profile?.name || 'マタニティ'}さん</h2>
+                <div className="container mx-auto max-w-4xl mt-4">
+
                     <time dateTime={currentDate} className="text-[15px] font-medium opacity-90 mt-1 block">
                         {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
                     </time>
@@ -166,11 +182,8 @@ export default function HomeClient({ user }: HomeClientProps) {
                 {/* 1. 妊娠週数情報カード */}
                 <PregnancyWeekInfo className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />
 
-                {/* 4. 行動喚起カード - 改善版 */}
+                {/* 2. 行動喚起カード - 改善版 */}
                 <div className="mx-0 sm:mx-4 my-8">
-                    <div className="flex justify-between items-center mb-2 px-1">
-                        <h3 className="font-semibold text-[16px] text-[#6C7A7D]">アクション</h3>
-                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         <ActionCard
                             title="食事を記録"
@@ -183,15 +196,15 @@ export default function HomeClient({ user }: HomeClientProps) {
                         <ActionCard
                             title="レシピを探す"
                             description="不足栄養素を補う"
-                            icon={<Calendar className="h-5 w-5" />}
+                            icon={<Book className="h-5 w-5 text-[#ff7878]" />}
                             href="/recipes"
-                            accentColor="bg-[#6A8CAF]"
-                            iconBgColor="bg-[#F0F7F9]"
+                            accentColor="bg-[#ff7878]"
+                            iconBgColor="bg-[#fff1f1]"
                         />
                     </div>
                 </div>
 
-                {/* 2. 栄養状態サマリーカード */}
+                {/* 3. 栄養状態サマリーカード */}
                 <div className="mx-0 sm:mx-4">
                     <div className="flex justify-between items-center mb-2 px-1">
                         <h3 className="font-semibold text-[16px] text-[#6C7A7D]">栄養バランス</h3>
@@ -206,74 +219,63 @@ export default function HomeClient({ user }: HomeClientProps) {
                                     <div
                                         className="w-full h-full rounded-full flex items-center justify-center"
                                         style={{
-                                            background: `conic-gradient(#2E9E6C ${nutritionData?.overall_score || 0}%, #EEEEEE ${nutritionData?.overall_score || 0}%)`
+                                            background: `conic-gradient(#2E9E6C ${Math.round(nutritionData?.overall_score || 0)}%, #EEEEEE ${Math.round(nutritionData?.overall_score || 0)}%)`
                                         }}
                                     >
                                         <div className="absolute top-[5px] left-[5px] right-[5px] bottom-[5px] bg-white rounded-full flex items-center justify-center">
-                                            <span className="text-[24px] font-extrabold text-[#363249]">{nutritionData?.overall_score || 0}</span>
+                                            <span className="text-[24px] font-extrabold text-[#363249]">{Math.round(nutritionData?.overall_score || 0)}</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div>
                                     <p className="text-[15px] font-medium text-gray-700">
-                                        {nutritionData?.overall_score >= 70
-                                            ? '良好な栄養状態です！'
-                                            : nutritionData?.overall_score >= 50
-                                                ? '栄養バランスの改善が必要です'
-                                                : '栄養不足が心配されます'}
+                                        {allNutrientsZero
+                                            ? '今日も元気に過ごしましょう！'
+                                            : nutritionData?.overall_score >= 70
+                                                ? '良好な栄養状態です！'
+                                                : nutritionData?.overall_score >= 50
+                                                    ? '栄養バランスの改善が必要です'
+                                                    : '栄養不足が心配されます'}
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg">
-                                    <span className="text-red-600 text-2xl">🍖</span>
-                                    <div>
-                                        <p className="text-sm font-medium">タンパク質</p>
-                                        <div className="flex items-center">
-                                            <span className="text-red-600 font-bold">{nutritionData?.protein_percent || 0}%</span>
-                                        </div>
-                                    </div>
+                            {deficientNutrients.length > 0 ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {deficientNutrients.map((nutrient, index) => {
+                                        const colorSet = getNutrientColor(nutrient.color);
+                                        return (
+                                            <div key={index} className={`p-3 ${colorSet.bgLight} rounded-lg`}>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`${colorSet.text} text-lg`}>{nutrient.icon}</span>
+                                                        <span className="text-sm font-medium">{nutrient.name}</span>
+                                                    </div>
+                                                    <span className={`text-xs font-bold ${colorSet.text} min-w-[40px] text-right`}>
+                                                        {nutrient.percent}%
+                                                    </span>
+                                                </div>
+                                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full ${colorSet.bg} rounded-full`}
+                                                        style={{ width: `${nutrient.percent}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-
-                                <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg">
-                                    <span className="text-amber-600 text-2xl">🍃</span>
-                                    <div>
-                                        <p className="text-sm font-medium">葉酸</p>
-                                        <div className="flex items-center">
-                                            <span className="text-amber-600 font-bold">{nutritionData?.folic_acid_percent || 0}%</span>
-                                        </div>
-                                    </div>
+                            ) : (
+                                <div className="text-center py-2">
+                                    <p className="text-gray-500">今日はまだ栄養データがありません</p>
                                 </div>
-
-                                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
-                                    <span className="text-blue-600 text-2xl">🥛</span>
-                                    <div>
-                                        <p className="text-sm font-medium">カルシウム</p>
-                                        <div className="flex items-center">
-                                            <span className="text-blue-600 font-bold">{nutritionData?.calcium_percent || 0}%</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 p-3 bg-violet-50 rounded-lg">
-                                    <span className="text-violet-600 text-2xl">🔬</span>
-                                    <div>
-                                        <p className="text-sm font-medium">ビタミンD</p>
-                                        <div className="flex items-center">
-                                            <span className="text-violet-600 font-bold">{nutritionData?.vitamin_d_percent || 0}%</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            )}
                         </div>
                     </Card>
                 </div>
 
                 {/* 3. アドバイスカード - 修正版 */}
                 <AdviceCard date={format(new Date(), 'yyyy-MM-dd')} className="shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px]" />
-
-
 
                 {/* 5. おすすめレシピカード */}
                 <div className="mx-0 sm:mx-4 mb-8">
