@@ -189,98 +189,110 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
     const progressPercentage = Math.min((pregnancyWeek / 40) * 100, 100);
 
     return (
-        <Card className={`w-full overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-300 ${className}`}>
-            <div className={`h-2 bg-gradient-to-r ${trimesterInfo.color}`}></div>
-            <CardHeader className="pb-2">
+        <Card className={`w-full overflow-hidden bg-[#F8FAFA] relative pb-3 max-w-sm mx-auto shadow-sm ${className}`}>
+            <div className="absolute bottom-[-60px] right-[-60px] w-[120px] h-[120px] bg-[rgba(46,158,108,0.08)] rounded-full z-0"></div>
+            <CardHeader className="pb-2 relative z-10 px-4 pt-4">
                 <div className="flex justify-between items-center">
                     <div>
-                        <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
-                            <span>妊娠 {pregnancyWeek}週目</span>
-                            <Badge variant="outline" className={`${trimesterInfo.textColor} ${trimesterInfo.bgColor} border-none`}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <span className="inline-block px-3 py-0.5 bg-[#2E9E6C] text-white font-medium text-[13px] rounded-[20px] shadow-[0_1px_3px_rgba(46,158,108,0.15)]">
+                                妊娠 {pregnancyWeek}週目
+                            </span>
+                            <span className="text-[13px] text-gray-600 font-medium">
                                 {trimesterInfo.name}
-                            </Badge>
-                        </CardTitle>
-                        <CardDescription className="flex items-center gap-1 mt-1">
-                            <CalendarIcon className="h-4 w-4" />
+                            </span>
+                        </div>
+                        <CardDescription className="text-[12px] text-[#6C7A7D]">
                             <span>出産予定日: {format(dueDate, 'yyyy年MM月dd日')} (あと{daysRemaining}日)</span>
                         </CardDescription>
                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
-                <div className="space-y-5">
-                    {/* 妊娠進捗バー */}
-                    <div className="relative pt-6 pb-2">
-                        <div className="absolute top-0 left-0 right-0 flex justify-between text-xs text-gray-500">
-                            {WEEK_MARKERS.map((marker) => (
-                                <TooltipProvider key={marker.week}>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <div
-                                                className="flex flex-col items-center"
-                                                style={{
-                                                    position: 'absolute',
-                                                    left: `${(marker.week / 40) * 100}%`,
-                                                    transform: 'translateX(-50%)'
-                                                }}
-                                            >
-                                                <div className={`w-1 h-2 ${marker.week === 0 ? 'bg-gray-300' : marker.week === 13 ? 'bg-rose-400' : marker.week === 27 ? 'bg-indigo-400' : 'bg-emerald-400'}`}></div>
-                                                <span className="mt-1">{marker.label}</span>
-                                            </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            {marker.week === 0 ? '妊娠開始' :
-                                                marker.week === 13 ? '第1期終了' :
-                                                    marker.week === 27 ? '第2期終了' :
-                                                        '出産予定日'}
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            ))}
+            <CardContent className="relative z-10 px-4 pt-0">
+                <div className="space-y-3">
+                    <div className="relative pb-1">
+                        {/* マイルストーンマーカー */}
+                        <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                            <span style={{ marginLeft: '-2px' }}>{WEEK_MARKERS[0].label}</span>
+                            <span style={{ position: 'absolute', left: '32.5%', transform: 'translateX(-50%)' }}>{WEEK_MARKERS[1].label}</span>
+                            <span style={{ position: 'absolute', left: '67.5%', transform: 'translateX(-50%)' }}>{WEEK_MARKERS[2].label}</span>
+                            <span style={{ marginRight: '-2px' }}>{WEEK_MARKERS[3].label}</span>
                         </div>
-                        <Progress
-                            value={progressPercentage}
-                            className="h-4 mt-6 bg-gray-100"
-                            indicatorClassName={`bg-gradient-to-r ${trimesterInfo.color}`}
-                        />
-                        <motion.div
-                            className="absolute"
-                            style={{
-                                left: `${progressPercentage}%`,
-                                top: '1.5rem',
-                                transform: 'translateX(-50%)'
-                            }}
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            transition={{
-                                repeat: Infinity,
-                                repeatType: "reverse",
-                                duration: 1.5
-                            }}
-                        >
-                            <div className="text-2xl">{babyInfo.icon}</div>
-                        </motion.div>
+
+                        {/* プログレスバー */}
+                        <div className="h-4 bg-[rgba(46,158,108,0.15)] rounded-full relative">
+                            {/* マーカーの点 */}
+                            {WEEK_MARKERS.map((marker) => (
+                                <div
+                                    key={`dot-${marker.week}`}
+                                    className={`absolute w-0.5 h-4 ${marker.week === 0 ? 'bg-gray-300' :
+                                        marker.week === 13 ? 'bg-rose-400' :
+                                            marker.week === 27 ? 'bg-indigo-400' :
+                                                'bg-emerald-400'
+                                        }`}
+                                    style={{
+                                        left: `${(marker.week / 40) * 100}%`,
+                                        top: '0',
+                                        transform: 'translateX(-50%)',
+                                        zIndex: 10
+                                    }}
+                                ></div>
+                            ))}
+
+                            {/* プログレスバー本体 */}
+                            <div
+                                className="h-full bg-gradient-to-r from-[#2E9E6C] to-[#237D54] rounded-full"
+                                style={{
+                                    width: `${progressPercentage}%`,
+                                    zIndex: 5,
+                                    position: 'relative'
+                                }}
+                            ></div>
+
+                            {/* つまみ */}
+                            <div
+                                className="absolute flex items-center justify-center w-6 h-6 bg-white rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.15)] border-[1.5px] border-[#2E9E6C] z-20"
+                                style={{
+                                    left: `${progressPercentage}%`,
+                                    top: '50%',
+                                    transform: 'translate(-50%, -50%)'
+                                }}
+                            >
+                                <motion.span
+                                    className="text-sm"
+                                    animate={{
+                                        rotate: [0, 10, 0, -10, 0],
+                                        scale: [1, 1.1, 1, 1.1, 1]
+                                    }}
+                                    transition={{
+                                        repeat: Infinity,
+                                        duration: 2,
+                                        ease: "easeInOut"
+                                    }}
+                                >
+                                    {babyInfo.icon}
+                                </motion.span>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* 赤ちゃん情報カード */}
                     <motion.div
-                        className={`p-4 rounded-lg border ${trimesterInfo.borderColor} ${trimesterInfo.bgColor}`}
-                        initial={{ opacity: 0, y: 20 }}
+                        className="p-3 rounded-xl bg-[#E0F7FA]/20 backdrop-blur-sm shadow-sm"
+                        initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
+                        transition={{ duration: 0.4 }}
                     >
-                        <div className="flex items-start gap-4">
-                            <div className={`w-16 h-16 flex items-center justify-center text-4xl bg-white rounded-full shadow-sm border ${trimesterInfo.borderColor}`}>
+                        <div className="flex items-center gap-3">
+                            <div className="w-14 h-14 flex items-center justify-center text-2xl bg-white rounded-full shadow-sm">
                                 {babyInfo.icon}
                             </div>
                             <div className="flex-1">
-                                <div className={`font-semibold ${trimesterInfo.textColor} mb-1`}>赤ちゃんの大きさ</div>
-                                <div className={`${trimesterInfo.textColor} font-medium`}>{babyInfo.size}</div>
-                                <div className={`mt-1 text-sm ${trimesterInfo.textColor} opacity-90`}>{babyInfo.description}</div>
+                                <div className="font-medium text-[#0276aa] mb-0.5 text-[14px]">赤ちゃんの大きさ</div>
+                                <div className="text-[#0276aa] font-medium text-[13px]">{babyInfo.size}</div>
+                                <div className="mt-0.5 text-[11px] text-[#0276aa] leading-relaxed">{babyInfo.description}</div>
                             </div>
                         </div>
                     </motion.div>
-
                 </div>
             </CardContent>
         </Card>

@@ -239,8 +239,10 @@ export interface NutritionAdvice {
     advice_date: string;
     advice_type: AdviceType;
     advice_summary: string;
+    advice_text: string;
     advice_detail?: string;
     recommended_foods?: string[];
+    recommendations?: string[];
     is_read: boolean;
     created_at: string;
 }

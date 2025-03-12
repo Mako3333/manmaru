@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { NutritionSummary } from './nutrition-summary';
 import { ActionCard } from './action-card';
 import { AdviceCard } from './advice-card';
@@ -143,139 +144,160 @@ export default function HomeClient({ user }: HomeClientProps) {
     return (
         <div className="flex flex-col min-h-screen bg-gray-50">
             {/* ヘッダー */}
-            <header className="bg-gradient-to-r from-green-600 to-green-500 text-white p-4 shadow-md">
-                <div className="container mx-auto flex justify-between items-center">
-                    <h1 className="text-2xl font-bold">manmaru</h1>
+            <header className="bg-gradient-to-br from-[#2E9E6C] to-[#237D54] text-white p-6 pb-10 border-b-0 rounded-b-[32px] shadow-[0_4px_20px_rgba(46,158,108,0.25)] mb-8">
+                <div className="container mx-auto max-w-4xl flex justify-between items-center">
+                    <h1 className="text-[28px] font-extrabold">manmaru</h1>
                     <Link href="/profile">
-                        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                            <span className="text-sm">👤</span>
+                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#2E9E6C] font-bold text-xl shadow-md">
+                            {profile?.name?.charAt(0) || 'M'}
                         </div>
                     </Link>
+                </div>
+                <div className="container mx-auto max-w-4xl mt-6">
+                    <h2 className="text-[20px] font-semibold">こんにちは、{profile?.name || 'マタニティ'}さん</h2>
+                    <time dateTime={currentDate} className="text-[15px] font-medium opacity-90 mt-1 block">
+                        {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
+                    </time>
                 </div>
             </header>
 
             {/* メインコンテンツ */}
-            <main className="flex-grow container mx-auto px-4 py-6 space-y-6">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-green-600">こんにちは、{profile.name || 'ゲスト'}さん</h1>
-                        <div className="text-lg mt-2">
-                            <time dateTime={currentDate} className="font-medium">
-                                {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
-                            </time>
-                        </div>
+            <main className="flex-grow container mx-auto max-w-4xl px-4 space-y-8">
+                {/* 1. 妊娠週数情報カード */}
+                <PregnancyWeekInfo className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />
+
+                {/* 4. 行動喚起カード - 改善版 */}
+                <div className="mx-0 sm:mx-4 my-8">
+                    <div className="flex justify-between items-center mb-2 px-1">
+                        <h3 className="font-semibold text-[16px] text-[#6C7A7D]">アクション</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <ActionCard
+                            title="食事を記録"
+                            description="今日の栄養を分析"
+                            icon={<Utensils className="h-5 w-5" />}
+                            href="/meals/log"
+                            accentColor="bg-[#2E9E6C]"
+                            iconBgColor="bg-[#F0F7F4]"
+                        />
+                        <ActionCard
+                            title="レシピを探す"
+                            description="不足栄養素を補う"
+                            icon={<Calendar className="h-5 w-5" />}
+                            href="/recipes"
+                            accentColor="bg-[#6A8CAF]"
+                            iconBgColor="bg-[#F0F7F9]"
+                        />
                     </div>
                 </div>
 
-                {/* 1. 妊娠週数情報カード */}
-                <PregnancyWeekInfo />
-
                 {/* 2. 栄養状態サマリーカード */}
-                <Card className="w-full overflow-hidden">
-                    <CardHeader className="pb-2">
-                        <div className="flex justify-between items-center">
-                            <CardTitle className="text-lg sm:text-xl font-bold">栄養状態サマリー</CardTitle>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="relative w-24 h-24">
-                                <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
-                                <svg className="w-full h-full" viewBox="0 0 36 36">
-                                    <path
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                        fill="none"
-                                        stroke="#E5E7EB"
-                                        strokeWidth="3"
-                                    />
-                                    <path
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                        fill="none"
-                                        stroke="#22C55E"
-                                        strokeWidth="3"
-                                        strokeDasharray={`${nutritionData?.overall_score || 0}, 100`}
-                                        strokeLinecap="round"
-                                    />
-                                </svg>
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <span className="text-2xl font-bold">{nutritionData?.overall_score || 0}</span>
-                                </div>
-                            </div>
-                            <div className="flex-1 ml-6">
-                                {deficientNutrients.length > 0 ? (
-                                    <div>
-                                        <h3 className="font-medium mb-2">不足している栄養素</h3>
-                                        <div className="space-y-2">
-                                            {deficientNutrients.map((nutrient, index) => (
-                                                <div key={index} className="flex items-center">
-                                                    <span className="mr-2">{nutrient.icon}</span>
-                                                    <span className="mr-2">{nutrient.name}</span>
-                                                    <span className={getNutrientColor(nutrient.percent)}>
-                                                        {Math.round(nutrient.percent)}%
-                                                    </span>
-                                                </div>
-                                            ))}
+                <div className="mx-0 sm:mx-4">
+                    <div className="flex justify-between items-center mb-2 px-1">
+                        <h3 className="font-semibold text-[16px] text-[#6C7A7D]">栄養バランス</h3>
+                        <a href="/dashboard" className="text-[#2E9E6C] text-[14px] font-medium">
+                            詳細を見る
+                        </a>
+                    </div>
+                    <Card className="w-full overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none p-6">
+                        <div className="flex flex-col">
+                            <div className="flex items-center mb-4">
+                                <div className="relative w-20 h-20 flex-shrink-0 mr-6">
+                                    <div
+                                        className="w-full h-full rounded-full flex items-center justify-center"
+                                        style={{
+                                            background: `conic-gradient(#2E9E6C ${nutritionData?.overall_score || 0}%, #EEEEEE ${nutritionData?.overall_score || 0}%)`
+                                        }}
+                                    >
+                                        <div className="absolute top-[5px] left-[5px] right-[5px] bottom-[5px] bg-white rounded-full flex items-center justify-center">
+                                            <span className="text-[24px] font-extrabold text-[#363249]">{nutritionData?.overall_score || 0}</span>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="text-green-600 font-medium">
-                                        すべての栄養素が十分に摂取されています！
+                                </div>
+                                <div>
+                                    <p className="text-[15px] font-medium text-gray-700">
+                                        {nutritionData?.overall_score >= 70
+                                            ? '良好な栄養状態です！'
+                                            : nutritionData?.overall_score >= 50
+                                                ? '栄養バランスの改善が必要です'
+                                                : '栄養不足が心配されます'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg">
+                                    <span className="text-red-600 text-2xl">🍖</span>
+                                    <div>
+                                        <p className="text-sm font-medium">タンパク質</p>
+                                        <div className="flex items-center">
+                                            <span className="text-red-600 font-bold">{nutritionData?.protein_percent || 0}%</span>
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                        <Button
-                            variant="outline"
-                            className="w-full mt-2 border-green-500 text-green-600 hover:bg-green-50"
-                            onClick={() => router.push('/dashboard')}
-                        >
-                            詳細を見る <ChevronRight className="h-4 w-4 ml-1" />
-                        </Button>
-                    </CardContent>
-                </Card>
+                                </div>
 
-                {/* 3. アドバイスカード - 修正版 */}
-                <AdviceCard date={format(new Date(), 'yyyy-MM-dd')} />
+                                <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg">
+                                    <span className="text-amber-600 text-2xl">🍃</span>
+                                    <div>
+                                        <p className="text-sm font-medium">葉酸</p>
+                                        <div className="flex items-center">
+                                            <span className="text-amber-600 font-bold">{nutritionData?.folic_acid_percent || 0}%</span>
+                                        </div>
+                                    </div>
+                                </div>
 
-                {/* 4. 行動喚起カード - 改善版 */}
-                <div className="mb-4">
-                    <button
-                        onClick={() => router.push('/meals/log')}
-                        className="w-full py-4 px-6 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg transform hover:scale-[1.02] transition-all duration-200 flex items-center justify-between text-white"
-                    >
-                        <div className="flex items-center">
-                            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mr-4">
-                                <Utensils className="h-6 w-6 text-white" />
-                            </div>
-                            <div className="text-left">
-                                <h3 className="font-bold text-xl">食事を記録</h3>
-                                <p className="text-sm text-white/90">今日の食事内容を記録して栄養バランスを分析しましょう</p>
+                                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
+                                    <span className="text-blue-600 text-2xl">🥛</span>
+                                    <div>
+                                        <p className="text-sm font-medium">カルシウム</p>
+                                        <div className="flex items-center">
+                                            <span className="text-blue-600 font-bold">{nutritionData?.calcium_percent || 0}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 p-3 bg-violet-50 rounded-lg">
+                                    <span className="text-violet-600 text-2xl">🔬</span>
+                                    <div>
+                                        <p className="text-sm font-medium">ビタミンD</p>
+                                        <div className="flex items-center">
+                                            <span className="text-violet-600 font-bold">{nutritionData?.vitamin_d_percent || 0}%</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="bg-white/20 rounded-full p-2">
-                            <ArrowRight className="h-5 w-5 text-white" />
-                        </div>
-                    </button>
+                    </Card>
                 </div>
 
+                {/* 3. アドバイスカード - 修正版 */}
+                <AdviceCard date={format(new Date(), 'yyyy-MM-dd')} className="shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px]" />
+
+
+
                 {/* 5. おすすめレシピカード */}
-                <Card className="w-full overflow-hidden">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg sm:text-xl font-bold">おすすめレシピ</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-center py-4">
-                            <p className="text-gray-500 mb-4">あなたに合ったレシピを準備中です</p>
-                            <Button
-                                variant="outline"
-                                className="border-green-500 text-green-600 hover:bg-green-50"
-                                onClick={() => router.push('/recipes')}
-                            >
-                                レシピを探す <ChevronRight className="h-4 w-4 ml-1" />
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
+                <div className="mx-0 sm:mx-4 mb-8">
+                    <div className="flex justify-between items-center mb-2 px-1">
+                        <h3 className="font-semibold text-[16px] text-[#6C7A7D]">おすすめレシピ</h3>
+                        <a href="/recipes" className="text-[#2E9E6C] text-[14px] font-medium">
+                            すべて見る
+                        </a>
+                    </div>
+                    <Card className="w-full overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none">
+                        <CardContent className="p-6">
+                            <div className="text-center py-4">
+                                <p className="text-gray-500 mb-4">あなたに合ったレシピを準備中です</p>
+                                <Button
+                                    variant="outline"
+                                    className="border-[#2E9E6C] text-[#2E9E6C] hover:bg-[#F0F7F4]"
+                                    onClick={() => router.push('/recipes')}
+                                >
+                                    レシピを探す <ChevronRight className="h-4 w-4 ml-1" />
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             </main>
 
             {/* ナビゲーションバー */}
