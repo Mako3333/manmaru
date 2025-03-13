@@ -9,7 +9,7 @@ import type { Profile } from '@/lib/utils/profile'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight, Clock, Calendar, RefreshCw, History } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Calendar, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { getJapanDate } from '@/lib/utils/date-utils';
 
@@ -30,24 +30,32 @@ const NUTRIENT_ICONS = {
     vitamin_d: '☀️',
 };
 
-// アドバイス履歴の型定義
-interface AdviceHistoryItem {
-    id: string;
-    advice_date: string;
-    advice_summary: string;
-    is_read: boolean;
-}
-
 export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [nutritionData, setNutritionData] = useState<any>(null)
-    // 日本時間の現在日付を取得
-    const [currentDate, setCurrentDate] = useState<string>(getJapanDate());
-    const [activeTab, setActiveTab] = useState<string>('today');
-    const [adviceHistory, setAdviceHistory] = useState<AdviceHistoryItem[]>([]);
-    const [showAdviceHistory, setShowAdviceHistory] = useState(false);
-    const [refreshingAdvice, setRefreshingAdvice] = useState(false);
+    const [loadingProfile, setLoadingProfile] = useState(true)
+    const [currentDate, setCurrentDate] = useState(getJapanDate())
+    const [nutritionData, setNutritionData] = useState<any>({
+        calories_percent: 0,
+        protein_percent: 0,
+        iron_percent: 0,
+        folic_acid_percent: 0,
+        calcium_percent: 0,
+        vitamin_d_percent: 0,
+        actual_calories: 0,
+        target_calories: 0,
+        actual_protein: 0,
+        target_protein: 0,
+        actual_iron: 0,
+        target_iron: 0,
+        actual_folic_acid: 0,
+        target_folic_acid: 0,
+        actual_calcium: 0,
+        target_calcium: 0,
+        actual_vitamin_d: 0,
+        target_vitamin_d: 0,
+    })
+    const [nutritionScore, setNutritionScore] = useState(0)
+    const [refreshingAdvice, setRefreshingAdvice] = useState(false)
     const router = useRouter()
     const supabase = createClientComponentClient()
 
@@ -79,101 +87,56 @@ export default function DashboardPage() {
                     throw nutritionError;
                 }
 
-                // 栄養データがない場合はデフォルト値を設定
-                const defaultData = {
+                // 栄養バランススコアを計算
+                const calculator = new NutritionCalculator();
+                const overall_score = nutritionProgress
+                    ? NutritionCalculator.calculateNutritionScoreFromProgress(nutritionProgress)
+                    : 0;
+
+                setNutritionScore(overall_score);
+                setNutritionData(nutritionProgress || {
                     calories_percent: 0,
                     protein_percent: 0,
                     iron_percent: 0,
                     folic_acid_percent: 0,
                     calcium_percent: 0,
                     vitamin_d_percent: 0,
-                    target_calories: 2000,
-                    target_protein: 60,
-                    target_iron: 27,
-                    target_folic_acid: 400,
-                    target_calcium: 1000,
-                    target_vitamin_d: 10,
                     actual_calories: 0,
+                    target_calories: 0,
                     actual_protein: 0,
+                    target_protein: 0,
                     actual_iron: 0,
+                    target_iron: 0,
                     actual_folic_acid: 0,
+                    target_folic_acid: 0,
                     actual_calcium: 0,
-                    actual_vitamin_d: 0
-                };
-
-                // 栄養データを設定し、バランススコアを計算
-                const data = nutritionProgress || defaultData;
-
-                // 新しいNutritionCalculatorを使用してスコアを計算
-                const overall_score = nutritionProgress
-                    ? NutritionCalculator.calculateNutritionScoreFromProgress(nutritionProgress)
-                    : 0;
-
-                setNutritionData({
-                    ...data,
-                    overall_score
+                    target_calcium: 0,
+                    actual_vitamin_d: 0,
+                    target_vitamin_d: 0,
                 });
-
-                // アドバイス履歴を取得
-                fetchAdviceHistory(session.user.id);
             } catch (error) {
                 console.error('データ取得エラー:', error)
             } finally {
-                setLoading(false)
+                setLoadingProfile(false)
             }
         }
 
         fetchData()
     }, [supabase, router, currentDate])
 
-    // アドバイス履歴を取得する関数
-    const fetchAdviceHistory = async (userId: string) => {
-        try {
-            const { data, error } = await supabase
-                .from('daily_nutri_advice')
-                .select('id, advice_date, advice_summary, is_read')
-                .eq('user_id', userId)
-                .order('advice_date', { ascending: false })
-                .limit(10);
-
-            if (error) throw error;
-            setAdviceHistory(data || []);
-        } catch (error) {
-            console.error('アドバイス履歴取得エラー:', error);
-        }
-    };
-
     // アドバイスを手動で更新する関数
     const refreshAdvice = async () => {
-        if (refreshingAdvice) return;
-
         try {
             setRefreshingAdvice(true);
-            toast.loading('栄養アドバイスを更新中...');
 
-            // 日本時間の現在日付を取得
-            const today = getJapanDate();
-
-            // 強制的に新しいアドバイスを生成するモードでAPIを呼び出し
-            const response = await fetch(`/api/nutrition-advice?detail=true&force=true&date=${today}`);
+            const response = await fetch('/api/nutrition-advice?force=true&date=' + getJapanDate());
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'アドバイスの更新に失敗しました');
-            }
-
-            const data = await response.json();
-
-            if (!data.success) {
-                throw new Error(data.error || 'アドバイスの更新に失敗しました');
+                const error = await response.json();
+                throw new Error(error.message || '栄養アドバイスの更新に失敗しました');
             }
 
             toast.success('栄養アドバイスを更新しました');
-
-            // プロフィールがある場合はアドバイス履歴も更新
-            if (profile) {
-                fetchAdviceHistory(profile.user_id);
-            }
 
             // DetailedNutritionAdviceコンポーネントを更新するためにページをリロード
             router.refresh();
@@ -231,7 +194,7 @@ export default function DashboardPage() {
         return 'bg-red-500';
     };
 
-    if (loading) {
+    if (loadingProfile) {
         return (
             <div className="container mx-auto px-4 py-8">
                 <div className="flex justify-center items-center h-64">
@@ -258,10 +221,9 @@ export default function DashboardPage() {
         )
     }
 
-    // 栄養素データを配列に変換
-    const nutrientData = [
+    // 栄養素カード
+    const nutrientItems = [
         {
-            key: 'calories',
             name: 'カロリー',
             icon: NUTRIENT_ICONS.calories,
             percent: nutritionData?.calories_percent || 0,
@@ -270,7 +232,6 @@ export default function DashboardPage() {
             unit: 'kcal'
         },
         {
-            key: 'protein',
             name: 'タンパク質',
             icon: NUTRIENT_ICONS.protein,
             percent: nutritionData?.protein_percent || 0,
@@ -279,7 +240,6 @@ export default function DashboardPage() {
             unit: 'g'
         },
         {
-            key: 'iron',
             name: '鉄分',
             icon: NUTRIENT_ICONS.iron,
             percent: nutritionData?.iron_percent || 0,
@@ -288,7 +248,6 @@ export default function DashboardPage() {
             unit: 'mg'
         },
         {
-            key: 'folic_acid',
             name: '葉酸',
             icon: NUTRIENT_ICONS.folic_acid,
             percent: nutritionData?.folic_acid_percent || 0,
@@ -297,7 +256,6 @@ export default function DashboardPage() {
             unit: 'μg'
         },
         {
-            key: 'calcium',
             name: 'カルシウム',
             icon: NUTRIENT_ICONS.calcium,
             percent: nutritionData?.calcium_percent || 0,
@@ -306,7 +264,6 @@ export default function DashboardPage() {
             unit: 'mg'
         },
         {
-            key: 'vitamin_d',
             name: 'ビタミンD',
             icon: NUTRIENT_ICONS.vitamin_d,
             percent: nutritionData?.vitamin_d_percent || 0,
@@ -317,8 +274,8 @@ export default function DashboardPage() {
     ];
 
     // 不足している栄養素と十分な栄養素に分類
-    const deficientNutrients = nutrientData.filter(n => n.percent < 70);
-    const sufficientNutrients = nutrientData.filter(n => n.percent >= 70);
+    const deficientNutrients = nutrientItems.filter(n => n.percent < 70);
+    const sufficientNutrients = nutrientItems.filter(n => n.percent >= 70);
 
     return (
         <div className="container mx-auto px-4 py-6">
@@ -353,7 +310,7 @@ export default function DashboardPage() {
                     </Button>
                 </div>
 
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <Tabs value="today" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="today">今日</TabsTrigger>
                         <TabsTrigger value="week">週間</TabsTrigger>
@@ -370,8 +327,8 @@ export default function DashboardPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
-                                    {nutrientData.map((nutrient) => (
-                                        <div key={nutrient.key} className="space-y-1">
+                                    {nutrientItems.map((nutrient) => (
+                                        <div key={nutrient.name} className="space-y-1">
                                             <div className="flex justify-between items-center">
                                                 <div className="flex items-center">
                                                     <span className="mr-2">{nutrient.icon}</span>
@@ -423,17 +380,17 @@ export default function DashboardPage() {
                                                 fill="none"
                                                 stroke="#22C55E"
                                                 strokeWidth="3"
-                                                strokeDasharray={`${nutritionData?.overall_score || 0}, 100`}
+                                                strokeDasharray={`${nutritionScore}, 100`}
                                                 strokeLinecap="round"
                                             />
                                         </svg>
                                         <div className="absolute inset-0 flex items-center justify-center">
-                                            <span className="text-3xl font-bold">{nutritionData?.overall_score || 0}</span>
+                                            <span className="text-3xl font-bold">{nutritionScore}</span>
                                         </div>
                                     </div>
                                 </div>
                                 <p className="text-center text-gray-600 mb-4">
-                                    今日の栄養バランススコアは<span className="font-bold text-green-600">{nutritionData?.overall_score || 0}点</span>です。
+                                    今日の栄養バランススコアは<span className="font-bold text-green-600">{nutritionScore}点</span>です。
                                 </p>
                                 <p className="text-sm text-gray-500 text-center">
                                     このスコアは妊娠期に重要な栄養素の摂取率から算出されています。
@@ -444,65 +401,8 @@ export default function DashboardPage() {
                         {/* 詳細栄養アドバイス */}
                         <div className="mb-6">
                             <div className="flex justify-between items-center mb-2">
-                                <h2 className="text-xl font-bold">栄養アドバイス</h2>
-                                <div className="flex space-x-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setShowAdviceHistory(!showAdviceHistory)}
-                                        className="flex items-center"
-                                    >
-                                        <History className="h-4 w-4 mr-1" />
-                                        {showAdviceHistory ? '履歴を閉じる' : '過去のアドバイス'}
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={refreshAdvice}
-                                        disabled={refreshingAdvice}
-                                        className="flex items-center"
-                                    >
-                                        <RefreshCw className={`h-4 w-4 mr-1 ${refreshingAdvice ? 'animate-spin' : ''}`} />
-                                        更新する
-                                    </Button>
-                                </div>
-                            </div>
 
-                            {/* アドバイス履歴表示 */}
-                            {showAdviceHistory && (
-                                <Card className="mb-4">
-                                    <CardHeader className="py-3">
-                                        <CardTitle className="text-md">過去のアドバイス履歴</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {adviceHistory.length > 0 ? (
-                                            <div className="space-y-2 max-h-60 overflow-y-auto">
-                                                {adviceHistory.map((item) => (
-                                                    <div key={item.id} className="p-3 border rounded-md hover:bg-gray-50">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <p className="text-sm font-medium">
-                                                                    {format(new Date(item.advice_date), 'yyyy年M月d日', { locale: ja })}
-                                                                </p>
-                                                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                                                    {item.advice_summary}
-                                                                </p>
-                                                            </div>
-                                                            {!item.is_read && (
-                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                                                    未読
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-center text-gray-500 py-4">アドバイス履歴がありません</p>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            )}
+                            </div>
 
                             <DetailedNutritionAdvice
                                 selectedDate={currentDate}

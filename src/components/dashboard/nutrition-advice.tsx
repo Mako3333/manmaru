@@ -136,6 +136,8 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
     // 6. 強制更新ハンドラ
     const handleForceUpdate = () => {
         setForceUpdate(true);
+        // 更新中のステータスをセット
+        setState(prev => ({ ...prev, loading: true, error: null }));
         fetchDetailedAdvice(currentDate, true);
     };
 
@@ -160,28 +162,27 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                         {format(new Date(currentDate), 'yyyy年MM月dd日')}
                     </div>
 
-                    {/* 更新ボタン */}
-                    {!state.loading && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleForceUpdate}
-                            disabled={state.loading}
-                            className="h-8 w-8 p-0"
-                            title="アドバイスを更新"
-                        >
-                            <RefreshCw className="h-4 w-4" />
-                            <span className="sr-only">更新</span>
-                        </Button>
-                    )}
+                    {/* 更新ボタン - 常に表示するが、ローディング中は無効化 */}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleForceUpdate}
+                        disabled={state.loading}
+                        className="h-8 w-8 p-0"
+                        title="アドバイスを更新"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${state.loading ? 'animate-spin' : ''}`} />
+                        <span className="sr-only">更新</span>
+                    </Button>
                 </div>
             </CardHeader>
 
             <CardContent>
                 {state.loading ? (
                     // ローディング表示
-                    <div className="flex justify-center items-center py-8">
+                    <div className="flex flex-col justify-center items-center py-8 space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+                        <p className="text-sm text-gray-500">栄養アドバイスを更新中...</p>
                     </div>
                 ) : state.error ? (
                     <div className="p-4 rounded-lg bg-red-50 text-red-800 border border-red-200">
