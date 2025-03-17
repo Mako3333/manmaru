@@ -106,6 +106,53 @@ entity "daily_nutri_advice" as daily_nutri_advice {
 }
 note right of daily_nutri_advice : Modified table structure
 
+' Recipe Clip Features - New Tables
+entity "clipped_recipes" as clipped_recipes {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  title : TEXT
+  image_url : TEXT
+  source_url : TEXT
+  source_platform : TEXT
+  recipe_type : TEXT
+  ingredients : JSONB
+  nutrition_per_serving : JSONB
+  caution_foods : TEXT[]
+  caution_level : TEXT
+  is_favorite : BOOLEAN
+  servings : INTEGER
+  clipped_at : TIMESTAMPTZ
+  last_used_at : TIMESTAMPTZ
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+note right of clipped_recipes : New table for recipe clipping
+
+entity "meal_recipe_entries" as meal_recipe_entries {
+  * id : UUID <<PK>>
+  --
+  * meal_id : UUID <<FK>>
+  * clipped_recipe_id : UUID <<FK>>
+  portion_size : FLOAT
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+note right of meal_recipe_entries : New junction table
+
+entity "caution_foods" as caution_foods {
+  * id : UUID <<PK>>
+  --
+  food_name : TEXT
+  category : TEXT
+  caution_level : TEXT
+  reason : TEXT
+  alternative_suggestion : TEXT
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+note right of caution_foods : New table for pregnancy food warnings
+
 ' View
 entity "nutrition_goal_prog (VIEW)" as nutrition_goal_prog {
   user_id : UUID
@@ -145,13 +192,17 @@ auth_users ||--o{ meals : "user_id"
 auth_users ||--o{ weight_logs : "user_id"
 auth_users ||--o{ daily_nutrition_logs : "user_id"
 auth_users ||--o{ daily_nutri_advice : "user_id"
+auth_users ||--o{ clipped_recipes : "user_id"
 
 profiles |o--o{ nutrition_goal_prog : "user_id"
 profiles }o..|| nutrition_targets : "trimester"
 
 meals ||--o{ meal_nutrients : "meal_id"
 meals }o--o{ nutrition_goal_prog : "user_id, meal_date"
+meals ||--o{ meal_recipe_entries : "meal_id"
 
 nutrition_targets ||--o{ nutrition_goal_prog : "trimester"
+
+clipped_recipes ||--o{ meal_recipe_entries : "clipped_recipe_id"
 
 @enduml
