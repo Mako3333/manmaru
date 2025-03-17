@@ -439,3 +439,259 @@ Error: Invalid src prop (https://og-image.cookpad.com/global/jp/recipe/24523436?
 本日の実装により、レシピ機能の基盤が整い、栄養計算の精度が大幅に向上しました。特に、日本語特有の量表現の解析と、妊娠期に特化した栄養バランスの計算に重点を置いた改善を行いました。
 
 今後は、まず全ての機能と画面の実装を完了させ、その後栄養計算ロジックの改善に取り組む予定です。また、実際のユーザーフィードバックを基に、継続的な改善を行っていきます。 
+
+
+# レシピ機能の実装と栄養計算ロジックの改善（続き）
+
+## 7. 本日実装した追加機能
+
+### 7.1 画像表示問題の解決
+
+#### 背景
+- 外部レシピサイトの画像が表示されないエラーが発生
+- `next.config.js`での外部画像ドメイン設定が未完了
+
+#### 実施した変更
+1. **next.config.tsの修正**
+   ```typescript
+   const nextConfig: NextConfig = withPWA({
+     // ... 既存設定 ...
+     images: {
+       domains: [
+         // クックパッド
+         "cookpad.com",
+         "og-image.cookpad.com",
+         "img.cpcdn.com",
+         // デリッシュキッチン
+         "delishkitchen.tv",
+         "image.delishkitchen.tv",
+         // クラシル
+         "kurashiru.com",
+         "video.kurashiru.com",
+         "image.kurashiru.com",
+         // その他
+         "placehold.jp"
+       ],
+     },
+   });
+   ```
+
+### 7.2 レシピ詳細ページの改善
+
+#### 背景
+- レシピ詳細ページ実装時にAPI取得エラーが発生
+- クライアントコンポーネントの型定義とデータ連携に問題があった
+
+#### 実施した変更
+1. **サーバーコンポーネントの修正**
+   ```typescript
+   export default async function RecipePage({ params }: { params: { id: string } }) {
+     const { id } = params;
+     try {
+       const supabase = createServerComponentClient({ cookies });
+       // ユーザー情報を取得
+       const { data: { user } } = await supabase.auth.getUser();
+       
+       if (!user) {
+         return <div>ログインが必要です</div>;
+       }
+       
+       // IDに基づいてレシピデータを取得
+       const { data: recipe, error } = await supabase
+         .from('clipped_recipes')
+         .select('*')
+         .eq('id', id)
+         .eq('user_id', user.id)
+         .single();
+         
+       if (error || !recipe) {
+         console.error('Failed to fetch recipe:', error);
+         notFound();
+       }
+       
+       return <RecipesClient initialData={recipe} />;
+     } catch (error) {
+       // エラーハンドリング
+     }
+   }
+   ```
+
+2. **クライアントコンポーネントの強化**
+   - レシピデータの表示改善
+   - 栄養素情報の視覚化
+   - お気に入り機能の実装
+   - 材料リストの整形表示
+
+### 7.3 食事記録連携機能の実装
+
+#### 背景
+- レシピから食事記録へのデータ連携が必要
+- ユーザーフレンドリーなUIと適切なデータ変換が求められる
+
+#### 実施した変更
+1. **APIエンドポイントの作成**
+   ```typescript
+   // src/app/api/meals/from-recipe/route.ts
+   export async function POST(req: Request) {
+     try {
+       // リクエストからレシピID、食事タイプ、分量、日付を取得
+       const { recipe_id, meal_type, portion_size, meal_date } = await req.json();
+       
+       // レシピデータの取得
+       const { data: recipe } = await supabase
+         .from('clipped_recipes')
+         .select('*')
+         .eq('id', recipe_id)
+         .single();
+       
+       // 食事記録の作成
+       const { data: mealData } = await supabase
+         .from('meals')
+         .insert({
+           user_id: session.user.id,
+           meal_type,
+           meal_date,
+           food_description: recipe.ingredients,
+           nutrition_data: recipe.nutrition_per_serving,
+           servings: Math.max(1, Math.round(portion_size))
+         })
+         .select('id')
+         .single();
+       
+       // 関連テーブルへの記録
+       await supabase
+         .from('meal_recipe_entries')
+         .insert({
+           meal_id: mealData.id,
+           clipped_recipe_id: recipe_id,
+           portion_size
+         });
+       
+       // レシピの最終使用日更新
+       await supabase
+         .from('clipped_recipes')
+         .update({ last_used_at: new Date().toISOString() })
+         .eq('id', recipe_id);
+         
+       return NextResponse.json({ success: true });
+     } catch (error) {
+       // エラーハンドリング
+     }
+   }
+   ```
+
+2. **食事記録追加ダイアログの実装**
+   ```tsx
+   // src/components/recipes/add-to-meal-dialog.tsx
+   export function AddToMealDialog({ isOpen, onClose, recipe }: AddToMealDialogProps) {
+     const [date, setDate] = useState<Date>(new Date());
+     const [mealType, setMealType] = useState<string>(MealType.DINNER);
+     const [portionSize, setPortionSize] = useState<number>(1);
+     
+     // 食事記録追加のハンドラー
+     const handleSubmit = async () => {
+       try {
+         // APIを呼び出し
+         const response = await fetch('/api/meals/from-recipe', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             recipe_id: recipe.id,
+             meal_type: mealType,
+             portion_size: portionSize,
+             meal_date: format(date, 'yyyy-MM-dd'),
+           }),
+         });
+         
+         // 成功時の処理
+         toast.success('食事記録に追加しました');
+         onClose();
+         router.refresh();
+       } catch (error) {
+         // エラー処理
+       }
+     };
+     
+     // ダイアログUI（日付選択、食事タイプ選択、分量調整）
+     // ...
+   }
+   ```
+
+### 7.4 コンポーネントのエラー対応
+
+#### 背景
+- UIコンポーネントのモジュールが見つからないエラーが発生
+- TypeScriptの型定義エラーが複数箇所で発生
+
+#### 実施した変更
+1. **Shadcn UIコンポーネントのインストール**
+   ```bash
+   npx shadcn@latest add calendar popover select slider
+   ```
+
+2. **TypeScript型アノテーションの追加**
+   ```typescript
+   onSelect={(date: Date | undefined) => date && setDate(date)}
+   onValueChange={(values: number[]) => setPortionSize(values[0])}
+   ```
+
+## 8. 今後の修正項目
+
+### 8.1 栄養素の比例計算
+- **問題点**: 現状では分量を変更しても栄養素の計算は変更されない
+- **改善案**: 分量に応じた栄養素の比例計算機能を追加
+  ```typescript
+  // nutrition_data = recipe.nutrition_per_serving の代わりに
+  const nutrition_data = Object.entries(recipe.nutrition_per_serving)
+    .reduce((acc, [key, value]) => {
+      acc[key] = typeof value === 'number' ? value * portion_size : value;
+      return acc;
+    }, {});
+  ```
+
+### 8.2 お気に入り機能の修正
+- お気に入りボタンの状態が即時反映されるよう改善
+- リアルタイムのUI更新と状態管理の連携強化
+
+### 8.3 ホーム画面連携
+- おすすめレシピセクションの実装
+- 栄養摂取状況に基づいたレシピ推奨機能
+
+### 8.4 禁忌食品データベースの拡張
+- トライメスター別の禁忌食品データベース設計
+- より詳細な警告表示とアドバイス機能
+
+## 9. MVPと将来の拡張性
+
+### 9.1 MVPに含める機能（優先度順）
+1. **栄養素比例計算**: 分量に応じた正確な栄養計算（完了目安: 1-2日）
+2. **お気に入り機能修正**: 状態の即時反映とUX改善（完了目安: 1日）
+3. **基本的なホーム画面連携**: おすすめレシピ表示（完了目安: 2-3日）
+
+### 9.2 将来的な拡張機能
+1. **献立提案機能**
+   - 主菜選択時の副菜・汁物レコメンド
+   - 栄養バランスを考慮した組み合わせ最適化
+   - `meal_sets`テーブル活用による実装
+
+2. **パーソナライズされたレコメンド**
+   - 妊娠週数、季節、食事履歴に基づく提案
+   - AIと栄養学ベースのハイブリッドアプローチ
+
+3. **食品安全ガイド機能**
+   - 妊娠期特有の禁忌食品詳細データベース
+   - トライメスター別の注意レベル設定
+   - 代替食品の提案機能
+
+4. **チャットボットアドバイザー**
+   - 栄養相談と食事アドバイス
+   - レシピ・食材の質問応答
+   - 既存AI基盤を活用した実装
+
+## 10. まとめ
+
+本日の追加実装により、レシピ機能の基本的なフローが完成しました。特に、レシピから食事記録への連携機能はコア機能として重要であり、UIとバックエンドの連携がスムーズに行える形で実装できました。
+
+画像表示問題の解決、APIエラーの修正、UIコンポーネントの追加などの技術的課題も解決し、MVPリリースに向けて大きく前進しました。残りの作業項目も明確になり、特に栄養素の比例計算機能は優先度の高い修正として次のステップで実装予定です。
+
+将来の拡張性も設計段階から考慮されており、データモデルやAPIは将来的な機能追加にも対応できる柔軟な構造になっています。特に献立提案機能やパーソナライズされたレコメンド機能は、既存の基盤を活用しながら段階的に実装していく予定です。
