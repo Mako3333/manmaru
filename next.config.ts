@@ -15,7 +15,21 @@ const nextConfig: NextConfig = withPWA({
     },
   },
   images: {
-    domains: [],
+    domains: [
+      // クックパッド
+      "cookpad.com",
+      "og-image.cookpad.com",
+      "img.cpcdn.com",
+      // デリッシュキッチン
+      "delishkitchen.tv",
+      "image.delishkitchen.tv",
+      // クラシル
+      "kurashiru.com",
+      "video.kurashiru.com",
+      "image.kurashiru.com",
+      // その他
+      "placehold.jp"
+    ],
   },
 });
 
