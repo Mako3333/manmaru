@@ -13,18 +13,125 @@ export class NutritionCalculator {
     static calculateMealNutrition(foods: any[]): BasicNutritionData {
         // 食材ごとの栄養素を集計
         const nutrition = foods.reduce((acc, food) => {
+            // 量の係数を計算（標準量に対する比率）
             const quantity = this.parseQuantity(food.quantity);
+
+            // 栄養素の計算
+            // 各栄養素について、食品の栄養価 × 量の係数を加算
             return {
-                calories: acc.calories + (food.nutrition?.calories || 0) * quantity,
-                protein: acc.protein + (food.nutrition?.protein || 0) * quantity,
-                iron: acc.iron + (food.nutrition?.iron || 0) * quantity,
-                folic_acid: acc.folic_acid + (food.nutrition?.folic_acid || 0) * quantity,
-                calcium: acc.calcium + (food.nutrition?.calcium || 0) * quantity,
-                vitamin_d: acc.vitamin_d + (food.nutrition?.vitamin_d || 0) * quantity,
+                calories: acc.calories + this.calculateWithQuantity(food.nutrition?.calories, quantity),
+                protein: acc.protein + this.calculateWithQuantity(food.nutrition?.protein, quantity),
+                iron: acc.iron + this.calculateWithQuantity(food.nutrition?.iron, quantity),
+                folic_acid: acc.folic_acid + this.calculateWithQuantity(food.nutrition?.folic_acid, quantity),
+                calcium: acc.calcium + this.calculateWithQuantity(food.nutrition?.calcium, quantity),
+                vitamin_d: acc.vitamin_d + this.calculateWithQuantity(food.nutrition?.vitamin_d, quantity),
             };
         }, this.getEmptyNutrition());
 
-        return nutrition;
+        // 小数点以下2桁に丸める
+        return {
+            calories: Math.round(nutrition.calories * 100) / 100,
+            protein: Math.round(nutrition.protein * 100) / 100,
+            iron: Math.round(nutrition.iron * 100) / 100,
+            folic_acid: Math.round(nutrition.folic_acid * 100) / 100,
+            calcium: Math.round(nutrition.calcium * 100) / 100,
+            vitamin_d: Math.round(nutrition.vitamin_d * 100) / 100,
+        };
+    }
+
+    /**
+     * 量を考慮した栄養素の計算
+     * @param value 栄養素の値
+     * @param quantity 量の係数
+     * @returns 計算された栄養素の値
+     */
+    private static calculateWithQuantity(value: number | undefined | null, quantity: number): number {
+        if (typeof value !== 'number' || isNaN(value)) {
+            return 0;
+        }
+        return value * quantity;
+    }
+
+    /**
+     * 空の栄養データを取得
+     */
+    private static getEmptyNutrition(): BasicNutritionData {
+        return {
+            calories: 0,
+            protein: 0,
+            iron: 0,
+            folic_acid: 0,
+            calcium: 0,
+            vitamin_d: 0,
+        };
+    }
+
+    /**
+     * 量の文字列を係数に変換
+     * @param quantity 量の文字列
+     * @returns 係数
+     */
+    private static parseQuantity(quantity: string | undefined | null): number {
+        if (!quantity) return 1;
+
+        // 数値のみの場合は係数として扱う
+        const numericMatch = quantity.match(/^(\d+\.?\d*)$/);
+        if (numericMatch) {
+            return parseFloat(numericMatch[1]);
+        }
+
+        // 標準的な単位の変換
+        const standardUnitMatch = quantity.match(/^(\d+\.?\d*)\s*(g|ml|mg|μg)$/i);
+        if (standardUnitMatch) {
+            const value = parseFloat(standardUnitMatch[1]);
+            const unit = standardUnitMatch[2].toLowerCase();
+
+            switch (unit) {
+                case 'g':
+                case 'ml':
+                    return value / 100; // 100gを基準とする
+                case 'mg':
+                    return value / 100000; // 100gを基準とする
+                case 'μg':
+                    return value / 100000000; // 100gを基準とする
+                default:
+                    return 1;
+            }
+        }
+
+        // 日本語の量表現の解析
+        const japaneseQuantityMap: { [key: string]: number } = {
+            '大さじ': 15,
+            '小さじ': 5,
+            'カップ': 200,
+            '本': 40,
+            '個': 50,
+            '株': 50,
+            '束': 100,
+            '缶': 100,
+            '切れ': 80,
+            '枚': 60,
+        };
+
+        // 数値と単位を分離
+        const japaneseMatch = quantity.match(/^(大|小|)(\d+\.?\d*)(株|本|個|束|缶|さじ|カップ|切れ|枚)$/);
+        if (japaneseMatch) {
+            const prefix = japaneseMatch[1];
+            const value = parseFloat(japaneseMatch[2]);
+            const unit = japaneseMatch[3];
+
+            let baseGrams = japaneseQuantityMap[unit] || 0;
+            if (prefix === '大' && unit === 'さじ') {
+                baseGrams = japaneseQuantityMap['大さじ'];
+            } else if (prefix === '小' && unit === 'さじ') {
+                baseGrams = japaneseQuantityMap['小さじ'];
+            }
+
+            return (value * baseGrams) / 100; // 100gを基準とする
+        }
+
+        // デフォルトは1（標準量として扱う）
+        return 1;
     }
 
     /**
@@ -110,43 +217,5 @@ export class NutritionCalculator {
         if (progress.protein_percent < 70) deficientNutrients.push('protein');
 
         return deficientNutrients;
-    }
-
-    /**
-     * 量の文字列を数値に変換する
-     * @param quantityStr 量の文字列表現
-     * @returns 数値化された量
-     */
-    private static parseQuantity(quantityStr: string): number {
-        if (!quantityStr) return 1.0;
-
-        // 数値のみを抽出
-        const numMatch = quantityStr.match(/(\d+(\.\d+)?)/);
-        if (numMatch && numMatch[1]) {
-            return parseFloat(numMatch[1]);
-        }
-
-        // 特定の単位表現を解析
-        if (quantityStr.includes('大さじ')) return 15 / 100;
-        if (quantityStr.includes('小さじ')) return 5 / 100;
-        if (quantityStr.includes('カップ')) return 200 / 100;
-        if (quantityStr.includes('杯')) return 150 / 100;
-
-        return 1.0;
-    }
-
-    /**
-     * 空の栄養素オブジェクト
-     * @returns 初期化された栄養素オブジェクト
-     */
-    static getEmptyNutrition(): BasicNutritionData {
-        return {
-            calories: 0,
-            protein: 0,
-            iron: 0,
-            folic_acid: 0,
-            calcium: 0,
-            vitamin_d: 0
-        };
     }
 } 

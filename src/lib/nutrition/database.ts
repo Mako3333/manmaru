@@ -505,205 +505,134 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
     }
 
     /**
-     * 食品名から栄養データを検索
-     * @param foodName 食品名
-     * @returns 食品の栄養データ
+     * 量の文字列を数値に変換する
+     * @param quantity 量の文字列
+     * @param standardQuantity 標準量
+     * @returns 係数
      */
-    private findFoodItem(name: string): DatabaseFoodItem | null {
-        const normalizedSearchName = this.normalizeFoodName(name);
+    private parseQuantity(quantity: string, standardQuantity: string = '100g'): number {
+        if (!quantity) return 1;
 
-        // 検索ログの追加
-        console.info(`食品検索: "${name}" (正規化: "${normalizedSearchName}")`);
-
-        // ステップ1: 完全一致検索
-        if (this.foodDatabase[name]) {
-            console.info(`完全一致で見つかりました: ${name}`);
-            return this.foodDatabase[name];
+        // 数値のみの場合は係数として扱う
+        const numericMatch = quantity.match(/^(\d+\.?\d*)$/);
+        if (numericMatch) {
+            return parseFloat(numericMatch[1]);
         }
 
-        // ステップ2: データベース内の全エントリを検査
-        const allKeys = Object.keys(this.foodDatabase);
-        console.info(`データベース内のエントリ数: ${allKeys.length}`);
+        // 標準的な単位の変換
+        const standardUnitMatch = quantity.match(/^(\d+\.?\d*)\s*(g|ml|mg|μg)$/i);
+        if (standardUnitMatch) {
+            const value = parseFloat(standardUnitMatch[1]);
+            const unit = standardUnitMatch[2].toLowerCase();
 
-        // 一部のエントリをログ出力（デバッグ用）
-        if (allKeys.length > 0) {
-            console.info(`データベースの一部エントリ: ${allKeys.slice(0, 3).join(', ')}`);
-        }
+            // 標準量から基準値を取得
+            const standardValue = parseFloat(standardQuantity.match(/\d+/)?.[0] || '100');
 
-        // ステップ3: 詳細な検索アルゴリズムの実装
-        for (const key of allKeys) {
-            const food = this.foodDatabase[key];
-            const normalizedKey = this.normalizeFoodName(key);
-
-            // 3.1: キー完全一致
-            if (key === name) {
-                console.info(`キー完全一致で見つかりました: ${name} -> ${key}`);
-                return food;
-            }
-
-            // 3.2: エイリアス一致
-            if (food.aliases && food.aliases.includes(name)) {
-                console.info(`エイリアス一致で見つかりました: ${name} -> ${key} (エイリアス: ${food.aliases.join(', ')})`);
-                return food;
-            }
-
-            // 3.3: 正規化した名前の部分一致
-            if (normalizedKey.includes(normalizedSearchName) || normalizedSearchName.includes(normalizedKey)) {
-                console.info(`正規化部分一致で見つかりました: ${name} (${normalizedSearchName}) -> ${key} (${normalizedKey})`);
-                return food;
-            }
-
-            // 3.4: キーワード分割による検索
-            const keyParts = key.split(/[　\s]/);  // 空白や全角スペースで分割
-            for (const part of keyParts) {
-                const normalizedPart = this.normalizeFoodName(part);
-                if (normalizedPart === normalizedSearchName ||
-                    (normalizedPart.length > 2 && (normalizedPart.includes(normalizedSearchName) || normalizedSearchName.includes(normalizedPart)))) {
-                    console.info(`キーワード分割で見つかりました: ${name} -> ${key} (キーワード: ${part})`);
-                    return food;
-                }
-            }
-
-            // 3.5: 検索キーワードの分割による検索
-            const nameParts = name.split(/[　\s]/);  // 空白や全角スペースで分割
-            if (nameParts.length > 1) {
-                for (const part of nameParts) {
-                    if (part.length > 1 && (key.includes(part) || normalizedKey.includes(this.normalizeFoodName(part)))) {
-                        console.info(`検索キーワード分割で見つかりました: ${name} -> ${key} (検索キーワード: ${part})`);
-                        return food;
-                    }
-                }
-            }
-
-            // 3.6: 日本語の音読み・訓読みによる検索
-            // 例：「えび」で「海老」を検索、「とうふ」で「豆腐」を検索
-            if (this.couldBePhoneticMatch(name, key)) {
-                console.info(`音読み・訓読み一致で見つかりました: ${name} -> ${key}`);
-                return food;
+            switch (unit) {
+                case 'g':
+                case 'ml':
+                    return value / standardValue;
+                case 'mg':
+                    return (value / 1000) / standardValue;
+                case 'μg':
+                    return (value / 1000000) / standardValue;
+                default:
+                    return 1;
             }
         }
 
-        console.warn(`食品が見つかりません: ${name}`);
-        return null;
-    }
-
-    private couldBePhoneticMatch(searchName: string, dbKey: string): boolean {
-        // 簡易的な音読み・訓読みマッピング
-        const phoneticMappings: Record<string, string[]> = {
-            'えび': ['海老', 'エビ'],
-            'とうふ': ['豆腐'],
-            'はっぽうさい': ['八宝菜'],
-            'ぴらふ': ['ピラフ'],
-            'たまご': ['卵', '玉子'],
-            'にく': ['肉'],
-            'ぎゅう': ['牛'],
-            'ぶた': ['豚'],
-            'とり': ['鶏', '鳥'],
-            'さかな': ['魚'],
-            'やさい': ['野菜']
+        // 日本語の量表現の解析
+        const japaneseQuantityMap: { [key: string]: number } = {
+            '大さじ': 15,
+            '小さじ': 5,
+            'カップ': 200,
+            '本': 40,
+            '個': 50,
+            '株': 50,
+            '束': 100,
+            '缶': 100,
+            '切れ': 80,
+            '枚': 60,
         };
 
-        const normalizedSearch = this.normalizeFoodName(searchName);
+        // 数値と単位を分離
+        const japaneseMatch = quantity.match(/^(大|小|)(\d+\.?\d*)(株|本|個|束|缶|さじ|カップ|切れ|枚)$/);
+        if (japaneseMatch) {
+            const prefix = japaneseMatch[1];
+            const value = parseFloat(japaneseMatch[2]);
+            const unit = japaneseMatch[3];
 
-        // 直接のマッピングチェック
-        for (const [phonetic, kanji] of Object.entries(phoneticMappings)) {
-            if (normalizedSearch.includes(phonetic) && kanji.some(k => dbKey.includes(k))) {
-                return true;
+            let baseGrams = japaneseQuantityMap[unit] || 0;
+            if (prefix === '大' && unit === 'さじ') {
+                baseGrams = japaneseQuantityMap['大さじ'];
+            } else if (prefix === '小' && unit === 'さじ') {
+                baseGrams = japaneseQuantityMap['小さじ'];
             }
-            if (kanji.some(k => searchName.includes(k)) && dbKey.includes(phonetic)) {
-                return true;
-            }
+
+            return (value * baseGrams) / 100; // 100gを基準とする
         }
 
-        return false;
-    }
-
-    private normalizeFoodName(name: string): string {
-        return name
-            .replace(/\s+/g, '') // スペースを削除
-            .replace(/[　]/g, '') // 全角スペースを削除
-            .replace(/[・]/g, '') // 中黒を削除
-            .toLowerCase(); // 小文字に変換
+        // デフォルトは1（標準量として扱う）
+        return 1;
     }
 
     /**
-     * 量の文字列から数値に変換
-     * @param quantity 量の文字列（例: "100g", "2個"）
-     * @param standardQuantity 標準量（例: "100g"）
-     * @returns 変換係数
+     * 食品名から最適なデータベースエントリを検索
+     * @param foodName 食品名
+     * @returns 食品データ
      */
-    private parseQuantity(quantity: string, standardQuantity: string): number {
-        try {
-            // 入力がない場合はデフォルト値
-            if (!quantity || quantity.trim() === '') {
-                return 1.0;
-            }
+    private findFoodItem(foodName: string): DatabaseFoodItem | null {
+        // 正規化
+        const normalizedName = this.normalizeFoodName(foodName);
 
-            // 数値部分と単位部分を抽出
-            const quantityMatch = quantity.match(/(\d+\.?\d*)([^\d]*)/);
-            const standardMatch = standardQuantity.match(/(\d+\.?\d*)([^\d]*)/);
-
-            if (!quantityMatch || !standardMatch) {
-                console.log('量の解析失敗:', quantity, standardQuantity);
-                return 1.0; // デフォルト値
-            }
-
-            const quantityValue = parseFloat(quantityMatch[1]);
-            const quantityUnit = quantityMatch[2].trim();
-            const standardValue = parseFloat(standardMatch[1]);
-            const standardUnit = standardMatch[2].trim();
-
-            console.log('量の解析:', {
-                quantityValue,
-                quantityUnit,
-                standardValue,
-                standardUnit
-            });
-
-            // 単位が同じ場合は単純な比率を返す
-            if (quantityUnit === standardUnit) {
-                return quantityValue / standardValue;
-            }
-
-            // 単位変換テーブルを使用
-            const unitConversions: Record<string, number> = {
-                'g': 1,
-                'グラム': 1,
-                'ml': 1,
-                'ミリリットル': 1,
-                '個': 100,
-                '枚': 50,
-                '杯': 150,
-                '皿': 200,
-                '人前': 250,
-                '大さじ': 15,
-                '小さじ': 5,
-                'カップ': 200
-            };
-
-            // 単位が異なる場合の変換
-            if (unitConversions[quantityUnit] && unitConversions[standardUnit]) {
-                const quantityInGrams = quantityValue * unitConversions[quantityUnit];
-                const standardInGrams = standardValue * unitConversions[standardUnit];
-                return quantityInGrams / standardInGrams;
-            }
-
-            // 特殊なケース
-            if (quantityUnit === '個' && standardUnit === 'g') {
-                return (quantityValue * 100) / standardValue;
-            }
-
-            if (quantityUnit === '杯' && standardUnit === 'g') {
-                return (quantityValue * 150) / standardValue;
-            }
-
-            // その他のケース
-            console.log('単位変換に失敗:', quantityUnit, standardUnit);
-            return 1.0;
-        } catch (error) {
-            console.error('量の解析エラー:', error);
-            return 1.0; // エラー時はデフォルト値
+        // 完全一致検索
+        const exactMatch = this.foodDatabase[normalizedName];
+        if (exactMatch) {
+            return exactMatch;
         }
+
+        // 同義語検索
+        for (const [dbName, data] of Object.entries(this.foodDatabase)) {
+            if (data.aliases?.some(alias =>
+                this.normalizeFoodName(alias) === normalizedName
+            )) {
+                return data;
+            }
+        }
+
+        // 部分一致検索（最も長い一致を優先）
+        let bestMatch: DatabaseFoodItem | null = null;
+        let bestMatchLength = 0;
+
+        for (const [dbName, data] of Object.entries(this.foodDatabase)) {
+            const normalizedDbName = this.normalizeFoodName(dbName);
+            if (normalizedDbName.includes(normalizedName) ||
+                normalizedName.includes(normalizedDbName)) {
+                const matchLength = Math.min(normalizedDbName.length, normalizedName.length);
+                if (matchLength > bestMatchLength) {
+                    bestMatch = data;
+                    bestMatchLength = matchLength;
+                }
+            }
+        }
+
+        return bestMatch;
+    }
+
+    /**
+     * 食品名を正規化
+     * @param name 食品名
+     * @returns 正規化された食品名
+     */
+    private normalizeFoodName(name: string): string {
+        return name
+            .toLowerCase()
+            .replace(/[\s　]/g, '') // 全角・半角スペースを削除
+            .replace(/[、。，．]/g, '') // 句読点を削除
+            .replace(/[［【「」】］]/g, '') // 括弧類を削除
+            .replace(/[ぁ-ん]/g, m => { // ひらがなをカタカナに変換
+                return String.fromCharCode(m.charCodeAt(0) + 0x60);
+            });
     }
 
     /**
