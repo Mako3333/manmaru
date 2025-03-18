@@ -159,26 +159,61 @@ export default function HomeClient({ user }: HomeClientProps) {
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50">
-            {/* ヘッダー */}
-            <header className="bg-gradient-to-br from-[#2E9E6C] to-[#237D54] text-white p-6 pb-10 border-b-0 rounded-b-[32px] shadow-[0_4px_20px_rgba(46,158,108,0.25)] mb-8">
-                <div className="container mx-auto max-w-4xl flex justify-between items-center">
-                    <h1 className="text-[28px] font-extrabold">manmaru</h1>
-                    <Link href="/profile">
-                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#2E9E6C] font-bold text-xl shadow-md">
-                            {profile?.name?.charAt(0) || 'M'}
-                        </div>
-                    </Link>
-                </div>
-                <div className="container mx-auto max-w-4xl mt-4">
+            {/* ヘッダー - 有機的な曲線を持つ形状とグラデーション */}
+            <header className="relative bg-gradient-to-r from-[#36B37E] via-[#2E9E6C] to-[#36B37E] text-white p-4 pb-12">
+                {/* 波紋エフェクト */}
+                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-24 h-24 bg-white opacity-5 rounded-full"></div>
+                <div className="absolute top-6 right-16 w-16 h-16 bg-white opacity-5 rounded-full"></div>
 
-                    <time dateTime={currentDate} className="text-[15px] font-medium opacity-90 mt-1 block">
-                        {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
-                    </time>
+                <div className="container mx-auto max-w-4xl relative z-10">
+                    {/* ヘッダー上部: ロゴ、タイトル、プロフィールアイコン */}
+                    <div className="flex justify-between items-center mb-1">
+                        <div className="flex items-center gap-2">
+                            {/* ロゴ */}
+                            <div className="relative">
+                                <Image
+                                    src="/logo.png"
+                                    alt="manmaruロゴ"
+                                    width={45}
+                                    height={45}
+                                    className="object-contain"
+                                />
+                            </div>
+                            <h1 className="text-[26px] font-bold tracking-tight">
+                                manmaru
+                            </h1>
+                        </div>
+
+                        {/* プロフィールアイコン */}
+                        <Link href="/profile/edit">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#2E9E6C] font-bold text-lg">
+                                <span>{profile?.name?.charAt(0) || 'M'}</span>
+                            </div>
+                        </Link>
+                    </div>
+
+                    {/* 日付表示 - 右に配置、背景なし */}
+                    <div className="flex justify-end my-1">
+                        <div className="flex items-center px-1 py-0.5">
+                            <time dateTime={currentDate} className="text-[14px]">
+                                {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
+                            </time>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 下部の有機的な曲線 */}
+                <div className="absolute bottom-0 left-0 right-0 h-12 overflow-hidden">
+                    <svg className="absolute bottom-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1440 74">
+                        <path
+                            d="M456.464 0.0433865C277.158 -1.70575 0 50.0141 0 50.0141V74H1440V50.0141C1440 50.0141 1320.4 31.1925 1243.09 27.0276C1099.33 19.2816 1019.08 53.1981 875.138 50.0141C710.527 46.3727 621.108 1.64949 456.464 0.0433865Z"
+                            fill="#f9fafb">
+                        </path>
+                    </svg>
                 </div>
             </header>
-
             {/* メインコンテンツ */}
-            <main className="flex-grow container mx-auto max-w-4xl px-4 space-y-8">
+            <main className="flex-grow container mx-auto max-w-4xl px-4 pt-6 space-y-8">
                 {/* 1. 妊娠週数情報カード */}
                 <PregnancyWeekInfo className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />
 
