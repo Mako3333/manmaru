@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { RecipeCard } from '@/components/recipes/recipe-card';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface RecipesClientProps {
     initialData: (ClippedRecipe & { nutrition_focus?: string[] })[];
@@ -23,9 +24,9 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
     const supabase = createClientComponentClient();
 
     // レシピをフィルタリングする関数
-    const filterRecipes = () => {
+    const filterRecipes = useCallback(() => {
         // クエリによるフィルター
-        let filtered = initialData;
+        let filtered = recipes; // initialDataではなくstate内のrecipesを使用
 
         if (searchQuery) {
             filtered = filtered.filter(recipe =>
@@ -41,7 +42,7 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
         }
 
         return filtered;
-    };
+    }, [recipes, searchQuery, activeTab]); // 依存関係を追加
 
     // タブ変更時のハンドラー
     const handleTabChange = (value: string) => {
@@ -61,6 +62,16 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
     // お気に入りトグル時のハンドラー
     const handleFavoriteToggle = async (id: string, isFavorite: boolean) => {
         try {
+            // 楽観的UI更新（即時に状態を更新）
+            setRecipes(prevRecipes =>
+                prevRecipes.map(recipe =>
+                    recipe.id === id
+                        ? { ...recipe, is_favorite: isFavorite }
+                        : recipe
+                )
+            );
+
+            // APIリクエスト
             const response = await fetch(`/api/recipes/${id}/favorite`, {
                 method: 'POST',
                 headers: {
@@ -70,30 +81,24 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
             });
 
             if (!response.ok) {
+                // APIリクエストが失敗した場合は元の状態に戻す
+                setRecipes(prevRecipes =>
+                    prevRecipes.map(recipe =>
+                        recipe.id === id
+                            ? { ...recipe, is_favorite: !isFavorite }
+                            : recipe
+                    )
+                );
                 throw new Error('お気に入り設定の更新に失敗しました');
             }
-
-            // ローカルステートの更新
-            setRecipes(prevRecipes =>
-                prevRecipes.map(recipe =>
-                    recipe.id === id
-                        ? { ...recipe, is_favorite: isFavorite }
-                        : recipe
-                )
-            );
         } catch (error) {
             console.error('Favorite toggle error:', error);
+            toast?.error('お気に入り設定の更新に失敗しました');
         }
     };
 
-    // クイック記録ハンドラー（実装予定）
-    const handleQuickLog = (id: string) => {
-        // 食事記録連携機能（後で実装）
-        console.log('Quick log recipe:', id);
-    };
-
     // フィルタリングされたレシピの取得
-    const filteredRecipes = filterRecipes();
+    const filteredRecipes = useMemo(() => filterRecipes(), [filterRecipes]);
 
     return (
         <div className="container px-4 py-8">
@@ -144,7 +149,6 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
                             }}
                             onCardClick={handleRecipeClick}
                             onFavoriteToggle={handleFavoriteToggle}
-                            onQuickLog={handleQuickLog}
                         />
                     ))}
                 </div>

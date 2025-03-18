@@ -48,6 +48,18 @@ export async function POST(req: Request) {
             );
         }
 
+        // 分量に応じた栄養素の計算
+        const calculatedNutrition: Record<string, any> = {};
+        if (recipe.nutrition_per_serving) {
+            Object.entries(recipe.nutrition_per_serving).forEach(([key, value]) => {
+                if (typeof value === 'number') {
+                    calculatedNutrition[key] = Math.round((value * portion_size) * 100) / 100;
+                } else {
+                    calculatedNutrition[key] = value;
+                }
+            });
+        }
+
         // 食事記録を作成
         const { data: mealData, error: mealError } = await supabase
             .from('meals')
@@ -56,7 +68,7 @@ export async function POST(req: Request) {
                 meal_type,
                 meal_date,
                 food_description: recipe.ingredients,
-                nutrition_data: recipe.nutrition_per_serving,
+                nutrition_data: calculatedNutrition,
                 servings: Math.max(1, Math.round(portion_size))
             })
             .select('id')
@@ -71,7 +83,7 @@ export async function POST(req: Request) {
         }
 
         // meal_nutrientsテーブルに栄養データを保存
-        const nutrition = recipe.nutrition_per_serving;
+        const nutrition = calculatedNutrition;
         if (nutrition && mealData) {
             const { error: nutrientError } = await supabase
                 .from('meal_nutrients')

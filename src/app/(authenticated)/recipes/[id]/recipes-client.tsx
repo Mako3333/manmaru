@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Heart, Clock, Plus, ExternalLink } from 'lucide-react';
 import { ClippedRecipe } from '@/types/recipe';
 import { AddToMealDialog } from '@/components/recipes/add-to-meal-dialog';
+import { toast } from 'sonner';
 
 interface RecipeDetailClientProps {
     initialData: ClippedRecipe;
@@ -27,17 +28,28 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
             setLoading(true);
             const newFavoriteState = !isFavorite;
 
-            const { error } = await supabase
-                .from('clipped_recipes')
-                .update({ is_favorite: newFavoriteState })
-                .eq('id', recipe.id);
-
-            if (error) throw error;
-
+            // 楽観的UI更新（即時に状態を更新）
             setIsFavorite(newFavoriteState);
             setRecipe({ ...recipe, is_favorite: newFavoriteState });
+
+            // APIリクエスト
+            const response = await fetch(`/api/recipes/${recipe.id}/favorite`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ is_favorite: newFavoriteState }),
+            });
+
+            if (!response.ok) {
+                // APIリクエストが失敗した場合は元の状態に戻す
+                setIsFavorite(!newFavoriteState);
+                setRecipe({ ...recipe, is_favorite: !newFavoriteState });
+                throw new Error('お気に入り設定の更新に失敗しました');
+            }
         } catch (error) {
             console.error('Failed to update favorite status:', error);
+            toast?.error('お気に入り設定の更新に失敗しました');
         } finally {
             setLoading(false);
         }

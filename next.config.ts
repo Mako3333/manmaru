@@ -27,6 +27,9 @@ const nextConfig: NextConfig = withPWA({
       "kurashiru.com",
       "video.kurashiru.com",
       "image.kurashiru.com",
+      //　白ごはん.com
+      "sirogohan.com",
+      "image.sirogohan.com",
       // その他
       "placehold.jp"
     ],

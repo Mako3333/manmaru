@@ -1,20 +1,18 @@
 import React from 'react';
 import Image from 'next/image';
-import { Heart, Plus } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { RecipeCard as RecipeCardType } from '@/types/recipe';
 
 type RecipeCardProps = {
     recipe: RecipeCardType;
     onCardClick: (id: string) => void;
     onFavoriteToggle: (id: string, isFavorite: boolean) => void;
-    onQuickLog: (id: string) => void;
 };
 
 export const RecipeCard: React.FC<RecipeCardProps> = ({
     recipe,
     onCardClick,
-    onFavoriteToggle,
-    onQuickLog
+    onFavoriteToggle
 }) => {
     // 栄養素フォーカスに基づいてハイライトカラーを決定
     const getHighlightColor = (nutrientFocus?: string[]) => {
@@ -121,18 +119,6 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                     aria-label={recipe.is_favorite ? 'お気に入りから削除' : 'お気に入りに追加'}
                 >
                     <Heart size={16} fill={recipe.is_favorite ? 'currentColor' : 'none'} />
-                </button>
-
-                {/* 簡易記録ボタン */}
-                <button
-                    className="quick-log-button p-1 bg-blue-500 text-white rounded-full"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onQuickLog(recipe.id);
-                    }}
-                    aria-label="食事記録に追加"
-                >
-                    <Plus size={16} />
                 </button>
             </div>
         </div>
