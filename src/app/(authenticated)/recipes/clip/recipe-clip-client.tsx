@@ -24,6 +24,23 @@ export default function RecipeClipClient() {
         setError(null);
 
         try {
+            // URLからサイト名を判定
+            const url = new URL(data.url);
+            const hostname = url.hostname;
+            let siteName = '';
+
+            if (hostname.includes('cookpad.com')) {
+                siteName = 'クックパッド';
+            } else if (hostname.includes('delishkitchen.tv')) {
+                siteName = 'デリッシュキッチン';
+            } else if (hostname.includes('shirogoghan.com') || hostname.includes('shirogohan.com')) {
+                siteName = '白ごはん.com';
+            } else if (hostname.includes('kurashiru.com')) {
+                siteName = 'クラシル';
+            } else {
+                siteName = hostname.replace('www.', '');
+            }
+
             const response = await fetch('/api/recipes/parse-url', {
                 method: 'POST',
                 headers: {
@@ -34,7 +51,14 @@ export default function RecipeClipClient() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'URLの解析に失敗しました');
+                // サイト別のエラーメッセージを表示
+                if (hostname.includes('delishkitchen.tv')) {
+                    throw new Error(`デリッシュキッチンのレシピ解析でエラーが発生しました: ${errorData.error || 'URLの解析に失敗しました'}`);
+                } else if (hostname.includes('shirogoghan.com') || hostname.includes('shirogohan.com')) {
+                    throw new Error(`白ごはん.comのレシピ解析でエラーが発生しました: ${errorData.error || 'URLの解析に失敗しました'}`);
+                } else {
+                    throw new Error(`${siteName}のレシピ解析でエラーが発生しました: ${errorData.error || 'URLの解析に失敗しました'}`);
+                }
             }
 
             const parsedData = await response.json();
@@ -46,7 +70,22 @@ export default function RecipeClipClient() {
             setStep('confirm');
         } catch (err) {
             console.error('URL処理エラー:', err);
-            setError(err instanceof Error ? err.message : '予期せぬエラーが発生しました');
+
+            // URLが有効かどうかの確認
+            let errorMessage = '';
+            if (err instanceof Error) {
+                if (err.message.includes('CORS') || err.message.includes('ブロック')) {
+                    errorMessage = 'CORSエラー: このレシピサイトからのデータ取得が制限されています。別のサイトをお試しください。';
+                } else if (err.message.includes('ネットワーク') || err.message.includes('network')) {
+                    errorMessage = 'ネットワークエラー: インターネット接続を確認してください。';
+                } else {
+                    errorMessage = err.message;
+                }
+            } else {
+                errorMessage = '予期せぬエラーが発生しました';
+            }
+
+            setError(errorMessage);
         } finally {
             setIsLoading(false);
         }
@@ -107,17 +146,40 @@ export default function RecipeClipClient() {
     const renderUrlStep = () => (
         <Card className="w-full max-w-2xl mx-auto">
             <CardHeader>
-                <CardTitle>レシピをクリップ</CardTitle>
+                <CardTitle>レシピURLをクリップ</CardTitle>
                 <CardDescription>
-                    レシピサイトのURLを入力して栄養情報を自動取得します
+                    レシピサイトのURLを貼り付けて、栄養情報を自動取得します。現在対応しているサイト：クックパッド、クラシル、白ごはん.com、デリッシュキッチン（β）など
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <URLClipForm
-                    onSubmit={handleUrlSubmit}
-                    isLoading={isLoading}
-                    error={error || undefined}
-                />
+                {error && (
+                    <Alert variant="destructive" className="mb-4">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>エラーが発生しました</AlertTitle>
+                        <AlertDescription>
+                            {error}
+                            {error.includes('デリッシュキッチン') && (
+                                <div className="mt-2 text-sm">
+                                    <p>対処方法: </p>
+                                    <ul className="list-disc pl-5 mt-1">
+                                        <li>別のレシピサイト（クックパッドなど）をお試しください</li>
+                                        <li>または別のデリッシュキッチンのレシピをお試しください</li>
+                                    </ul>
+                                </div>
+                            )}
+                            {error.includes('白ごはん.com') && (
+                                <div className="mt-2 text-sm">
+                                    <p>対処方法: </p>
+                                    <ul className="list-disc pl-5 mt-1">
+                                        <li>別のレシピサイト（クックパッドなど）をお試しください</li>
+                                        <li>白ごはん.comのサイト構造が変更された可能性があります</li>
+                                    </ul>
+                                </div>
+                            )}
+                        </AlertDescription>
+                    </Alert>
+                )}
+                <URLClipForm onSubmit={handleUrlSubmit} isLoading={isLoading} error={undefined} />
             </CardContent>
         </Card>
     );

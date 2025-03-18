@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Heart, Clock, Plus, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Heart, Clock, Plus, ExternalLink, Trash } from 'lucide-react';
 import { ClippedRecipe } from '@/types/recipe';
 import { AddToMealDialog } from '@/components/recipes/add-to-meal-dialog';
 import { toast } from 'sonner';
+import { getNutrientDisplayName, getNutrientUnit } from '@/lib/nutrition-utils';
 
 interface RecipeDetailClientProps {
     initialData: ClippedRecipe;
@@ -16,9 +17,10 @@ interface RecipeDetailClientProps {
 
 export default function RecipeDetailClient({ initialData }: RecipeDetailClientProps) {
     const [recipe, setRecipe] = useState<ClippedRecipe>(initialData);
-    const [isFavorite, setIsFavorite] = useState<boolean>(initialData.is_favorite || false);
-    const [loading, setLoading] = useState(false);
-    const [showMealDialog, setShowMealDialog] = useState(false);
+    const [isFavorite, setIsFavorite] = useState<boolean>(recipe?.is_favorite || false);
+    const [loading, setLoading] = useState<boolean>(false);
+    const [showMealDialog, setShowMealDialog] = useState<boolean>(false);
+    const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
     const router = useRouter();
     const supabase = createClientComponentClient();
 
@@ -73,30 +75,38 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
         return '';
     };
 
-    // 栄養素の表示名を取得
-    const getNutrientDisplayName = (key: string): string => {
-        const nameMap: Record<string, string> = {
-            'calories': 'カロリー',
-            'protein': 'タンパク質',
-            'iron': '鉄分',
-            'folic_acid': '葉酸',
-            'calcium': 'カルシウム',
-            'vitamin_d': 'ビタミンD'
-        };
-        return nameMap[key] || key;
+    const handleDeleteRecipe = async () => {
+        if (!recipe.id) return;
+
+        setLoading(true);
+        try {
+            const response = await fetch(`/api/recipes/${recipe.id}`, {
+                method: 'DELETE',
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'レシピの削除に失敗しました');
+            }
+
+            // 削除成功後、レシピ一覧ページに戻る
+            router.push('/recipes');
+            router.refresh();
+        } catch (error) {
+            console.error('削除エラー:', error);
+            alert('レシピの削除に失敗しました。もう一度お試しください。');
+        } finally {
+            setLoading(false);
+            setShowDeleteDialog(false);
+        }
     };
 
-    // 栄養素の単位を取得
-    const getNutrientUnit = (key: string): string => {
-        const unitMap: Record<string, string> = {
-            'calories': 'kcal',
-            'protein': 'g',
-            'iron': 'mg',
-            'folic_acid': 'μg',
-            'calcium': 'mg',
-            'vitamin_d': 'μg'
-        };
-        return unitMap[key] || '';
+    const openDeleteDialog = () => {
+        setShowDeleteDialog(true);
+    };
+
+    const closeDeleteDialog = () => {
+        setShowDeleteDialog(false);
     };
 
     return (
@@ -212,15 +222,24 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                         </div>
                     </div>
 
-                    {/* 元サイトへのリンク */}
-                    <div className="mt-8">
+                    {/* 元サイトへのリンクとクリップ解除ボタン */}
+                    <div className="mt-8 flex flex-col sm:flex-row gap-3">
                         <Button
                             variant="outline"
-                            className="w-full"
+                            className="flex-1"
                             onClick={() => window.open(recipe.source_url, '_blank')}
                         >
                             <ExternalLink size={16} className="mr-2" />
                             元のレシピを見る
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={openDeleteDialog}
+                        >
+                            <Trash size={16} className="mr-2" />
+                            クリップの解除
                         </Button>
                     </div>
                 </div>
@@ -232,6 +251,34 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                 onClose={handleCloseMealDialog}
                 recipe={recipe}
             />
+
+            {/* 削除確認ダイアログ */}
+            {showDeleteDialog && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+                        <h2 className="text-xl font-bold mb-4">クリップを解除しますか？</h2>
+                        <p className="text-gray-600 mb-6">
+                            このレシピを削除すると、元に戻すことができません。本当にクリップを解除しますか？
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <Button
+                                variant="outline"
+                                onClick={closeDeleteDialog}
+                                disabled={loading}
+                            >
+                                キャンセル
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={handleDeleteRecipe}
+                                disabled={loading}
+                            >
+                                {loading ? '削除中...' : '削除する'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 } 

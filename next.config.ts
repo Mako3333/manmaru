@@ -23,6 +23,7 @@ const nextConfig: NextConfig = withPWA({
       // デリッシュキッチン
       "delishkitchen.tv",
       "image.delishkitchen.tv",
+      "www.delishkitchen.tv",
       // クラシル
       "kurashiru.com",
       "video.kurashiru.com",
@@ -30,6 +31,7 @@ const nextConfig: NextConfig = withPWA({
       //　白ごはん.com
       "sirogohan.com",
       "image.sirogohan.com",
+      "www.sirogohan.com",
       // その他
       "placehold.jp"
     ],
