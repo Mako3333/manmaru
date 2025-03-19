@@ -10,6 +10,7 @@ import { ClippedRecipe } from '@/types/recipe';
 import { AddToMealDialog } from '@/components/recipes/add-to-meal-dialog';
 import { toast } from 'sonner';
 import { getNutrientDisplayName, getNutrientUnit } from '@/lib/nutrition-utils';
+import { openOriginalSocialMedia } from '@/lib/utils/deep-link';
 
 interface RecipeDetailClientProps {
     initialData: ClippedRecipe;
@@ -23,6 +24,9 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
     const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
     const router = useRouter();
     const supabase = createClientComponentClient();
+
+    // ソーシャルメディアかどうかを判定
+    const isSocialMedia = recipe.source_platform === 'Instagram' || recipe.source_platform === 'TikTok';
 
     // お気に入りトグル処理
     const handleFavoriteToggle = async () => {
@@ -65,6 +69,32 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
     // 食事記録ダイアログを閉じる
     const handleCloseMealDialog = () => {
         setShowMealDialog(false);
+    };
+
+    // 元のレシピを開く
+    const handleOpenOriginalRecipe = () => {
+        if (isSocialMedia && recipe.content_id) {
+            // ソーシャルメディアの場合はディープリンクを使用
+            openOriginalSocialMedia(
+                recipe.source_url,
+                recipe.source_platform,
+                recipe.content_id
+            );
+        } else {
+            // 通常のレシピサイトの場合は新しいタブで開く
+            window.open(recipe.source_url, '_blank');
+        }
+    };
+
+    // プレースホルダー背景色
+    const getPlaceholderBgColor = () => {
+        if (recipe.source_platform === 'Instagram') {
+            return 'bg-gradient-to-tr from-purple-500 via-pink-600 to-orange-400';
+        }
+        if (recipe.source_platform === 'TikTok') {
+            return 'bg-black';
+        }
+        return 'bg-gray-200';
     };
 
     // 注意レベルに基づくスタイルクラスを取得
@@ -147,9 +177,49 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                             fill
                             className="object-cover"
                         />
+                    ) : isSocialMedia ? (
+                        // ソーシャルメディアのプレースホルダー
+                        <div className={`w-full h-full ${getPlaceholderBgColor()} flex items-center justify-center`}>
+                            <div className="flex flex-col items-center p-4 text-white">
+                                <div className="relative w-16 h-16 mb-3">
+                                    <Image
+                                        src={`/icons/${recipe.source_platform?.toLowerCase()}.svg`}
+                                        alt={recipe.source_platform || ''}
+                                        width={64}
+                                        height={64}
+                                        className="object-contain"
+                                    />
+                                </div>
+                                <h3 className="text-xl font-semibold text-center">{recipe.title}</h3>
+                                <p className="text-sm opacity-80 mt-1">{recipe.source_platform}のレシピ</p>
+                            </div>
+                        </div>
                     ) : (
                         <div className="w-full h-full bg-gray-100 flex items-center justify-center">
                             <span className="text-gray-400 text-4xl">🍽️</span>
+                        </div>
+                    )}
+
+                    {/* ソーシャルメディアアイコン */}
+                    {isSocialMedia && (
+                        <div className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-md">
+                            {recipe.source_platform === 'Instagram' ? (
+                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <linearGradient id="instagramGradient" x1="0" y1="0" x2="1" y2="1">
+                                        <stop offset="0%" stopColor="#FBCD07" />
+                                        <stop offset="50%" stopColor="#E94E76" />
+                                        <stop offset="100%" stopColor="#6B54D7" />
+                                    </linearGradient>
+                                    <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="url(#instagramGradient)" fill="url(#instagramGradient)" />
+                                    <circle cx="12" cy="12" r="5" stroke="white" fill="none" strokeWidth="2" />
+                                    <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
+                                </svg>
+                            ) : (
+                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M19.321 5.562C18.7206 4.98345 17.8873 4.73633 16.714 4.73633H7.286C6.11267 4.73633 5.27867 4.98345 4.679 5.562C4.07933 6.14055 3.75 7.00973 3.75 8.14052V15.8587C3.75 16.9895 4.07933 17.859 4.679 18.4375C5.27867 19.0161 6.11267 19.2632 7.286 19.2632H16.714C17.8873 19.2632 18.7213 19.0161 19.321 18.4375C19.9207 17.859 20.25 16.9895 20.25 15.8587V8.14052C20.25 7.00973 19.9207 6.14055 19.321 5.562Z" fill="#FF0050" />
+                                    <path d="M9.16797 15.8164V8.18262L16.1078 12.8383L9.16797 15.8164Z" fill="white" />
+                                </svg>
+                            )}
                         </div>
                     )}
                 </div>
@@ -227,10 +297,10 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                         <Button
                             variant="outline"
                             className="flex-1"
-                            onClick={() => window.open(recipe.source_url, '_blank')}
+                            onClick={handleOpenOriginalRecipe}
                         >
                             <ExternalLink size={16} className="mr-2" />
-                            元のレシピを見る
+                            {isSocialMedia ? `元の${recipe.source_platform}を開く` : '元のレシピを見る'}
                         </Button>
 
                         <Button
@@ -254,12 +324,10 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
 
             {/* 削除確認ダイアログ */}
             {showDeleteDialog && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
-                        <h2 className="text-xl font-bold mb-4">クリップを解除しますか？</h2>
-                        <p className="text-gray-600 mb-6">
-                            このレシピを削除すると、元に戻すことができません。本当にクリップを解除しますか？
-                        </p>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                        <h3 className="text-xl font-semibold mb-4">レシピのクリップを解除</h3>
+                        <p className="mb-6">「{recipe.title}」のクリップを解除しますか？一度削除すると元に戻せません。</p>
                         <div className="flex justify-end gap-3">
                             <Button
                                 variant="outline"
@@ -273,7 +341,7 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                                 onClick={handleDeleteRecipe}
                                 disabled={loading}
                             >
-                                {loading ? '削除中...' : '削除する'}
+                                {loading ? '処理中...' : '削除する'}
                             </Button>
                         </div>
                     </div>

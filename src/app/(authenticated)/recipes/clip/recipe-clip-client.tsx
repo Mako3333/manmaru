@@ -3,12 +3,15 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { URLClipForm } from '@/components/recipes/url-clip-form';
-import { RecipeUrlClipRequest, RecipeUrlClipResponse } from '@/types/recipe';
+import { RecipeUrlClipRequest, RecipeUrlClipResponse, RecipeIngredient } from '@/types/recipe';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { AlertCircle, Check, Loader2, InfoIcon, Info } from 'lucide-react';
+import { ManualIngredientsForm } from '@/components/recipes/manual-ingredients-form';
+import { ScreenshotUploader } from '@/components/recipes/screenshot-uploader';
+import { SocialMediaPlaceholder } from '@/components/recipes/social-media-placeholder';
 
 export default function RecipeClipClient() {
     const router = useRouter();
@@ -16,10 +19,11 @@ export default function RecipeClipClient() {
     const [error, setError] = useState<string | null>(null);
     const [step, setStep] = useState<'url' | 'confirm' | 'success'>('url');
     const [parsedRecipe, setParsedRecipe] = useState<RecipeUrlClipResponse | null>(null);
-    const [editedRecipe, setEditedRecipe] = useState<RecipeUrlClipResponse & { recipe_type?: string } | null>(null);
+    const [editedRecipe, setEditedRecipe] = useState<RecipeUrlClipResponse & { recipe_type?: string; is_social_media?: boolean; content_id?: string; } | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [usePlaceholder, setUsePlaceholder] = useState<boolean>(true);
 
-    const handleUrlSubmit = async (data: RecipeUrlClipRequest) => {
+    const handleUrlSubmit = async (data: RecipeUrlClipRequest, isSocialMedia: boolean) => {
         setIsLoading(true);
         setError(null);
 
@@ -27,21 +31,13 @@ export default function RecipeClipClient() {
             // URLからサイト名を判定
             const url = new URL(data.url);
             const hostname = url.hostname;
-            let siteName = '';
 
-            if (hostname.includes('cookpad.com')) {
-                siteName = 'クックパッド';
-            } else if (hostname.includes('delishkitchen.tv')) {
-                siteName = 'デリッシュキッチン';
-            } else if (hostname.includes('shirogoghan.com') || hostname.includes('shirogohan.com')) {
-                siteName = '白ごはん.com';
-            } else if (hostname.includes('kurashiru.com')) {
-                siteName = 'クラシル';
-            } else {
-                siteName = hostname.replace('www.', '');
-            }
+            // ソーシャルメディアの場合は専用のAPIを使用
+            const apiEndpoint = isSocialMedia
+                ? '/api/recipes/parse-social-url'
+                : '/api/recipes/parse-url';
 
-            const response = await fetch('/api/recipes/parse-url', {
+            const response = await fetch(apiEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -51,22 +47,25 @@ export default function RecipeClipClient() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                // サイト別のエラーメッセージを表示
-                if (hostname.includes('delishkitchen.tv')) {
-                    throw new Error(`デリッシュキッチンのレシピ解析でエラーが発生しました: ${errorData.error || 'URLの解析に失敗しました'}`);
-                } else if (hostname.includes('shirogoghan.com') || hostname.includes('shirogohan.com')) {
-                    throw new Error(`白ごはん.comのレシピ解析でエラーが発生しました: ${errorData.error || 'URLの解析に失敗しました'}`);
-                } else {
-                    throw new Error(`${siteName}のレシピ解析でエラーが発生しました: ${errorData.error || 'URLの解析に失敗しました'}`);
-                }
+                throw new Error(errorData.error || 'URLの解析に失敗しました');
             }
 
             const parsedData = await response.json();
+
+            // ソーシャルメディア情報を追加
+            if (isSocialMedia && !parsedData.is_social_media) {
+                parsedData.is_social_media = true;
+            }
+
             setParsedRecipe(parsedData);
             setEditedRecipe({
                 ...parsedData,
                 recipe_type: 'main_dish', // デフォルト値
             });
+
+            // ソーシャルメディアの場合はプレースホルダーをデフォルトに
+            setUsePlaceholder(isSocialMedia);
+
             setStep('confirm');
         } catch (err) {
             console.error('URL処理エラー:', err);
@@ -75,7 +74,7 @@ export default function RecipeClipClient() {
             let errorMessage = '';
             if (err instanceof Error) {
                 if (err.message.includes('CORS') || err.message.includes('ブロック')) {
-                    errorMessage = 'CORSエラー: このレシピサイトからのデータ取得が制限されています。別のサイトをお試しください。';
+                    errorMessage = 'CORSエラー: このサイトからのデータ取得が制限されています。別のサイトをお試しください。';
                 } else if (err.message.includes('ネットワーク') || err.message.includes('network')) {
                     errorMessage = 'ネットワークエラー: インターネット接続を確認してください。';
                 } else {
@@ -98,6 +97,11 @@ export default function RecipeClipClient() {
         setError(null);
 
         try {
+            // ソーシャルメディアでプレースホルダーを使う場合は、image_urlをundefinedに
+            if (editedRecipe.is_social_media && usePlaceholder) {
+                editedRecipe.image_url = undefined;
+            }
+
             const response = await fetch('/api/recipes/save', {
                 method: 'POST',
                 headers: {
@@ -143,12 +147,37 @@ export default function RecipeClipClient() {
         }
     };
 
+    const updateIngredients = (ingredients: RecipeIngredient[]) => {
+        if (editedRecipe) {
+            setEditedRecipe({
+                ...editedRecipe,
+                ingredients
+            });
+        }
+    };
+
+    const handleImageCapture = (imageData: string) => {
+        if (editedRecipe) {
+            setEditedRecipe({
+                ...editedRecipe,
+                image_url: imageData
+            });
+            setUsePlaceholder(false);
+        }
+    };
+
+    const handleUsePlaceholder = () => {
+        if (editedRecipe) {
+            setUsePlaceholder(true);
+        }
+    };
+
     const renderUrlStep = () => (
         <Card className="w-full max-w-2xl mx-auto">
             <CardHeader>
                 <CardTitle>レシピURLをクリップ</CardTitle>
                 <CardDescription>
-                    レシピサイトのURLを貼り付けて、栄養情報を自動取得します。現在対応しているサイト：クックパッド、クラシル、白ごはん.com、デリッシュキッチン（β）など
+                    レシピサイト、Instagram、TikTokのURLを入力してクリップします
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -167,15 +196,6 @@ export default function RecipeClipClient() {
                                     </ul>
                                 </div>
                             )}
-                            {error.includes('白ごはん.com') && (
-                                <div className="mt-2 text-sm">
-                                    <p>対処方法: </p>
-                                    <ul className="list-disc pl-5 mt-1">
-                                        <li>別のレシピサイト（クックパッドなど）をお試しください</li>
-                                        <li>白ごはん.comのサイト構造が変更された可能性があります</li>
-                                    </ul>
-                                </div>
-                            )}
                         </AlertDescription>
                     </Alert>
                 )}
@@ -187,12 +207,18 @@ export default function RecipeClipClient() {
     const renderConfirmStep = () => {
         if (!editedRecipe) return null;
 
+        const isSocialMedia = editedRecipe.is_social_media ||
+            editedRecipe.source_platform === 'Instagram' ||
+            editedRecipe.source_platform === 'TikTok';
+
         return (
             <Card className="w-full max-w-3xl mx-auto">
                 <CardHeader>
                     <CardTitle>クリップ内容の確認</CardTitle>
                     <CardDescription>
-                        解析された情報を確認・編集してください
+                        {isSocialMedia
+                            ? 'ソーシャルメディアからクリップした内容を編集できます'
+                            : '解析された情報を確認・編集してください'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -201,6 +227,16 @@ export default function RecipeClipClient() {
                             <AlertCircle className="h-4 w-4" />
                             <AlertTitle>エラー</AlertTitle>
                             <AlertDescription>{error}</AlertDescription>
+                        </Alert>
+                    )}
+
+                    {isSocialMedia && (
+                        <Alert>
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>ソーシャルメディアのレシピ</AlertTitle>
+                            <AlertDescription>
+                                材料情報は自動取得できないため、手動で入力してください。
+                            </AlertDescription>
                         </Alert>
                     )}
 
@@ -224,6 +260,48 @@ export default function RecipeClipClient() {
                         />
                     </div>
 
+                    {/* サムネイル画像セクション */}
+                    {isSocialMedia && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">サムネイル画像</label>
+
+                            {!usePlaceholder ? (
+                                // スクリーンショットアップローダー
+                                <div>
+                                    <ScreenshotUploader
+                                        initialImage={editedRecipe.image_url}
+                                        onImageCapture={handleImageCapture}
+                                    />
+                                    <div className="mt-3">
+                                        <p className="text-sm text-gray-500 mb-2">
+                                            または以下のプレースホルダーを使用:
+                                        </p>
+                                        <div className="cursor-pointer" onClick={handleUsePlaceholder}>
+                                            <SocialMediaPlaceholder
+                                                platform={editedRecipe.source_platform as 'Instagram' | 'TikTok'}
+                                                title={editedRecipe.title}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                // プレースホルダー
+                                <div>
+                                    <SocialMediaPlaceholder
+                                        platform={editedRecipe.source_platform as 'Instagram' | 'TikTok'}
+                                        title={editedRecipe.title}
+                                    />
+                                    <div className="mt-3">
+                                        <p className="text-sm text-gray-500 mb-2">スクリーンショットをアップロードする:</p>
+                                        <ScreenshotUploader
+                                            onImageCapture={handleImageCapture}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <label className="text-sm font-medium">レシピの種類</label>
                         <Tabs defaultValue="main_dish" onValueChange={handleRecipeTypeChange}>
@@ -239,25 +317,34 @@ export default function RecipeClipClient() {
 
                     <div className="space-y-2">
                         <label className="text-sm font-medium">材料リスト</label>
-                        <div className="border rounded p-3 max-h-40 overflow-y-auto">
-                            <ul className="list-disc list-inside">
-                                {editedRecipe.ingredients.map((ingredient, idx) => (
-                                    <li key={idx}>
-                                        {ingredient.name}
-                                        {ingredient.quantity && ` ${ingredient.quantity}`}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+                        {isSocialMedia ? (
+                            <ManualIngredientsForm
+                                ingredients={editedRecipe.ingredients}
+                                onChange={updateIngredients}
+                            />
+                        ) : (
+                            <div className="border rounded p-3 max-h-40 overflow-y-auto">
+                                <ul className="list-disc list-inside">
+                                    {editedRecipe.ingredients.map((ingredient, idx) => (
+                                        <li key={idx}>
+                                            {ingredient.name}
+                                            {ingredient.quantity && ` ${ingredient.quantity}`}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">栄養情報（1人前）</label>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <label className="text-sm font-medium">栄養情報 (1人前)</label>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             {Object.entries(editedRecipe.nutrition_per_serving).map(([key, value]) => (
                                 <div key={key} className="bg-gray-50 p-2 rounded">
                                     <div className="text-xs text-gray-500">{getNutrientLabel(key)}</div>
-                                    <div className="font-medium">{value} {getNutrientUnit(key)}</div>
+                                    <div className="font-medium">
+                                        {value} {getNutrientUnit(key)}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -275,8 +362,14 @@ export default function RecipeClipClient() {
                         onClick={handleSaveRecipe}
                         disabled={isLoading}
                     >
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        レシピを保存
+                        {isLoading ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                保存中...
+                            </>
+                        ) : (
+                            'レシピを保存'
+                        )}
                     </Button>
                 </CardFooter>
             </Card>
@@ -286,17 +379,27 @@ export default function RecipeClipClient() {
     const renderSuccessStep = () => (
         <Card className="w-full max-w-2xl mx-auto">
             <CardHeader>
-                <div className="flex justify-center mb-4">
-                    <div className="bg-green-100 p-3 rounded-full">
-                        <Check className="h-6 w-6 text-green-600" />
-                    </div>
-                </div>
-                <CardTitle className="text-center">レシピを保存しました</CardTitle>
-                <CardDescription className="text-center">
-                    レシピが正常に保存されました。マイレシピから確認できます。
+                <CardTitle>レシピのクリップ完了</CardTitle>
+                <CardDescription>
+                    レシピが正常に保存されました
                 </CardDescription>
             </CardHeader>
-            <CardFooter className="flex justify-center space-x-4">
+            <CardContent className="text-center py-6">
+                <div className="mb-4 bg-green-100 text-green-800 rounded-full w-12 h-12 flex items-center justify-center mx-auto">
+                    <Check className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-medium mb-2">保存成功!</h3>
+                <p className="text-gray-600 mb-6">
+                    レシピがあなたのコレクションに追加されました
+                </p>
+            </CardContent>
+            <CardFooter className="flex justify-center">
+                <Button
+                    onClick={() => router.push('/recipes')}
+                    className="mr-2"
+                >
+                    マイレシピへ
+                </Button>
                 <Button
                     variant="outline"
                     onClick={() => {
@@ -304,18 +407,16 @@ export default function RecipeClipClient() {
                         setParsedRecipe(null);
                         setEditedRecipe(null);
                         setSaveSuccess(false);
+                        setError(null);
+                        setUsePlaceholder(true);
                     }}
                 >
-                    他のレシピをクリップ
-                </Button>
-                <Button onClick={() => router.push('/recipes')}>
-                    マイレシピを見る
+                    別のレシピをクリップ
                 </Button>
             </CardFooter>
         </Card>
     );
 
-    // 画面のステップに応じてレンダリング
     const renderContent = () => {
         switch (step) {
             case 'url':
@@ -330,13 +431,12 @@ export default function RecipeClipClient() {
     };
 
     return (
-        <div className="container py-8">
+        <div className="recipe-clip-container py-8">
             {renderContent()}
         </div>
     );
 }
 
-// 栄養素のラベル変換
 function getNutrientLabel(key: string): string {
     const labels: Record<string, string> = {
         calories: 'カロリー',
@@ -346,24 +446,13 @@ function getNutrientLabel(key: string): string {
         iron: '鉄分',
         folic_acid: '葉酸',
         calcium: 'カルシウム',
-        vitamin_d: 'ビタミンD'
+        vitamin_d: 'ビタミンD',
     };
-
     return labels[key] || key;
 }
 
-// 栄養素の単位
 function getNutrientUnit(key: string): string {
-    const units: Record<string, string> = {
-        calories: 'kcal',
-        protein: 'g',
-        fat: 'g',
-        carbs: 'g',
-        iron: 'mg',
-        folic_acid: 'μg',
-        calcium: 'mg',
-        vitamin_d: 'μg'
-    };
-
-    return units[key] || '';
+    if (key === 'calories') return 'kcal';
+    if (key === 'folic_acid') return 'μg';
+    return 'g';
 } 

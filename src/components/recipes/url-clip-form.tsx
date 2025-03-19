@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { RecipeUrlClipRequest } from '@/types/recipe';
+import { Info } from 'lucide-react';
 
 interface URLClipFormProps {
-    onSubmit: (data: RecipeUrlClipRequest) => Promise<void>;
+    onSubmit: (data: RecipeUrlClipRequest, isSocialMedia: boolean) => Promise<void>;
     isLoading: boolean;
     error?: string;
 }
@@ -31,6 +32,11 @@ export const URLClipForm: React.FC<URLClipFormProps> = ({
         }
     };
 
+    // URLがソーシャルメディアかどうかを判定
+    const isSocialMediaUrl = (url: string): boolean => {
+        return url.includes('instagram.com') || url.includes('tiktok.com');
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLocalError('');
@@ -47,9 +53,12 @@ export const URLClipForm: React.FC<URLClipFormProps> = ({
             return;
         }
 
+        // ソーシャルメディアかどうかを判定
+        const isSocial = isSocialMediaUrl(url);
+
         // 送信処理
         try {
-            await onSubmit({ url });
+            await onSubmit({ url }, isSocial);
         } catch (err) {
             // onSubmitでエラーハンドリングされない場合のフォールバック
             setLocalError('URLの処理中にエラーが発生しました。もう一度お試しください。');
@@ -67,7 +76,7 @@ export const URLClipForm: React.FC<URLClipFormProps> = ({
             <div className="form-header mb-6">
                 <h2 className="text-xl font-bold">レシピをクリップする</h2>
                 <p className="text-gray-600 text-sm mt-1">
-                    レシピサイトのURLを入力して栄養情報を自動取得
+                    レシピサイト、Instagram、TikTokのURLを入力
                 </p>
             </div>
 
@@ -89,6 +98,16 @@ export const URLClipForm: React.FC<URLClipFormProps> = ({
                         </Alert>
                     )}
                 </div>
+
+                {url && isSocialMediaUrl(url) && (
+                    <Alert variant="info" className="bg-blue-50">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>ソーシャルメディアのレシピ</AlertTitle>
+                        <AlertDescription className="text-xs">
+                            Instagram/TikTokのレシピは材料を手動で入力する必要があります。
+                        </AlertDescription>
+                    </Alert>
+                )}
 
                 <Button
                     type="submit"

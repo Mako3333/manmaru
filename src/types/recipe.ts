@@ -8,6 +8,7 @@ export interface ClippedRecipe {
     image_url?: string;
     source_url: string;
     source_platform?: string;
+    content_id?: string;
     recipe_type?: string;
     ingredients: RecipeIngredient[];
     nutrition_per_serving: NutritionData;
@@ -19,6 +20,7 @@ export interface ClippedRecipe {
     last_used_at?: string;
     created_at: string;
     updated_at: string;
+    is_social_media?: boolean;
 }
 
 // レシピの材料
@@ -72,6 +74,8 @@ export interface RecipeCard {
     nutrition_focus?: string[];
     is_favorite: boolean;
     caution_level?: 'low' | 'medium' | 'high';
+    source_platform?: string;
+    content_id?: string;
 }
 
 // URLクリップ時のリクエストデータ型
@@ -89,6 +93,9 @@ export interface RecipeUrlClipResponse {
     nutrition_per_serving: NutritionData;
     caution_foods?: string[];
     caution_level?: 'low' | 'medium' | 'high';
+    content_id?: string;
+    is_social_media?: boolean;
+    description?: string;
 }
 
 // レシピ編集フォームデータ型
