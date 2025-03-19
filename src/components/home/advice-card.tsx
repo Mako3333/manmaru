@@ -7,22 +7,28 @@ import { Loader2, AlertTriangle, Info, Check, RefreshCw } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
 
 interface AdviceCardProps {
-    date: string;
+    date?: string;
     className?: string;
     forceUpdate?: boolean;
+    profile?: any;
 }
 
 export const AdviceCard: React.FC<AdviceCardProps> = ({
     date,
     className = '',
-    forceUpdate = false
+    forceUpdate = false,
+    profile
 }) => {
     const [advice, setAdvice] = useState<NutritionAdvice | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const supabase = createClientComponentClient();
+
+    // 日付が提供されていない場合は現在の日付を使用
+    const currentDate = date || format(new Date(), 'yyyy-MM-dd');
 
     const fetchAdvice = async () => {
         setLoading(true);
@@ -39,10 +45,10 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
             }
 
             // APIからアドバイスを取得
-            console.log('AdviceCard: アドバイス取得開始', { date, forceUpdate });
+            console.log('AdviceCard: アドバイス取得開始', { date: currentDate, forceUpdate });
 
             // APIリクエストURLの構築
-            let apiUrl = `/api/nutrition-advice?date=${date}`;
+            let apiUrl = `/api/nutrition-advice?date=${currentDate}`;
             if (forceUpdate) {
                 apiUrl += '&force=true';
             }
@@ -84,13 +90,8 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
     };
 
     useEffect(() => {
-        if (date) {
-            fetchAdvice();
-        } else {
-            console.log('AdviceCard: 日付が指定されていません'); // デバッグ用ログ
-            setLoading(false);
-        }
-    }, [date, forceUpdate]);
+        fetchAdvice();
+    }, [currentDate, forceUpdate]);
 
     return (
         <div className="h-full relative mt-10">
@@ -141,8 +142,12 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
 
                     <CardContent className="p-6 pt-4">
                         <div className="space-y-4">
-
-
+                            {/* 妊娠週数表示（profileがある場合） */}
+                            {profile && profile.pregnancy_week && (
+                                <div className="text-sm text-gray-500 mb-1">
+                                    <span className="font-medium">妊娠{profile.pregnancy_week}週目</span>のアドバイス
+                                </div>
+                            )}
 
                             {/* 引用スタイルのアドバイステキスト */}
                             <div className="bg-[#F0F7F4] rounded-xl p-4 pl-8 relative">
@@ -151,7 +156,10 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                                     "
                                 </div>
                                 <p className="text-[15px] text-gray-700 leading-relaxed relative z-1">
-                                    {advice.advice_summary || advice.advice_text || "今週の妊娠の段階に合わせたアドバイスです。"}
+                                    {advice.advice_summary || advice.advice_text ||
+                                        (profile && profile.pregnancy_week
+                                            ? `妊娠${profile.pregnancy_week}週目の段階に合わせたアドバイスです。`
+                                            : "今週の妊娠の段階に合わせたアドバイスです。")}
                                 </p>
                             </div>
 

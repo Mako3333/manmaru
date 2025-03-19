@@ -17,12 +17,20 @@ import { RecommendedRecipes } from './recommended-recipes';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight, Book } from 'lucide-react';
+import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight, Book, X } from 'lucide-react';
 import { NutritionCalculator } from '@/lib/nutrition/calculator';
 import { getJapanDate } from '@/lib/utils/date-utils';
+import { OnboardingMessage } from './onboarding-message';
+import { MorningNutritionView } from './morning-nutrition-view';
 
 interface HomeClientProps {
     user: any;
+}
+
+// GreetingMessageコンポーネントの型定義
+interface GreetingMessageProps {
+    week?: number;
+    name?: string;
 }
 
 export default function HomeClient({ user }: HomeClientProps) {
@@ -33,6 +41,19 @@ export default function HomeClient({ user }: HomeClientProps) {
     const [nutritionData, setNutritionData] = useState<any>(null);
     const router = useRouter();
     const supabase = createClientComponentClient();
+
+    // 状態判定用の状態
+    const [isFirstTimeUser, setIsFirstTimeUser] = useState<boolean>(false);
+    const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+    const [isMorningWithNoMeals, setIsMorningWithNoMeals] = useState<boolean>(false);
+
+    // コンポーネントマウント時に一度だけ初回ユーザー判定
+    useEffect(() => {
+        const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
+        const isNew = hasSeenOnboarding !== 'true';
+        setIsFirstTimeUser(isNew);
+        setShowOnboarding(isNew);
+    }, []);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -98,6 +119,17 @@ export default function HomeClient({ user }: HomeClientProps) {
                     ...nutritionProgress,
                     overall_score
                 });
+
+                // 食事記録の有無確認
+                const hasMealRecords = nutritionProgress &&
+                    Object.values(nutritionProgress).some(value =>
+                        typeof value === 'number' &&
+                        value > 0 &&
+                        value !== nutritionProgress.user_id
+                    );
+
+                // 食事記録がない場合、朝用表示を有効化
+                setIsMorningWithNoMeals(!hasMealRecords);
             } catch (error) {
                 console.error('栄養データ取得エラー:', error);
             }
@@ -105,6 +137,12 @@ export default function HomeClient({ user }: HomeClientProps) {
 
         fetchNutritionData();
     }, [user, currentDate, supabase]);
+
+    // オンボーディングを閉じる処理
+    const dismissOnboarding = () => {
+        setShowOnboarding(false);
+        localStorage.setItem('hasSeenOnboarding', 'true');
+    };
 
     if (loading) {
         return (
@@ -157,6 +195,7 @@ export default function HomeClient({ user }: HomeClientProps) {
             default: return { bg: 'bg-gray-500', text: 'text-gray-600', bgLight: 'bg-gray-50' };
         }
     };
+
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50">
@@ -215,8 +254,14 @@ export default function HomeClient({ user }: HomeClientProps) {
             </header>
             {/* メインコンテンツ */}
             <main className="flex-grow container mx-auto max-w-4xl px-4 pt-6 space-y-8">
+
                 {/* 1. 妊娠週数情報カード */}
                 <PregnancyWeekInfo className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />
+
+                {/* 初回ユーザーオンボーディング */}
+                {isFirstTimeUser && showOnboarding && (
+                    <OnboardingMessage onDismiss={dismissOnboarding} />
+                )}
 
                 {/* 3. 行動喚起カード - 改善版 */}
                 <div className="mx-0 sm:mx-4 my-8">
@@ -240,83 +285,85 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                 </div>
 
-                {/* 4. 栄養状態サマリーカード */}
-                <div className="mx-0 sm:mx-4">
-                    <div className="flex justify-between items-center mb-2 px-1">
-                        <h3 className="font-semibold text-[16px] text-[#6C7A7D]">栄養バランス</h3>
-                        <a href="/dashboard" className="text-[#2E9E6C] text-[14px] font-medium">
-                            詳細を見る
-                        </a>
-                    </div>
-                    <Card className="w-full overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none p-6">
-                        <div className="flex flex-col">
-                            <div className="flex items-center mb-4">
-                                <div className="relative w-20 h-20 flex-shrink-0 mr-6">
-                                    <div
-                                        className="w-full h-full rounded-full flex items-center justify-center"
-                                        style={{
-                                            background: `conic-gradient(#2E9E6C ${Math.round(nutritionData?.overall_score || 0)}%, #EEEEEE ${Math.round(nutritionData?.overall_score || 0)}%)`
-                                        }}
-                                    >
-                                        <div className="absolute top-[5px] left-[5px] right-[5px] bottom-[5px] bg-white rounded-full flex items-center justify-center">
-                                            <span className="text-[24px] font-extrabold text-[#363249]">{Math.round(nutritionData?.overall_score || 0)}</span>
+                {/* 栄養バランス表示 */}
+                {isMorningWithNoMeals ? (
+                    <MorningNutritionView profile={profile} />
+                ) : (
+                    <div className="mx-0 sm:mx-4">
+                        <div className="flex justify-between items-center mb-2 px-1">
+                            <h3 className="font-semibold text-[16px] text-[#6C7A7D]">栄養バランス</h3>
+                            <a href="/dashboard" className="text-[#2E9E6C] text-[14px] font-medium">
+                                詳細を見る
+                            </a>
+                        </div>
+                        <Card className="w-full overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none p-6">
+                            <div className="flex flex-col">
+                                <div className="flex items-center mb-4">
+                                    <div className="relative w-20 h-20 flex-shrink-0 mr-6">
+                                        <div
+                                            className="w-full h-full rounded-full flex items-center justify-center"
+                                            style={{
+                                                background: `conic-gradient(#2E9E6C ${Math.round(nutritionData?.overall_score || 0)}%, #EEEEEE ${Math.round(nutritionData?.overall_score || 0)}%)`
+                                            }}
+                                        >
+                                            <div className="absolute top-[5px] left-[5px] right-[5px] bottom-[5px] bg-white rounded-full flex items-center justify-center">
+                                                <span className="text-[24px] font-extrabold text-[#363249]">{Math.round(nutritionData?.overall_score || 0)}</span>
+                                            </div>
                                         </div>
                                     </div>
+                                    <div>
+                                        <p className="text-[15px] font-medium text-gray-700">
+                                            {allNutrientsZero
+                                                ? '今日も元気に過ごしましょう！'
+                                                : nutritionData?.overall_score >= 70
+                                                    ? '良好な栄養状態です！'
+                                                    : nutritionData?.overall_score >= 50
+                                                        ? '栄養バランスの改善が必要です'
+                                                        : '栄養不足が心配されます'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-[15px] font-medium text-gray-700">
-                                        {allNutrientsZero
-                                            ? '今日も元気に過ごしましょう！'
-                                            : nutritionData?.overall_score >= 70
-                                                ? '良好な栄養状態です！'
-                                                : nutritionData?.overall_score >= 50
-                                                    ? '栄養バランスの改善が必要です'
-                                                    : '栄養不足が心配されます'}
-                                    </p>
-                                </div>
-                            </div>
 
-                            {deficientNutrients.length > 0 ? (
-                                <div className="grid grid-cols-2 gap-3">
-                                    {deficientNutrients.map((nutrient, index) => {
-                                        const colorSet = getNutrientColor(nutrient.color);
-                                        return (
-                                            <div key={index} className={`p-3 ${colorSet.bgLight} rounded-lg`}>
-                                                <div className="flex items-center justify-between mb-1.5">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className={`${colorSet.text} text-lg`}>{nutrient.icon}</span>
-                                                        <span className="text-sm font-medium">{nutrient.name}</span>
+                                {deficientNutrients.length > 0 ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {deficientNutrients.map((nutrient, index) => {
+                                            const colorSet = getNutrientColor(nutrient.color);
+                                            return (
+                                                <div key={index} className={`p-3 ${colorSet.bgLight} rounded-lg`}>
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={`${colorSet.text} text-lg`}>{nutrient.icon}</span>
+                                                            <span className="text-sm font-medium">{nutrient.name}</span>
+                                                        </div>
+                                                        <span className={`text-xs font-bold ${colorSet.text} min-w-[40px] text-right`}>
+                                                            {nutrient.percent}%
+                                                        </span>
                                                     </div>
-                                                    <span className={`text-xs font-bold ${colorSet.text} min-w-[40px] text-right`}>
-                                                        {nutrient.percent}%
-                                                    </span>
+                                                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full ${colorSet.bg} rounded-full`}
+                                                            style={{ width: `${nutrient.percent}%` }}
+                                                        ></div>
+                                                    </div>
                                                 </div>
-                                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                    <div
-                                                        className={`h-full ${colorSet.bg} rounded-full`}
-                                                        style={{ width: `${nutrient.percent}%` }}
-                                                    ></div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="text-center py-2">
-                                    <p className="text-gray-500">今日はまだ栄養データがありません</p>
-                                </div>
-                            )}
-                        </div>
-                    </Card>
-                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-2">
+                                        <p className="text-gray-500">今日はまだ栄養データがありません</p>
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+                    </div>
+                )}
 
-                {/* 5. アドバイスカード - 修正版 */}
-                <AdviceCard date={format(new Date(), 'yyyy-MM-dd')} className="shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px]" />
+                {/* 今日のアドバイスカード */}
+                <AdviceCard profile={profile} />
 
-                {/* 6. おすすめレシピカード */}
-                <div className="mx-0 sm:mx-4">
-                    <RecommendedRecipes />
-                </div>
+                {/* 5. おすすめレシピカード */}
+                <RecommendedRecipes />
             </main>
 
             {/* ナビゲーションバー */}
