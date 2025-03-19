@@ -141,7 +141,9 @@ export async function POST(req: Request) {
             const fetchErrorHostname = new URL(url).hostname;
             let errorMessage = `URLからのデータ取得中にエラーが発生しました: ${fetchError.message}`;
 
-            if (fetchErrorHostname.includes('delishkitchen.tv')) {
+            if (fetchErrorHostname.includes('cookpad.com')) {
+                errorMessage = `クックパッドのレシピ解析でエラーが発生しました: ${fetchError.message}。サイトの仕様が変更された可能性があります。他のレシピURLを試すか、しばらく時間をおいてからお試しください。`;
+            } else if (fetchErrorHostname.includes('delishkitchen.tv')) {
                 errorMessage = `デリッシュキッチンのレシピ取得に失敗しました。サイトの仕様が変更された可能性があります。他のレシピURLを試すか、別のサイト（クックパッドなど）をお試しください。詳細: ${fetchError.message}`;
             } else if (fetchErrorHostname.includes('shirogoghan.com') || fetchErrorHostname.includes('shirogohan.com')) {
                 errorMessage = `白ごはん.comのレシピ取得に失敗しました。サイトの仕様が変更された可能性があります。他のレシピURLを試すか、別のサイト（クックパッドなど）をお試しください。詳細: ${fetchError.message}`;
@@ -169,23 +171,274 @@ function getMetaContent(document: Document, property: string): string | undefine
 
 // 材料情報の抽出（サイト別）
 function extractIngredients(document: Document, hostname: string): { name: string; quantity?: string; unit?: string; group?: string; }[] {
-    const ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[] = [];
+    let ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[] = [];
 
     try {
         if (hostname.includes('cookpad.com')) {
-            // クックパッド用パーサー
-            const ingredientElements = document.querySelectorAll('.ingredient_row');
-            ingredientElements.forEach(element => {
-                const nameElement = element.querySelector('.ingredient_name');
-                const quantityElement = element.querySelector('.ingredient_quantity');
+            // クックパッド用パーサー - 修正版（2024年5月24日更新）
+            console.log('クックパッドのレシピを解析中...');
 
-                if (nameElement) {
-                    ingredients.push({
-                        name: nameElement.textContent?.trim() || '',
-                        quantity: quantityElement?.textContent?.trim()
-                    });
+            // 新しいHTML構造に対応したセレクタ
+            const selectors = [
+                // 新しい構造
+                '.ingredient-list li.justified-quantity-and-name',
+                'li[id^="ingredient_"]',
+                '.ingredients-list li',
+                // 旧構造
+                '.ingredient_row',
+                // 可能性のある代替セレクター
+                '.ingredient-list__item',
+                '.ingredient',
+                '.recipe-ingredients__item',
+                '.recipe_ingredient',
+                '.ingredients_list_item',
+                // より汎用的なセレクター
+                '[class*="ingredient"]',
+                'ol li'
+            ];
+
+            let ingredientElements: NodeListOf<Element> | Element[] = new Array<Element>();
+
+            // セレクタを一つずつ試す
+            for (const selector of selectors) {
+                const elements = document.querySelectorAll(selector);
+                console.log(`セレクター ${selector} で ${elements.length}個の要素が見つかりました`);
+
+                if (elements.length > 0) {
+                    ingredientElements = elements;
+                    break;
+                }
+            }
+
+            // 材料を抽出
+            ingredientElements.forEach(element => {
+                try {
+                    // 新しい構造: <span>材料名</span> <bdi>分量</bdi>
+                    const nameSpan = element.querySelector('span');
+                    const quantityBdi = element.querySelector('bdi');
+
+                    if (nameSpan && quantityBdi) {
+                        // 新しい構造での抽出
+                        const name = nameSpan.textContent?.trim() || '';
+                        const quantity = quantityBdi.textContent?.trim() || '';
+
+                        if (name) {
+                            ingredients.push({
+                                name: name,
+                                quantity: quantity
+                            });
+                        }
+                    } else {
+                        // 旧構造または代替構造をチェック
+                        const nameElement = element.querySelector('.ingredient_name, .name, .ingredient-name');
+                        const quantityElement = element.querySelector('.ingredient_quantity, .quantity, .ingredient-quantity');
+
+                        if (nameElement) {
+                            ingredients.push({
+                                name: nameElement.textContent?.trim() || '',
+                                quantity: quantityElement?.textContent?.trim()
+                            });
+                        } else if (element.textContent) {
+                            // セレクターで見つからない場合、テキスト全体から抽出を試みる
+                            const text = element.textContent.trim();
+
+                            // 「材料名：分量」または「材料名 分量」の形式を検出
+                            const parts = text.split(/：|:|…|\s{2,}/);
+                            if (parts.length > 1 && parts[0].length > 0) {
+                                ingredients.push({
+                                    name: parts[0].trim(),
+                                    quantity: parts.slice(1).join(' ').trim()
+                                });
+                            } else if (text.length > 0 && text.length < 50) {
+                                ingredients.push({ name: text });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('材料抽出中にエラーが発生しました:', e);
                 }
             });
+
+            // 材料が見つからない場合、テーブルを探す
+            if (ingredients.length === 0) {
+                console.log('リスト要素から材料が見つからないため、テーブルを検索します');
+                const tables = document.querySelectorAll('table');
+
+                tables.forEach(table => {
+                    const rows = table.querySelectorAll('tr');
+                    if (rows.length >= 3) { // 最低3行ある表は材料テーブルの可能性が高い
+                        rows.forEach(row => {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length >= 2) {
+                                const name = cells[0].textContent?.trim();
+                                const quantity = cells[1].textContent?.trim();
+
+                                if (name && name.length > 0 && name.length < 50) {
+                                    ingredients.push({
+                                        name: name,
+                                        quantity: quantity
+                                    });
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+
+            // テキスト全体から材料を抽出する最終手段
+            if (ingredients.length === 0) {
+                console.log('構造化要素から材料が見つからないため、テキスト全体から抽出を試みます');
+                const bodyText = document.body.textContent || '';
+
+                // 「材料」セクションを抽出
+                const materialsPattern = /材料(?:\s*[\(（][^）\)]*[\)）])?[\s\n]*?([\s\S]*?)(?:作り方|手順|レシピ|調理|準備|下準備|つくり方)/i;
+                const materialsMatch = bodyText.match(materialsPattern);
+
+                if (materialsMatch && materialsMatch[1]) {
+                    const materialsText = materialsMatch[1].trim();
+
+                    // 材料の塊が抽出できた場合、それを正しく個別の材料に分解する処理
+                    // 「材料 2人分」などの見出し行を除外
+                    if (materialsText.includes('にんじん') || materialsText.includes('ごぼう') ||
+                        materialsText.includes('玉ねぎ') || materialsText.includes('肉') ||
+                        materialsText.includes('じゃがいも')) {
+
+                        // 材料リストの塊を行単位で分解
+                        const rawLines = materialsText.split(/\n|<br>/).map(line => line.trim())
+                            .filter(line => line.length > 0);
+
+                        // 「材料 2人分」などの見出し行を判定し除外する関数
+                        const isHeaderLine = (line: string) => {
+                            return line.match(/^材料(\s|$)|^材料一覧|^材料（|^分量|^\d+人分|だし|つゆ/i) !== null;
+                        };
+
+                        // 材料名と分量の個別抽出を試みる
+                        // まず材料らしき行だけを抽出
+                        const ingredientLines = rawLines.filter(line => !isHeaderLine(line));
+
+                        // すでに一塊の材料が抽出されている場合は、それを分解する
+                        // @ts-ignore - 長さをチェックした後のアクセスは安全
+                        if (ingredients.length === 1) {
+                            const [item] = ingredients;
+                            if (item.name === '材料' || (item.quantity && item.quantity.includes('にんじん'))) {
+                                // 既存の材料をクリア
+                                ingredients = [];
+
+                                // 材料と分量のマッチングを試みる
+                                const fullText = rawLines.join(' ');
+
+                                // 「材料名 分量」のパターンを検出
+                                const ingredientPattern = /([^\s]+)\s+([^　\s][^　\s]*g|大さじ\d+|小さじ\d+|カップ\d*|適量|少々|(?:\d+)[^\s]*本|(?:\d+)[^\s]*個|(?:\d+)[^\s]*片|(?:\d+)[^\s]*枚)/g;
+                                let match;
+
+                                while ((match = ingredientPattern.exec(fullText)) !== null) {
+                                    const name = match[1].trim();
+                                    const quantity = match[2].trim();
+
+                                    // 単位や数字だけの名前、または不適切な名前は除外
+                                    if (name.length > 1 && !name.match(/^(大さじ|小さじ|カップ|\d+|適量|少々|本|個|片|枚)$/)) {
+                                        ingredients.push({
+                                            name: name,
+                                            quantity: quantity
+                                        });
+                                    }
+                                }
+
+                                // パターンマッチで十分な材料が抽出できなかった場合、行ごとに処理
+                                if (ingredients.length < 3) {
+                                    ingredients = []; // リセット
+
+                                    for (const line of ingredientLines) {
+                                        if (line.length > 2 && line.length < 50) {
+                                            // 材料名と分量を分ける試み
+                                            const parts = line.split(/[：:]|\s{2,}/);
+                                            if (parts.length > 1) {
+                                                ingredients.push({
+                                                    name: parts[0].trim(),
+                                                    quantity: parts.slice(1).join(' ').trim()
+                                                });
+                                            } else {
+                                                // 単一の材料行を個別の材料に分解
+                                                const items = line.split(/\s+/).filter(item => item.length > 0);
+
+                                                for (let i = 0; i < items.length; i += 2) {
+                                                    if (i + 1 < items.length && !items[i].match(/^(大さじ|小さじ|カップ|\d+|g|適量|少々)$/)) {
+                                                        ingredients.push({
+                                                            name: items[i],
+                                                            quantity: items[i + 1]
+                                                        });
+                                                    } else if (!items[i].match(/^(大さじ|小さじ|カップ|\d+|g|適量|少々)$/)) {
+                                                        ingredients.push({ name: items[i] });
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // 通常の処理 - 各行を材料として処理
+                            for (const line of ingredientLines) {
+                                if (line.length > 2 && line.length < 50 && !isHeaderLine(line)) {
+                                    // 材料名と分量を分ける試み
+                                    const parts = line.split(/[：:]|\s{2,}/);
+                                    if (parts.length > 1) {
+                                        ingredients.push({
+                                            name: parts[0].trim(),
+                                            quantity: parts.slice(1).join(' ').trim()
+                                        });
+                                    } else if (!line.match(/^(大さじ|小さじ|カップ|\d+|g|適量|少々)$/)) {
+                                        ingredients.push({ name: line });
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // 従来の処理（材料キーワードが見つからない場合）
+                        const lines = materialsText.split(/\n|<br>/).map(line => line.trim()).filter(line => line.length > 0);
+
+                        for (const line of lines) {
+                            if (line.length > 2 && line.length < 50 && !line.includes('材料') && !line.includes('つくり方')) {
+                                // 材料名と分量を分ける試み
+                                const parts = line.split(/[：:]|\s{2,}/);
+                                if (parts.length > 1) {
+                                    ingredients.push({
+                                        name: parts[0].trim(),
+                                        quantity: parts.slice(1).join(' ').trim()
+                                    });
+                                } else {
+                                    ingredients.push({ name: line });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 不適切な材料の除外
+            ingredients = ingredients.filter(item => {
+                // '材料'という名前の要素や、明らかに材料でない要素を除外
+                return item.name !== '材料' &&
+                    item.name !== '2人分' &&
+                    item.name !== '4人分' &&
+                    !/^\d+人分$/.test(item.name) &&
+                    item.name.length > 1;
+            });
+
+            // 重複の除去
+            const uniqueIngredients: { [key: string]: { name: string; quantity?: string; unit?: string; group?: string; } } = {};
+            ingredients.forEach(item => {
+                if (!uniqueIngredients[item.name]) {
+                    uniqueIngredients[item.name] = item;
+                }
+            });
+            ingredients = Object.values(uniqueIngredients);
+
+            // デバッグ情報
+            console.log(`クックパッドのレシピ解析: ${ingredients.length}個の材料を検出しました`);
+            if (ingredients.length > 0) {
+                console.log('検出された材料の例:', ingredients.slice(0, 3));
+            }
         } else if (hostname.includes('delishkitchen.tv')) {
             // デリッシュキッチン用パーサー - 修正版
             console.log('デリッシュキッチンのレシピを解析中...');

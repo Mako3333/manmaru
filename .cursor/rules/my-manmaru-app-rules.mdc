@@ -62,6 +62,9 @@ alwaysApply: false
 |   |   |   |   |-- [id]
 |   |   |   |   |   |-- page.tsx
 |   |   |   |   |   `-- recipes-client.tsx
+|   |   |   |   |-- clip
+|   |   |   |   |   |-- page.tsx
+|   |   |   |   |   `-- recipe-clip-client.tsx
 |   |   |   |   |-- page.tsx
 |   |   |   |   `-- recipes-client.tsx
 |   |   |   `-- settings
@@ -78,6 +81,8 @@ alwaysApply: false
 |   |   |   |-- meals
 |   |   |   |   |-- [date]
 |   |   |   |   |   `-- route.ts
+|   |   |   |   |-- from-recipe
+|   |   |   |   |   `-- route.ts
 |   |   |   |   |-- range
 |   |   |   |   |   `-- route.ts
 |   |   |   |   |-- route.ts
@@ -85,6 +90,15 @@ alwaysApply: false
 |   |   |   |       `-- route.ts
 |   |   |   |-- nutrition-advice
 |   |   |   |   `-- route.ts
+|   |   |   |-- recipes
+|   |   |   |   |-- [id]
+|   |   |   |   |   |-- favorite
+|   |   |   |   |   `-- route.ts
+|   |   |   |   |-- parse-url
+|   |   |   |   |   `-- route.ts
+|   |   |   |   |-- route.ts
+|   |   |   |   `-- save
+|   |   |   |       `-- route.ts
 |   |   |   |-- recommend-recipes
 |   |   |   |   `-- route.ts
 |   |   |   `-- update-nutrition-log
@@ -106,9 +120,6 @@ alwaysApply: false
 |   |   |-- auth
 |   |   |   |-- login-form.tsx
 |   |   |   `-- register-form.tsx
-|   |   |-- common
-|   |   |   |-- bottom-nav.tsx
-|   |   |   `-- header.tsx
 |   |   |-- dashboard
 |   |   |   |-- daily-nutrition-scores.tsx
 |   |   |   |-- meal-history-list.tsx
@@ -134,18 +145,28 @@ alwaysApply: false
 |   |   |   |-- meal-type-selector.tsx
 |   |   |   `-- recognition-editor.tsx
 |   |   |-- recipes
-|   |   |   `-- recipe-card.tsx
+|   |   |   |-- add-to-meal-dialog.tsx
+|   |   |   |-- recipe-card.tsx
+|   |   |   `-- url-clip-form.tsx
 |   |   `-- ui
+|   |       |-- alert.tsx
+|   |       |-- badge.tsx
 |   |       |-- button.tsx
+|   |       |-- calendar.tsx
 |   |       |-- card.tsx
 |   |       |-- checkbox.tsx
 |   |       |-- dialog.tsx
 |   |       |-- input.tsx
 |   |       |-- label.tsx
+|   |       |-- popover.tsx
 |   |       |-- progress.tsx
 |   |       |-- radio-group.tsx
+|   |       |-- select.tsx
+|   |       |-- slider.tsx
 |   |       |-- sonner.tsx
-|   |       `-- tabs.tsx
+|   |       |-- spinner.tsx
+|   |       |-- tabs.tsx
+|   |       `-- tooltip.tsx
 |   |-- hooks
 |   |   |-- useAuth.ts
 |   |   |-- useMeals.ts
@@ -176,8 +197,10 @@ alwaysApply: false
 |   |   |   |-- error-utils.ts
 |   |   |   `-- food-analysis-error.ts
 |   |   |-- nutrition
+|   |   |   |-- calculator.ts
 |   |   |   |-- database.ts
 |   |   |   `-- nutritionUtils.ts
+|   |   |-- nutrition-utils.ts
 |   |   |-- supabase
 |   |   |   `-- client.ts
 |   |   |-- utils
@@ -191,7 +214,12 @@ alwaysApply: false
 |   `-- types
 |       |-- meal.ts
 |       |-- nutrition.ts
+|       |-- recipe.ts
 |       `-- user.ts
+|-- supabase
+|   |-- config.toml
+|   `-- migrations
+|       `-- 20250317010051_add_recipe_clip_tables.sql
 |-- tailwind.config.ts
 |-- test-meal-image.jpg
 |-- test-prompt.js

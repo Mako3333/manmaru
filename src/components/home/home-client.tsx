@@ -13,6 +13,7 @@ import { ActionCard } from './action-card';
 import { AdviceCard } from './advice-card';
 import { BottomNavigation } from '../layout/bottom-navigation';
 import PregnancyWeekInfo from './pregnancy-week-info';
+import { RecommendedRecipes } from './recommended-recipes';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
@@ -217,7 +218,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                 {/* 1. 妊娠週数情報カード */}
                 <PregnancyWeekInfo className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />
 
-                {/* 2. 行動喚起カード - 改善版 */}
+                {/* 3. 行動喚起カード - 改善版 */}
                 <div className="mx-0 sm:mx-4 my-8">
                     <div className="grid grid-cols-2 gap-4">
                         <ActionCard
@@ -239,7 +240,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                 </div>
 
-                {/* 3. 栄養状態サマリーカード */}
+                {/* 4. 栄養状態サマリーカード */}
                 <div className="mx-0 sm:mx-4">
                     <div className="flex justify-between items-center mb-2 px-1">
                         <h3 className="font-semibold text-[16px] text-[#6C7A7D]">栄養バランス</h3>
@@ -309,31 +310,12 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </Card>
                 </div>
 
-                {/* 3. アドバイスカード - 修正版 */}
+                {/* 5. アドバイスカード - 修正版 */}
                 <AdviceCard date={format(new Date(), 'yyyy-MM-dd')} className="shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px]" />
 
-                {/* 5. おすすめレシピカード */}
-                <div className="mx-0 sm:mx-4 mb-8">
-                    <div className="flex justify-between items-center mb-2 px-1">
-                        <h3 className="font-semibold text-[16px] text-[#6C7A7D]">おすすめレシピ</h3>
-                        <a href="/recipes" className="text-[#2E9E6C] text-[14px] font-medium">
-                            すべて見る
-                        </a>
-                    </div>
-                    <Card className="w-full overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none">
-                        <CardContent className="p-6">
-                            <div className="text-center py-4">
-                                <p className="text-gray-500 mb-4">あなたに合ったレシピを準備中です</p>
-                                <Button
-                                    variant="outline"
-                                    className="border-[#2E9E6C] text-[#2E9E6C] hover:bg-[#F0F7F4]"
-                                    onClick={() => router.push('/recipes')}
-                                >
-                                    レシピを探す <ChevronRight className="h-4 w-4 ml-1" />
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
+                {/* 6. おすすめレシピカード */}
+                <div className="mx-0 sm:mx-4">
+                    <RecommendedRecipes />
                 </div>
             </main>
 
