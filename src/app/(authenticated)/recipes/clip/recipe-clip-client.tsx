@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { URLClipForm } from '@/components/recipes/url-clip-form';
 import { RecipeUrlClipRequest, RecipeUrlClipResponse, RecipeIngredient } from '@/types/recipe';
@@ -22,6 +22,7 @@ export default function RecipeClipClient() {
     const [editedRecipe, setEditedRecipe] = useState<RecipeUrlClipResponse & { recipe_type?: string; is_social_media?: boolean; content_id?: string; } | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [usePlaceholder, setUsePlaceholder] = useState<boolean>(true);
+    const [servings, setServings] = useState<number>(2); // デフォルト人数：2人前
 
     const handleUrlSubmit = async (data: RecipeUrlClipRequest, isSocialMedia: boolean) => {
         setIsLoading(true);
@@ -97,9 +98,51 @@ export default function RecipeClipClient() {
         setError(null);
 
         try {
-            // ソーシャルメディアでプレースホルダーを使う場合は、image_urlをundefinedに
-            if (editedRecipe.is_social_media && usePlaceholder) {
-                editedRecipe.image_url = undefined;
+            // ソーシャルメディアの場合は保存前に最終的な栄養素計算を実行
+            if (editedRecipe.is_social_media ||
+                editedRecipe.source_platform === 'Instagram' ||
+                editedRecipe.source_platform === 'TikTok') {
+
+                try {
+                    // 空の材料や名前がない材料はスキップ
+                    const validIngredients = editedRecipe.ingredients.filter(
+                        ing => ing.name && ing.name.trim() !== ''
+                    );
+
+                    if (validIngredients.length > 0) {
+                        const response = await fetch('/api/recipes/calculate-nutrients', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                ingredients: validIngredients,
+                                servings: servings
+                            }),
+                        });
+
+                        if (response.ok) {
+                            const nutritionData = await response.json();
+
+                            if (nutritionData.success) {
+                                // 栄養素データを更新
+                                editedRecipe.nutrition_per_serving = nutritionData.nutrition_per_serving;
+                            }
+                        }
+                    }
+                } catch (nutritionError) {
+                    console.error('保存前の栄養素計算エラー:', nutritionError);
+                    // エラーがあっても保存処理は続行
+                }
+            }
+
+            // ソーシャルメディアの場合、プレースホルダー使用フラグを設定
+            // important: image_urlは維持し、use_placeholderフラグで制御する
+            if (editedRecipe.is_social_media ||
+                editedRecipe.source_platform === 'Instagram' ||
+                editedRecipe.source_platform === 'TikTok') {
+
+                editedRecipe.use_placeholder = usePlaceholder;
             }
 
             const response = await fetch('/api/recipes/save', {
@@ -107,7 +150,10 @@ export default function RecipeClipClient() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(editedRecipe),
+                body: JSON.stringify({
+                    ...editedRecipe,
+                    servings: servings // 人数情報を追加
+                }),
             });
 
             if (!response.ok) {
@@ -154,6 +200,10 @@ export default function RecipeClipClient() {
                 ingredients
             });
         }
+    };
+
+    const handleServingsChange = (newServings: number) => {
+        setServings(newServings);
     };
 
     const handleImageCapture = (imageData: string) => {
@@ -321,6 +371,8 @@ export default function RecipeClipClient() {
                             <ManualIngredientsForm
                                 ingredients={editedRecipe.ingredients}
                                 onChange={updateIngredients}
+                                servings={servings}
+                                onServingsChange={handleServingsChange}
                             />
                         ) : (
                             <div className="border rounded p-3 max-h-40 overflow-y-auto">
@@ -337,17 +389,24 @@ export default function RecipeClipClient() {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">栄養情報 (1人前)</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">栄養情報 (1人前)</label>
+                        </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             {Object.entries(editedRecipe.nutrition_per_serving).map(([key, value]) => (
                                 <div key={key} className="bg-gray-50 p-2 rounded">
                                     <div className="text-xs text-gray-500">{getNutrientLabel(key)}</div>
                                     <div className="font-medium">
-                                        {value} {getNutrientUnit(key)}
+                                        {typeof value === 'number' ? Number(value).toFixed(1) : value} {getNutrientUnit(key)}
                                     </div>
                                 </div>
                             ))}
                         </div>
+                        {isSocialMedia && (
+                            <p className="text-xs text-gray-500">
+                                ※ 材料を入力すると自動的に栄養素が計算されます
+                            </p>
+                        )}
                     </div>
                 </CardContent>
                 <CardFooter className="flex justify-between">
@@ -409,6 +468,7 @@ export default function RecipeClipClient() {
                         setSaveSuccess(false);
                         setError(null);
                         setUsePlaceholder(true);
+                        setServings(2); // 人数を初期値に戻す
                     }}
                 >
                     別のレシピをクリップ

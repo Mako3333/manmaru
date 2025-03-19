@@ -11,6 +11,9 @@ interface Recipe {
     title: string;
     image_url: string;
     is_favorite: boolean;
+    source_platform?: string;
+    content_id?: string;
+    use_placeholder?: boolean;
 }
 
 // APIレスポンスの型定義
@@ -114,6 +117,65 @@ export function RecommendedRecipes() {
         );
     }
 
+    // ソーシャルメディアかどうかを判定
+    const isSocialMedia = (recipe: Recipe) =>
+        recipe.source_platform === 'Instagram' ||
+        recipe.source_platform === 'TikTok' ||
+        recipe.use_placeholder === true;
+
+    // プレースホルダー背景色を取得
+    const getPlaceholderBgColor = (platform?: string) => {
+        if (platform === 'Instagram') {
+            return 'bg-gradient-to-tr from-purple-500 via-pink-600 to-orange-400';
+        }
+        if (platform === 'TikTok') {
+            return 'bg-black';
+        }
+        return 'bg-gray-200';
+    };
+
+    // 画像要素の生成（条件分岐を考慮）
+    const renderImage = (recipe: Recipe) => {
+        if (recipe.image_url && !recipe.use_placeholder) {
+            return (
+                <Image
+                    src={recipe.image_url}
+                    alt={recipe.title}
+                    className="object-cover"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                />
+            );
+        } else if (isSocialMedia(recipe)) {
+            // ソーシャルメディアのプレースホルダー
+            return (
+                <div className={`w-full h-full ${getPlaceholderBgColor(recipe.source_platform)} flex items-center justify-center`}>
+                    <div className="text-white text-center">
+                        <div className="relative w-8 h-8 mx-auto mb-2">
+                            {recipe.source_platform && (
+                                <Image
+                                    src={`/icons/${recipe.source_platform.toLowerCase()}.svg`}
+                                    alt={recipe.source_platform}
+                                    width={32}
+                                    height={32}
+                                    className="object-contain"
+                                />
+                            )}
+                        </div>
+                        <p className="text-sm">{recipe.source_platform}のレシピ</p>
+                    </div>
+                </div>
+            );
+        } else {
+            // デフォルトプレースホルダー
+            return (
+                <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                    <span className="text-gray-400 text-4xl">🍽️</span>
+                </div>
+            );
+        }
+    };
+
     // クリップが少ない場合（1件のみ表示 + メッセージ）
     if (status === 'few_clips') {
         const recipe = recipes[0];
@@ -123,13 +185,7 @@ export function RecommendedRecipes() {
                 <h2 className="text-xl font-medium">おすすめレシピ</h2>
                 <Card className="overflow-hidden">
                     <div className="relative h-40 w-full">
-                        <Image
-                            src={recipe.image_url || '/placeholder-recipe.jpg'}
-                            alt={recipe.title}
-                            className="object-cover"
-                            fill
-                            sizes="(max-width: 768px) 100vw, 50vw"
-                        />
+                        {renderImage(recipe)}
                     </div>
                     <CardContent className="p-4">
                         <h3 className="font-medium mb-2 line-clamp-2">{recipe.title}</h3>
@@ -163,6 +219,30 @@ export function RecommendedRecipes() {
         );
     }
 
+    // クリップが5～9件の場合または十分ある場合のグリッド表示
+    const renderRecipeGrid = () => (
+        <div className="grid grid-cols-2 gap-4">
+            {recipes.map((recipe) => (
+                <Card key={recipe.id} className="overflow-hidden">
+                    <div className="relative aspect-video">
+                        {renderImage(recipe)}
+                    </div>
+                    <CardContent className="p-3">
+                        <h3 className="font-medium text-sm mb-2 line-clamp-2">{recipe.title}</h3>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full mt-2 text-xs"
+                            onClick={() => router.push(`/recipes/${recipe.id}`)}
+                        >
+                            詳細
+                        </Button>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+
     // クリップが5～9件の場合（2件表示 + ポジティブメッセージ）
     if (status === 'few_more_clips') {
         return (
@@ -179,32 +259,7 @@ export function RecommendedRecipes() {
                     </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    {recipes.map((recipe) => (
-                        <Card key={recipe.id} className="overflow-hidden">
-                            <div className="relative aspect-video">
-                                <Image
-                                    src={recipe.image_url || '/placeholder-recipe.jpg'}
-                                    alt={recipe.title}
-                                    className="object-cover"
-                                    fill
-                                    sizes="(max-width: 768px) 100vw, 33vw"
-                                />
-                            </div>
-                            <CardContent className="p-3">
-                                <h3 className="font-medium text-sm mb-2 line-clamp-2">{recipe.title}</h3>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full mt-2 text-xs"
-                                    onClick={() => router.push(`/recipes/${recipe.id}`)}
-                                >
-                                    詳細
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
+                {renderRecipeGrid()}
 
                 <Card className="bg-green-50 border-green-100 mt-3">
                     <CardContent className="p-4">
@@ -239,32 +294,7 @@ export function RecommendedRecipes() {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-                {recipes.map((recipe) => (
-                    <Card key={recipe.id} className="overflow-hidden">
-                        <div className="relative aspect-video">
-                            <Image
-                                src={recipe.image_url || '/placeholder-recipe.jpg'}
-                                alt={recipe.title}
-                                className="object-cover"
-                                fill
-                                sizes="(max-width: 768px) 100vw, 33vw"
-                            />
-                        </div>
-                        <CardContent className="p-3">
-                            <h3 className="font-medium text-sm mb-2 line-clamp-2">{recipe.title}</h3>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full mt-2 text-xs"
-                                onClick={() => router.push(`/recipes/${recipe.id}`)}
-                            >
-                                詳細
-                            </Button>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
+            {renderRecipeGrid()}
         </div>
     );
 } 

@@ -21,6 +21,7 @@ export interface ClippedRecipe {
     created_at: string;
     updated_at: string;
     is_social_media?: boolean;
+    use_placeholder?: boolean;
 }
 
 // レシピの材料
@@ -76,6 +77,7 @@ export interface RecipeCard {
     caution_level?: 'low' | 'medium' | 'high';
     source_platform?: string;
     content_id?: string;
+    use_placeholder?: boolean;
 }
 
 // URLクリップ時のリクエストデータ型
@@ -96,6 +98,7 @@ export interface RecipeUrlClipResponse {
     content_id?: string;
     is_social_media?: boolean;
     description?: string;
+    use_placeholder?: boolean;
 }
 
 // レシピ編集フォームデータ型

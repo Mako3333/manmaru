@@ -415,3 +415,452 @@
 また、栄養バランス表示を元の直感的なデザインに戻すことで、ダッシュボードとの一貫性が確保され、ユーザーがより正確に自分の栄養状態を把握できるようになりました。円形進捗表示と色分けされた栄養素リストにより、一目で改善すべき栄養素がわかるようになっています。
 
 これらの改善は、アプリの中核機能である栄養管理をより使いやすく、直感的にするための重要なステップであり、MVPリリースに向けた品質向上に貢献しています。
+
+
+# InstagramとTikTokレシピクリップ機能の実装
+
+## 概要
+妊婦向け栄養管理アプリ「manmaru」の開発において、以下のソーシャルメディア連携機能を実装しました：
+
+1. InstagramとTikTokからのレシピクリップ機能
+2. ソーシャルメディア向けプレースホルダー画像表示機能
+3. ディープリンク機能によるオリジナルコンテンツへの遷移
+4. 手動栄養計算機能の統合
+
+## 1. ソーシャルメディアURL解析機能の実装
+
+### 1.1 ソーシャルメディア専用APIエンドポイント
+
+#### 背景
+- 従来のレシピサイトとは異なり、InstagramやTikTokはOGP情報の取得が困難
+- ユーザーがソーシャルメディアのレシピも簡単にクリップできる仕組みが必要だった
+- 栄養情報の手動追加が必要なUIが必要だった
+
+#### 実施した変更
+1. **ソーシャルメディア専用のAPI実装**
+   ```typescript
+   // src/app/api/recipes/parse-social-url/route.ts
+   // ソーシャルメディアURLの解析
+   export async function POST(req: Request) {
+     try {
+       const data = await req.json();
+       const url = data.url;
+       
+       // URLからプラットフォームとコンテンツIDを抽出
+       const { platform, contentId } = extractSocialMediaInfo(url);
+       
+       if (!platform || !contentId) {
+         return NextResponse.json(
+           { error: 'サポートされていないURLまたは不正なURLです' },
+           { status: 400 }
+         );
+       }
+       
+       // レスポンスの構築
+       return NextResponse.json({
+         title: `${platform}のレシピ`,
+         source_url: url,
+         source_platform: platform,
+         content_id: contentId,
+         image_url: undefined, // プレースホルダー表示用
+         ingredients: [],
+         is_social_media: true
+       });
+     } catch (error) {
+       return NextResponse.json(
+         { error: 'URLの解析に失敗しました' },
+         { status: 500 }
+       );
+     }
+   }
+   ```
+
+2. **ソーシャルメディア情報抽出ユーティリティ**
+   ```typescript
+   // src/lib/utils/social-media.ts
+   // InstagramとTikTokのURL解析
+   export function extractSocialMediaInfo(url: string) {
+     let platform: string | null = null;
+     let contentId: string | null = null;
+     
+     // Instagram URL解析
+     if (url.includes('instagram.com')) {
+       platform = 'Instagram';
+       // Instagram URLからIDを抽出
+       const matches = url.match(/\/p\/([^\/]+)/) || url.match(/\/reel\/([^\/]+)/);
+       contentId = matches ? matches[1] : null;
+     }
+     // TikTok URL解析
+     else if (url.includes('tiktok.com')) {
+       platform = 'TikTok';
+       // TikTok URLからIDを抽出
+       const matches = url.match(/\/video\/(\d+)/);
+       contentId = matches ? matches[1] : null;
+     }
+     
+     return { platform, contentId };
+   }
+   ```
+
+## 2. ソーシャルメディア向けUI実装
+
+### 2.1 スクリーンショットアップローダーコンポーネント
+
+#### 背景
+- サムネイル自動取得が難しいため、ユーザーがスクリーンショットをアップロードできる機能が必要だった
+- アップロードしない場合のプレースホルダー表示も必要だった
+
+#### 実施した変更
+1. **スクリーンショットアップローダー実装**
+   ```tsx
+   // src/components/recipes/screenshot-uploader.tsx
+   export const ScreenshotUploader: React.FC<ScreenshotUploaderProps> = ({ onImageCapture }) => {
+     const [image, setImage] = useState<string | null>(null);
+     
+     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+       const file = event.target.files?.[0];
+       if (file) {
+         const reader = new FileReader();
+         reader.onloadend = () => {
+           const imageUrl = reader.result as string;
+           setImage(imageUrl);
+           onImageCapture(imageUrl);
+         };
+         reader.readAsDataURL(file);
+       }
+     };
+     
+     return (
+       <div className="screenshot-uploader mb-6">
+         <h3 className="text-sm font-medium mb-2">レシピのスクリーンショット</h3>
+         {!image ? (
+           <label className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
+             <CameraIcon className="h-10 w-10 text-gray-400 mb-2" />
+             <p className="text-sm text-gray-500">画像をアップロード</p>
+             <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+           </label>
+         ) : (
+           <div className="relative">
+             <img src={image} alt="Preview" className="w-full h-auto rounded-lg" />
+             <Button 
+               type="button" 
+               variant="outline" 
+               size="sm" 
+               className="absolute top-2 right-2 bg-white"
+               onClick={() => {
+                 setImage(null);
+                 onImageCapture(null);
+               }}
+             >
+               変更
+             </Button>
+           </div>
+         )}
+       </div>
+     );
+   };
+   ```
+
+### 2.2 ソーシャルメディアプレースホルダー実装
+
+#### 背景
+- 画像がない場合でも、どのプラットフォームかを視覚的に伝える必要があった
+- ブランドカラーを活用した直感的なデザインが必要だった
+
+#### 実施した変更
+1. **プラットフォーム専用プレースホルダー実装**
+   ```tsx
+   // src/components/recipes/social-media-placeholder.tsx
+   export const SocialMediaPlaceholder: React.FC<SocialMediaPlaceholderProps> = ({
+     platform,
+     title
+   }) => {
+     // プラットフォームに応じた背景スタイル
+     const getBgStyle = () => {
+       if (platform === 'Instagram') {
+         return 'bg-gradient-to-tr from-purple-500 via-pink-600 to-orange-400';
+       }
+       if (platform === 'TikTok') {
+         return 'bg-black';
+       }
+       return 'bg-gray-200';
+     };
+     
+     return (
+       <div className={`social-media-placeholder mb-6 rounded-lg overflow-hidden ${getBgStyle()}`}>
+         <div className="flex flex-col items-center p-6 text-white text-center">
+           <div className="relative w-16 h-16 mb-4">
+             <Image
+               src={`/icons/${platform.toLowerCase()}.svg`}
+               alt={platform}
+               width={64}
+               height={64}
+               className="object-contain"
+             />
+           </div>
+           <h3 className="text-xl font-semibold">{title}</h3>
+           <p className="text-sm opacity-80 mt-1">{platform}のレシピ</p>
+         </div>
+       </div>
+     );
+   };
+   ```
+
+## 3. ディープリンク機能の実装
+
+### 3.1 ソーシャルメディア専用ディープリンク
+
+#### 背景
+- モバイル端末ではアプリ内でコンテンツを開くことでUXを向上させる必要があった
+- PCでは通常のブラウザで開く必要があった
+- プラットフォームごとに異なるURLスキーマに対応する必要があった
+
+#### 実施した変更
+1. **ディープリンクユーティリティの実装**
+   ```typescript
+   // src/lib/utils/deep-link.ts
+   export function openOriginalSocialMedia(url: string, platform: string | undefined, contentId: string | undefined) {
+     if (!platform || !contentId) {
+       window.open(url, '_blank');
+       return;
+     }
+     
+     // モバイル判定
+     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+     
+     if (isMobile) {
+       // プラットフォームごとのディープリンク
+       if (platform === 'Instagram') {
+         window.location.href = `instagram://media?id=${contentId}`;
+         // フォールバック
+         setTimeout(() => {
+           window.location.href = url;
+         }, 1000);
+       } else if (platform === 'TikTok') {
+         window.location.href = `tiktok://video/${contentId}`;
+         // フォールバック
+         setTimeout(() => {
+           window.location.href = url;
+         }, 1000);
+       } else {
+         window.open(url, '_blank');
+       }
+     } else {
+       // PCの場合は通常のブラウザで開く
+       window.open(url, '_blank');
+     }
+   }
+   ```
+
+2. **レシピ詳細画面への統合**
+   ```tsx
+   // src/app/(authenticated)/recipes/[id]/recipes-client.tsx
+   // 元のレシピを開く
+   const handleOpenOriginalRecipe = () => {
+     if (isSocialMedia && recipe.content_id) {
+       // ソーシャルメディアの場合はディープリンクを使用
+       openOriginalSocialMedia(
+         recipe.source_url,
+         recipe.source_platform,
+         recipe.content_id
+       );
+     } else {
+       // 通常のレシピサイトの場合は新しいタブで開く
+       window.open(recipe.source_url, '_blank');
+     }
+   };
+   ```
+
+## 4. 手動栄養計算機能の統合
+
+### 4.1 ユーザー入力による栄養計算
+
+#### 背景
+- ソーシャルメディアからは栄養情報を自動取得できないため、手動入力が必要だった
+- AIによる栄養素計算を保存時のみ行う効率的な処理が必要だった
+- サービング数（何人前）に基づいた栄養計算が必要だった
+
+#### 実施した変更
+1. **手動材料入力フォームの実装**
+   ```tsx
+   // src/components/recipes/manual-ingredients-form.tsx
+   export const ManualIngredientsForm: React.FC<ManualIngredientsFormProps> = ({
+     ingredients,
+     onChange,
+     servings,
+     onServingsChange
+   }) => {
+     // 空の材料を追加する関数
+     const addIngredient = () => {
+       const newIngredients = [
+         ...ingredients,
+         { name: '', quantity: '' }
+       ];
+       onChange(newIngredients);
+     };
+     
+     // 材料を削除する関数
+     const removeIngredient = (index: number) => {
+       const newIngredients = ingredients.filter((_, i) => i !== index);
+       onChange(newIngredients);
+     };
+     
+     // 人数の変更
+     const handleServingsChange = (value: string) => {
+       onServingsChange(Number(value));
+     };
+     
+     return (
+       <div className="manual-ingredients-form space-y-4">
+         <div className="servings-selector mb-4">
+           <label className="text-sm font-medium block mb-2">このレシピは何人前ですか？</label>
+           <Select
+             value={String(servings)}
+             onValueChange={handleServingsChange}
+           >
+             <SelectTrigger className="w-full sm:w-40">
+               <SelectValue placeholder="人数を選択" />
+             </SelectTrigger>
+             <SelectContent>
+               <SelectItem value="1">1人前</SelectItem>
+               <SelectItem value="2">2人前</SelectItem>
+               <SelectItem value="3">3人前</SelectItem>
+               <SelectItem value="4">4人前</SelectItem>
+               <SelectItem value="5">5人前</SelectItem>
+               <SelectItem value="6">6人前</SelectItem>
+             </SelectContent>
+           </Select>
+         </div>
+         
+         {/* 材料入力リスト */}
+         <div className="ingredients-list">
+           {/* ... 材料入力フォーム ... */}
+         </div>
+       </div>
+     );
+   };
+   ```
+
+2. **保存時のみの栄養計算処理**
+   ```typescript
+   // src/app/(authenticated)/recipes/clip/recipe-clip-client.tsx
+   const handleSaveRecipe = async () => {
+     if (!editedRecipe) return;
+     
+     setIsLoading(true);
+     setError(null);
+     
+     try {
+       // ソーシャルメディアの場合は保存前に最終的な栄養素計算を実行
+       if (editedRecipe.is_social_media ||
+           editedRecipe.source_platform === 'Instagram' ||
+           editedRecipe.source_platform === 'TikTok') {
+         
+         try {
+           // 有効な材料のみでAPIを呼び出し
+           const validIngredients = editedRecipe.ingredients.filter(
+             ing => ing.name && ing.name.trim() !== ''
+           );
+           
+           if (validIngredients.length > 0) {
+             const response = await fetch('/api/recipes/calculate-nutrients', {
+               method: 'POST',
+               headers: {
+                 'Content-Type': 'application/json',
+               },
+               body: JSON.stringify({
+                 ingredients: validIngredients,
+                 servings: servings
+               }),
+             });
+             
+             if (response.ok) {
+               const nutritionData = await response.json();
+               if (nutritionData.success) {
+                 // 栄養素データを更新
+                 editedRecipe.nutrition_per_serving = nutritionData.nutrition_per_serving;
+               }
+             }
+           }
+         } catch (error) {
+           console.error('栄養素計算エラー:', error);
+           // エラーがあっても保存処理は続行
+         }
+       }
+       
+       // プレースホルダーフラグの設定
+       if (editedRecipe.is_social_media) {
+         editedRecipe.use_placeholder = usePlaceholder;
+       }
+       
+       // レシピの保存処理
+       const response = await fetch('/api/recipes/save', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify({
+           ...editedRecipe,
+           servings: servings
+         }),
+       });
+       
+       // 保存後の処理
+       // ...
+     } catch (error) {
+       console.error('保存エラー:', error);
+       setError(error instanceof Error ? error.message : '予期せぬエラーが発生しました');
+     } finally {
+       setIsLoading(false);
+     }
+   };
+   ```
+
+## 5. データベース拡張
+
+### 5.1 ソーシャルメディア対応のスキーマ拡張
+
+#### 背景
+- ソーシャルメディアの情報を保存するための追加フィールドが必要だった
+- プレースホルダー表示を制御するフラグが必要だった
+
+#### 実施した変更
+1. **データベーススキーマの拡張**
+   ```sql
+   -- clipped_recipesテーブルにソーシャルメディア関連のカラムを追加
+   ALTER TABLE clipped_recipes ADD COLUMN use_placeholder boolean DEFAULT false;
+   ALTER TABLE clipped_recipes ADD COLUMN is_social_media boolean DEFAULT false;
+   ALTER TABLE clipped_recipes ADD COLUMN content_id text;
+   ```
+
+## 6. 実装の効果
+
+### 6.1 コンテンツ多様性の向上
+- レシピソースの選択肢が大幅に拡大（従来のレシピサイトに加えてInstagramとTikTok）
+- ビジュアル中心のコンテンツへのアクセスが可能に
+- 最新のトレンドレシピへのアクセスが容易に
+
+### 6.2 ユーザー体験の向上
+- モバイル端末でのアプリ連携によるスムーズなコンテンツ閲覧
+- プラットフォーム特有のビジュアルデザインによる直感的な理解
+- ユーザーが自由に栄養情報を入力できる柔軟性
+
+## 7. 今後の課題
+
+### 7.1 サムネイル自動取得の検討
+- OGP情報やAPI連携による公式サムネイル画像の取得可能性の調査
+- 権利関係を考慮したコンテンツ表示の最適化
+- キャッシュ戦略によるパフォーマンス向上
+
+### 7.2 栄養計算の精度向上
+- AIによる画像解析を用いた材料の自動推定機能の検討
+- より詳細な栄養情報の提供
+- ユーザーフィードバックに基づく継続的な改善
+
+## 8. まとめ
+
+InstagramとTikTokのレシピクリップ機能の実装により、ユーザーはより多様なソースからレシピを収集できるようになりました。特にソーシャルメディア上で人気の妊娠中の方に適した健康的なレシピへのアクセスが容易になり、アプリの価値が大きく向上しました。
+
+プレースホルダー表示機能とディープリンク機能の組み合わせにより、ユーザーは簡単にオリジナルコンテンツにアクセスしつつ、栄養情報を手動で追加することが可能になりました。これにより、妊婦の方々がより多様なレシピの栄養価を理解し、バランスの取れた食事計画を立てる手助けとなることが期待されます。
+
+この機能は、MVPリリースに向けた重要な拡張であり、ユーザーが食事の多様性を高めながら栄養管理をサポートする役割を果たします。

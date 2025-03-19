@@ -170,7 +170,7 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                 {/* レシピ画像 */}
                 <div className="relative h-64 w-full">
-                    {recipe.image_url ? (
+                    {recipe.image_url && !recipe.use_placeholder ? (
                         <Image
                             src={recipe.image_url}
                             alt={recipe.title}

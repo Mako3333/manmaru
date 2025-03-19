@@ -145,7 +145,10 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
                                 recipe_type: recipe.recipe_type,
                                 nutrition_focus: recipe.nutrition_focus,
                                 is_favorite: recipe.is_favorite,
-                                caution_level: recipe.caution_level
+                                caution_level: recipe.caution_level,
+                                source_platform: recipe.source_platform,
+                                content_id: recipe.content_id,
+                                use_placeholder: recipe.use_placeholder
                             }}
                             onCardClick={handleRecipeClick}
                             onFavoriteToggle={handleFavoriteToggle}

@@ -54,7 +54,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
     };
 
     // ソーシャルメディアかどうかを判定
-    const isSocialMedia = recipe.source_platform === 'Instagram' || recipe.source_platform === 'TikTok';
+    const isSocialMedia = recipe.source_platform === 'Instagram' || recipe.source_platform === 'TikTok' || recipe.use_placeholder === true;
 
     // プレースホルダー背景色
     const getPlaceholderBgColor = () => {
@@ -77,7 +77,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 className="recipe-card-thumbnail relative h-24 w-full cursor-pointer"
                 onClick={() => onCardClick(recipe.id)}
             >
-                {recipe.image_url ? (
+                {recipe.image_url && !recipe.use_placeholder ? (
                     <Image
                         src={recipe.image_url}
                         alt={recipe.title}

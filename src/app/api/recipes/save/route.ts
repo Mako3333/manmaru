@@ -17,7 +17,9 @@ export async function POST(req: Request) {
         }
 
         // リクエストボディからレシピデータを取得
-        const recipeData = await req.json() as RecipeUrlClipResponse & { recipe_type?: string };
+        const recipeData = await req.json() as RecipeUrlClipResponse & { recipe_type?: string; servings?: number; use_placeholder?: boolean };
+
+        console.log('保存するレシピデータ:', JSON.stringify(recipeData, null, 2));
 
         if (!recipeData.title || !recipeData.source_url) {
             return NextResponse.json(
@@ -25,6 +27,29 @@ export async function POST(req: Request) {
                 { status: 400 }
             );
         }
+
+        // テーブル構造を確認
+        const { data: tableInfo, error: tableError } = await supabase
+            .from('clipped_recipes')
+            .select('*')
+            .limit(1);
+
+        if (tableError) {
+            console.error('テーブル構造確認エラー:', tableError);
+            return NextResponse.json(
+                { error: `テーブル構造の確認に失敗しました: ${tableError.message}` },
+                { status: 500 }
+            );
+        }
+
+        console.log('テーブル構造サンプル:', tableInfo);
+
+        // カラム名の配列を作成
+        const columns = tableInfo && tableInfo.length > 0
+            ? Object.keys(tableInfo[0])
+            : [];
+
+        console.log('利用可能なカラム:', columns);
 
         // 同じURLのレシピが既に存在するかチェック
         const { data: existingRecipe } = await supabase
@@ -34,26 +59,48 @@ export async function POST(req: Request) {
             .eq('source_url', recipeData.source_url)
             .maybeSingle();
 
+        // 保存用のデータを準備 - 基本情報（すべてのテーブルに存在するカラム）
+        const saveData: Record<string, any> = {
+            title: recipeData.title,
+            image_url: recipeData.image_url,
+            source_platform: recipeData.source_platform,
+            content_id: recipeData.content_id,
+            recipe_type: recipeData.recipe_type || 'main_dish',
+            ingredients: recipeData.ingredients,
+            nutrition_per_serving: recipeData.nutrition_per_serving,
+            caution_foods: recipeData.caution_foods,
+            caution_level: recipeData.caution_level,
+        };
+
+        // カラムが存在するときだけ値を設定する
+        if (columns.includes('use_placeholder')) {
+            console.log('use_placeholderカラムが存在します。値を設定します:', recipeData.use_placeholder || false);
+            saveData.use_placeholder = recipeData.use_placeholder || false;
+        } else {
+            console.log('use_placeholderカラムがテーブルに存在しないため、このフィールドはスキップします');
+        }
+
+        if (columns.includes('is_social_media')) {
+            saveData.is_social_media = recipeData.is_social_media || false;
+        }
+
+        if (columns.includes('servings')) {
+            saveData.servings = recipeData.servings || 1;
+        }
+
         if (existingRecipe) {
             // 既存レシピを更新
+            saveData.updated_at = new Date().toISOString();
+
             const { data: updatedRecipe, error: updateError } = await supabase
                 .from('clipped_recipes')
-                .update({
-                    title: recipeData.title,
-                    image_url: recipeData.image_url,
-                    source_platform: recipeData.source_platform,
-                    recipe_type: recipeData.recipe_type || 'main_dish', // デフォルト値
-                    ingredients: recipeData.ingredients,
-                    nutrition_per_serving: recipeData.nutrition_per_serving,
-                    caution_foods: recipeData.caution_foods,
-                    caution_level: recipeData.caution_level,
-                    updated_at: new Date().toISOString()
-                })
+                .update(saveData)
                 .eq('id', existingRecipe.id)
                 .select()
                 .single();
 
             if (updateError) {
+                console.error('レシピ更新エラー:', updateError);
                 throw updateError;
             }
 
@@ -65,27 +112,19 @@ export async function POST(req: Request) {
         }
 
         // 新規レシピとして保存
+        saveData.user_id = user.id;
+        saveData.source_url = recipeData.source_url;
+        saveData.is_favorite = false;
+        saveData.clipped_at = new Date().toISOString();
+
         const { data: newRecipe, error: insertError } = await supabase
             .from('clipped_recipes')
-            .insert({
-                user_id: user.id,
-                title: recipeData.title,
-                image_url: recipeData.image_url,
-                source_url: recipeData.source_url,
-                source_platform: recipeData.source_platform,
-                recipe_type: recipeData.recipe_type || 'main_dish', // デフォルト値
-                ingredients: recipeData.ingredients,
-                nutrition_per_serving: recipeData.nutrition_per_serving,
-                caution_foods: recipeData.caution_foods,
-                caution_level: recipeData.caution_level,
-                is_favorite: false,
-                servings: 1,
-                clipped_at: new Date().toISOString()
-            })
+            .insert(saveData)
             .select()
             .single();
 
         if (insertError) {
+            console.error('レシピ保存エラー:', insertError);
             throw insertError;
         }
 
@@ -98,7 +137,7 @@ export async function POST(req: Request) {
     } catch (error) {
         console.error('Recipe save error:', error);
         return NextResponse.json(
-            { error: 'レシピの保存中にエラーが発生しました' },
+            { error: `レシピの保存中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}` },
             { status: 500 }
         );
     }
