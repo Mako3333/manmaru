@@ -29,6 +29,44 @@ entity "profiles" as profiles {
   updated_at : TIMESTAMPTZ
 }
 
+' Food Data Tables
+entity "food_items" as food_items {
+  * id : UUID <<PK>>
+  --
+  original_id : TEXT
+  * name : TEXT
+  * calories : NUMERIC
+  * protein : NUMERIC
+  * iron : NUMERIC
+  * folic_acid : NUMERIC
+  * calcium : NUMERIC
+  * vitamin_d : NUMERIC
+  standard_quantity : TEXT
+  cooking_method : TEXT
+  category : TEXT
+  pregnancy_caution : BOOLEAN
+  category_id : VARCHAR(2) <<FK>>
+  created_at : TIMESTAMPTZ
+}
+note right of food_items : New table for food database
+
+entity "food_aliases" as food_aliases {
+  * id : UUID <<PK>>
+  --
+  * food_id : UUID <<FK>>
+  * alias : TEXT
+}
+note right of food_aliases : New table for food aliases
+
+entity "food_categories" as food_categories {
+  * id : VARCHAR(2) <<PK>>
+  --
+  * name : TEXT
+  description : TEXT
+  created_at : TIMESTAMPTZ
+}
+note right of food_categories : New table for food categories
+
 entity "meals" as meals {
   * id : UUID <<PK>>
   --
@@ -204,5 +242,9 @@ meals ||--o{ meal_recipe_entries : "meal_id"
 nutrition_targets ||--o{ nutrition_goal_prog : "trimester"
 
 clipped_recipes ||--o{ meal_recipe_entries : "clipped_recipe_id"
+
+' 食品データ関連のリレーション
+food_categories ||--o{ food_items : "category_id"
+food_items ||--o{ food_aliases : "food_id"
 
 @enduml

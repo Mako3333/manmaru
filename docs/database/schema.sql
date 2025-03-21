@@ -48,6 +48,34 @@ CREATE TABLE daily_nutrition_logs (user_id uuid NOT NULL,
   updated_at timestamp with time zone,
   CONSTRAINT daily_nutrition_logs_pkey PRIMARY KEY (id));
 
+CREATE TABLE food_items (id uuid NOT NULL,
+  original_id text,
+  name text NOT NULL,
+  calories numeric NOT NULL,
+  protein numeric NOT NULL,
+  iron numeric NOT NULL,
+  folic_acid numeric NOT NULL,
+  calcium numeric NOT NULL,
+  vitamin_d numeric NOT NULL,
+  standard_quantity text,
+  cooking_method text,
+  category text,
+  pregnancy_caution boolean,
+  created_at timestamp with time zone,
+  category_id varchar(2),
+  CONSTRAINT food_items_pkey PRIMARY KEY (id));
+
+CREATE TABLE food_aliases (id uuid NOT NULL,
+  food_id uuid,
+  alias text NOT NULL,
+  CONSTRAINT food_aliases_pkey PRIMARY KEY (id));
+
+CREATE TABLE food_categories (id varchar(2) NOT NULL,
+  name text NOT NULL,
+  description text,
+  created_at timestamp with time zone,
+  CONSTRAINT food_categories_pkey PRIMARY KEY (id));
+
 CREATE TABLE meal_nutrients (iron numeric,
   folic_acid numeric,
   calcium numeric,

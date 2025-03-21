@@ -3,6 +3,7 @@ import { AIModelFactory } from './model-factory';
 import { PromptService, PromptType } from './prompts/prompt-service';
 import { AIError, ErrorCode as AIErrorCode } from '@/lib/errors/ai-error';
 import { NutritionDatabase, NutritionDatabaseLLMAPI } from '@/lib/nutrition/database';
+import { SupabaseFoodDatabase } from '@/lib/nutrition/supabase-db';
 import { FoodItem, NutritionData, DatabaseFoodItem } from '@/types/nutrition';
 import { FoodAnalysisError, ErrorCode as FoodErrorCode } from '@/lib/errors/food-analysis-error';
 
@@ -28,6 +29,42 @@ export interface FoodAnalysisResult {
         source?: string;
         searchDetail?: string;
         calculationTime?: string;
+        matchedFoods?: Array<{
+            original: string;
+            matched: string;
+            similarity: number;
+        }>;
+        possibleMatches?: Array<{
+            original: string;
+            suggestion: string;
+            similarity: number;
+        }>;
+        [key: string]: any;
+    };
+}
+
+// AIからのレスポンスを解析するための内部型定義
+interface FoodAnalysisInput {
+    foods?: Array<{
+        name: string;
+        quantity?: string;
+        confidence?: number;
+    }>;
+    enhancedFoods?: Array<{
+        name: string;
+        quantity?: string;
+        confidence?: number;
+    }>;
+    nutrition?: {
+        calories: number;
+        protein: number;
+        iron: number;
+        folic_acid: number;
+        calcium: number;
+        vitamin_d?: number;
+        confidence_score: number;
+    };
+    meta?: {
         [key: string]: any;
     };
 }
@@ -74,12 +111,14 @@ export class AIService {
     private static instance: AIService;
     private promptService: PromptService;
     private nutritionDatabase: NutritionDatabaseLLMAPI;
+    private supabaseDatabase: SupabaseFoodDatabase;
 
     private constructor() {
         console.log('AIService: インスタンス作成');
         try {
             this.promptService = PromptService.getInstance();
             this.nutritionDatabase = NutritionDatabase.getInstance();
+            this.supabaseDatabase = SupabaseFoodDatabase.getInstance();
             console.log('AIService: 栄養データベースインスタンス取得成功');
         } catch (error) {
             console.error('AIService: 栄養データベースインスタンス取得エラー:', error);
@@ -106,24 +145,16 @@ export class AIService {
      */
     private async ensureDatabaseInitialized(): Promise<void> {
         try {
-            const status = this.nutritionDatabase.getDatabaseStatus();
-            console.log('AIService: データベース状態確認:', status);
-
-            if (!status.isReady && status.itemCount <= 10) {
-                console.log('AIService: 拡張データベースを読み込みます');
-                await this.nutritionDatabase.loadExternalDatabase();
-
-                // 読み込み後の状態を再確認
-                const newStatus = this.nutritionDatabase.getDatabaseStatus();
-                console.log('AIService: データベース読み込み後の状態:', newStatus);
-
-                if (!newStatus.isReady) {
-                    console.warn('AIService: 拡張データベースの読み込みに失敗しましたが、基本データベースで続行します');
-                }
+            // Supabaseデータベースのキャッシュを更新
+            try {
+                await this.supabaseDatabase.refreshCache();
+                console.log('AIService: Supabaseデータベースのキャッシュ更新完了');
+            } catch (error) {
+                console.warn('AIService: Supabaseデータベースキャッシュ更新エラー:', error);
             }
         } catch (error) {
             console.error('AIService: データベース初期化確認エラー:', error);
-            // 初期化エラーでも処理は続行（基本データベースを使用）
+            // エラーが発生しても処理は続行
         }
     }
 
@@ -154,11 +185,23 @@ export class AIService {
             const responseText = response.toString();
 
             // JSONパース処理
-            return this.parseJSONResponse<FoodAnalysisResult>(
-                responseText,
-                foodAnalysisSchema,
-                'foods'
-            );
+            const parsedData = this.parseAiResponse(responseText);
+            if (!parsedData) {
+                throw new AIError(
+                    'AIレスポンスの解析に失敗しました',
+                    AIErrorCode.AI_MODEL_ERROR,
+                );
+            }
+
+            // Zodスキーマで検証
+            try {
+                foodAnalysisSchema.parse(parsedData);
+            } catch (validationError) {
+                console.error('AIService: データ検証エラー:', validationError);
+                // 検証エラーの場合も、最善のデータを返す
+            }
+
+            return parsedData as FoodAnalysisResult;
         } catch (error) {
             if (error instanceof AIError) throw error;
 
@@ -234,11 +277,20 @@ export class AIService {
             // JSONパース処理
             let result: FoodAnalysisResult;
             try {
-                result = this.parseJSONResponse<FoodAnalysisResult>(
-                    responseText,
-                    foodAnalysisSchema,
-                    'foods'
-                );
+                const parsedData = this.parseAiResponse(responseText);
+                if (!parsedData) {
+                    throw new Error('レスポンスのパースに失敗しました');
+                }
+
+                // Zodスキーマで検証（エラーは捕捉するだけ）
+                try {
+                    foodAnalysisSchema.parse(parsedData);
+                } catch (validationError) {
+                    console.warn('AIService: データ検証警告:', validationError);
+                    // 検証エラーでも処理は続行
+                }
+
+                result = parsedData as FoodAnalysisResult;
 
                 // foodsフィールドの存在確認（念のため）
                 if (!result.foods || !Array.isArray(result.foods) || result.foods.length === 0) {
@@ -284,44 +336,128 @@ export class AIService {
             confidence: 0.7
         }));
 
-        // データベースがNutritionDatabaseインスタンスであることを確認してからcalculateNutritionを呼び出す
-        if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
-            throw new AIError(
-                '栄養データベースが適切に初期化されていません',
-                AIErrorCode.NUTRITION_CALCULATION_ERROR
-            );
-        }
+        try {
+            // まずSupabaseデータベースを試みる
+            const nutritionData = await this.supabaseDatabase.calculateNutrition(foodItems);
 
-        // 栄養計算を実行 (NutritionDatabaseクラスのメソッドとして呼び出す)
-        const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
+            // 結果の構築
+            const result: FoodAnalysisResult = {
+                foods: foodItems.map(food => ({
+                    name: food.name,
+                    quantity: food.quantity || '1人前',
+                    confidence: food.confidence || 0.7
+                })),
+                nutrition: {
+                    calories: nutritionData.calories,
+                    protein: nutritionData.protein,
+                    iron: nutritionData.iron,
+                    folic_acid: nutritionData.folic_acid,
+                    calcium: nutritionData.calcium,
+                    vitamin_d: nutritionData.vitamin_d,
+                    confidence_score: nutritionData.confidence_score || 0.7
+                },
+                meta: {
+                    notFoundFoods: nutritionData.notFoundFoods || [],
+                    source: 'supabase_database',
+                    searchDetail: (nutritionData.notFoundFoods || []).length > 0
+                        ? '一部の食品がデータベースに見つかりませんでした'
+                        : 'すべての食品がデータベースで見つかりました',
+                    calculationTime: new Date().toISOString()
+                }
+            };
 
-        // 結果の構築
-        const result: FoodAnalysisResult = {
-            foods: foodItems.map(food => ({
-                name: food.name,
-                quantity: food.quantity || '1人前',
-                confidence: food.confidence || 0.7
-            })),
-            nutrition: {
-                calories: nutritionData.calories,
-                protein: nutritionData.protein,
-                iron: nutritionData.iron,
-                folic_acid: nutritionData.folic_acid,
-                calcium: nutritionData.calcium,
-                vitamin_d: nutritionData.vitamin_d,
-                confidence_score: nutritionData.confidence_score || 0.5
-            },
-            meta: {
-                notFoundFoods: nutritionData.notFoundFoods || [],
-                source: 'database',
-                searchDetail: (nutritionData.notFoundFoods || []).length > 0
-                    ? '一部の食品がデータベースに見つかりませんでした'
-                    : 'すべての食品がデータベースで見つかりました',
-                calculationTime: new Date().toISOString()
+            // 値の妥当性チェック
+            result.nutrition = this.validateNutritionValues(result.nutrition, foodItems.length);
+
+            return result;
+        } catch (error) {
+            console.warn('AIService: Supabaseでの計算に失敗、ローカルDBにフォールバック:', error);
+
+            // フォールバック: 従来のNutritionDatabaseを使用
+            if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
+                throw new AIError(
+                    '栄養データベースが適切に初期化されていません',
+                    AIErrorCode.NUTRITION_CALCULATION_ERROR
+                );
             }
+
+            // 栄養計算を実行 (NutritionDatabaseクラスのメソッドとして呼び出す)
+            const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
+
+            // 結果の構築
+            const result: FoodAnalysisResult = {
+                foods: foodItems.map(food => ({
+                    name: food.name,
+                    quantity: food.quantity || '1人前',
+                    confidence: food.confidence || 0.7
+                })),
+                nutrition: {
+                    calories: nutritionData.calories,
+                    protein: nutritionData.protein,
+                    iron: nutritionData.iron,
+                    folic_acid: nutritionData.folic_acid,
+                    calcium: nutritionData.calcium,
+                    vitamin_d: nutritionData.vitamin_d,
+                    confidence_score: nutritionData.confidence_score || 0.5
+                },
+                meta: {
+                    notFoundFoods: nutritionData.notFoundFoods || [],
+                    source: 'local_database',
+                    searchDetail: (nutritionData.notFoundFoods || []).length > 0
+                        ? '一部の食品がデータベースに見つかりませんでした'
+                        : 'すべての食品がデータベースで見つかりました',
+                    calculationTime: new Date().toISOString()
+                }
+            };
+
+            // 値の妥当性チェック
+            result.nutrition = this.validateNutritionValues(result.nutrition, foodItems.length);
+
+            return result;
+        }
+    }
+
+    /**
+     * 栄養値の妥当性をチェックし、異常値を補正する
+     * @private
+     */
+    private validateNutritionValues(nutrition: FoodAnalysisResult['nutrition'], foodCount: number): FoodAnalysisResult['nutrition'] {
+        // 最大許容値（一般的な1食の上限値）
+        const MAX_CALORIES_PER_FOOD = 1000; // 1食品あたり最大1000kcal
+        const MAX_PROTEIN_PER_FOOD = 100;   // 1食品あたり最大100g
+        const MAX_IRON = 50;               // 1食あたり最大50mg
+        const MAX_FOLIC_ACID = 1000;       // 1食あたり最大1000μg
+        const MAX_CALCIUM = 1500;          // 1食あたり最大1500mg
+        const MAX_VITAMIN_D = 50;          // 1食あたり最大50μg
+
+        // 食品数に基づいた上限値の調整
+        const adjustedMaxCalories = Math.min(MAX_CALORIES_PER_FOOD * foodCount, 2500);
+        const adjustedMaxProtein = Math.min(MAX_PROTEIN_PER_FOOD * foodCount, 150);
+
+        // 異常値のチェックと補正
+        const validated = {
+            ...nutrition,
+            calories: Math.min(nutrition.calories, adjustedMaxCalories),
+            protein: Math.min(nutrition.protein, adjustedMaxProtein),
+            iron: Math.min(nutrition.iron, MAX_IRON),
+            folic_acid: Math.min(nutrition.folic_acid, MAX_FOLIC_ACID),
+            calcium: Math.min(nutrition.calcium, MAX_CALCIUM),
+            vitamin_d: Math.min(nutrition.vitamin_d || 0, MAX_VITAMIN_D)
         };
 
-        return result;
+        // 値が極端に大きい場合は信頼度スコアを下げる
+        if (
+            nutrition.calories > adjustedMaxCalories * 0.8 ||
+            nutrition.protein > adjustedMaxProtein * 0.8 ||
+            nutrition.iron > MAX_IRON * 0.8 ||
+            nutrition.folic_acid > MAX_FOLIC_ACID * 0.8 ||
+            nutrition.calcium > MAX_CALCIUM * 0.8 ||
+            (nutrition.vitamin_d || 0) > MAX_VITAMIN_D * 0.8
+        ) {
+            validated.confidence_score = Math.min(validated.confidence_score, 0.6);
+        }
+
+        return validated;
     }
 
     /**
@@ -335,45 +471,80 @@ export class AIService {
         for (let i = 0; i < result.foods.length; i++) {
             const food = result.foods[i];
 
-            // 完全一致検索
-            let dbFood = this.nutritionDatabase.getFoodByExactName(food.name);
+            try {
+                // まずSupabaseデータベースで検索
+                const fuzzyResults = await this.supabaseDatabase.getFoodsByFuzzyMatch(food.name, 1);
 
-            // 完全一致がない場合は部分一致検索
-            if (!dbFood) {
-                const similarFoods = this.nutritionDatabase.getFoodsByPartialName(food.name, 1);
-                if (similarFoods.length > 0) {
-                    dbFood = similarFoods[0];
-                    // 類似食品が見つかった場合は情報を更新
-                    result.foods[i].name = dbFood.name;
-                    food.confidence = Math.min(food.confidence, 0.8); // 信頼度を調整
+                if (fuzzyResults.length > 0) {
+                    const dbFood = fuzzyResults[0].food;
+                    const similarity = fuzzyResults[0].similarity;
+
+                    // 類似度が十分高い場合のみ採用
+                    if (similarity >= 0.7) {
+                        // 食品名を標準化
+                        result.foods[i].name = dbFood.name;
+                        // データベースの情報を優先して信頼度を更新
+                        result.foods[i].confidence = Math.max(food.confidence, 0.8);
+                        // メタデータがなければ初期化
+                        result.meta = result.meta || {};
+                        result.meta.matchedFoods = result.meta.matchedFoods || [];
+                        // マッチした食品の情報を記録
+                        result.meta.matchedFoods.push({
+                            original: food.name,
+                            matched: dbFood.name,
+                            similarity
+                        });
+                    } else if (similarity >= 0.5) {
+                        // 中程度の類似度の場合は候補として記録
+                        result.meta = result.meta || {};
+                        result.meta.possibleMatches = result.meta.possibleMatches || [];
+                        result.meta.possibleMatches.push({
+                            original: food.name,
+                            suggestion: dbFood.name,
+                            similarity
+                        });
+                    }
+                } else {
+                    // Supabaseに見つからない場合は従来のDBを使用
+                    // 完全一致検索
+                    let dbFood = this.nutritionDatabase.getFoodByExactName(food.name);
+
+                    // 完全一致がない場合は部分一致検索
+                    if (!dbFood) {
+                        const similarFoods = this.nutritionDatabase.getFoodsByPartialName(food.name, 1);
+                        if (similarFoods.length > 0) {
+                            dbFood = similarFoods[0];
+                            // 類似食品が見つかった場合は情報を更新
+                            result.foods[i].name = dbFood.name;
+                            food.confidence = Math.min(food.confidence, 0.7); // 信頼度を調整
+                        }
+                    }
+
+                    // データベースに食品が見つかった場合、信頼度を設定
+                    if (dbFood) {
+                        result.foods[i].confidence = Math.max(food.confidence, 0.7);
+                    }
                 }
-            }
-
-            // データベースに食品が見つかった場合、信頼度を高く設定
-            if (dbFood) {
-                result.foods[i].confidence = Math.max(food.confidence, 0.9);
+            } catch (error) {
+                console.error(`食品[${food.name}]の検索中にエラー:`, error);
+                // エラーが発生しても次の食品の処理を継続
             }
         }
 
         // 栄養計算の再実行（データベースの情報を使用）
         if (result.foods.length > 0) {
-            // 食品データを標準形式に変換
-            const foodItems: FoodItem[] = result.foods.map(food => ({
-                name: food.name,
-                quantity: food.quantity,
-                confidence: food.confidence
-            }));
+            try {
+                // 食品データを標準形式に変換
+                const foodItems: FoodItem[] = result.foods.map(food => ({
+                    name: food.name,
+                    quantity: food.quantity,
+                    confidence: food.confidence
+                }));
 
-            // データベースがNutritionDatabaseインスタンスであることを確認してからcalculateNutritionを呼び出す
-            if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
-                return result; // 適切なDBインスタンスがなければ現在の結果を返す
-            }
+                // Supabaseデータベースを使用して再計算
+                const nutritionData = await this.supabaseDatabase.calculateNutrition(foodItems);
 
-            // 栄養計算を実行（NutritionDatabaseクラスのメソッドとして呼び出す）
-            const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
-
-            // より信頼性の高い栄養情報で更新
-            if (nutritionData) {
+                // 結果の更新
                 result.nutrition = {
                     calories: nutritionData.calories || 0,
                     protein: nutritionData.protein || 0,
@@ -383,6 +554,59 @@ export class AIService {
                     vitamin_d: nutritionData.vitamin_d || 0,
                     confidence_score: nutritionData.confidence_score || 0.8 // データベース使用なので信頼度は高め
                 };
+
+                // 値の妥当性チェック
+                result.nutrition = this.validateNutritionValues(result.nutrition, foodItems.length);
+
+                // メタデータ更新
+                result.meta = result.meta || {};
+                result.meta.source = 'supabase_enhanced';
+                result.meta.notFoundFoods = nutritionData.notFoundFoods;
+
+            } catch (error) {
+                console.warn('AIService: Supabaseでの再計算に失敗、ローカルDBにフォールバック:', error);
+
+                // フォールバック：ローカルDBを使用
+                try {
+                    // 食品データを標準形式に変換
+                    const foodItems: FoodItem[] = result.foods.map(food => ({
+                        name: food.name,
+                        quantity: food.quantity,
+                        confidence: food.confidence
+                    }));
+
+                    // データベースがNutritionDatabaseインスタンスであることを確認
+                    if (!(this.nutritionDatabase instanceof NutritionDatabase)) {
+                        return result; // 適切なDBインスタンスがなければ現在の結果を返す
+                    }
+
+                    // 栄養計算を実行（NutritionDatabaseクラスのメソッドとして呼び出す）
+                    const nutritionData = await (this.nutritionDatabase as NutritionDatabase).calculateNutrition(foodItems);
+
+                    // より信頼性の高い栄養情報で更新
+                    if (nutritionData) {
+                        result.nutrition = {
+                            calories: nutritionData.calories || 0,
+                            protein: nutritionData.protein || 0,
+                            iron: nutritionData.iron || 0,
+                            folic_acid: nutritionData.folic_acid || 0,
+                            calcium: nutritionData.calcium || 0,
+                            vitamin_d: nutritionData.vitamin_d || 0,
+                            confidence_score: nutritionData.confidence_score || 0.7
+                        };
+
+                        // 値の妥当性チェック
+                        result.nutrition = this.validateNutritionValues(result.nutrition, foodItems.length);
+
+                        // メタデータ更新
+                        result.meta = result.meta || {};
+                        result.meta.source = 'local_enhanced';
+                        result.meta.notFoundFoods = nutritionData.notFoundFoods;
+                    }
+                } catch (fallbackError) {
+                    console.error('AIService: ローカルDBでの再計算にも失敗:', fallbackError);
+                    // 元の結果をそのまま返す
+                }
             }
         }
 
@@ -452,210 +676,78 @@ export class AIService {
     }
 
     /**
-     * AIからのJSON応答をパース
+     * AIからの応答を解析してフォーマット
+     * @private
      */
-    private parseJSONResponse<T>(
-        responseText: string,
-        schema?: z.ZodSchema<T>,
-        requiredField?: string
-    ): T {
+    private parseAiResponse(responseText: string): FoodAnalysisInput | null {
         try {
-            // JSONパターンの抽出
-            const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
+            // デバッグログの改善
+            console.log(`AIService: 応答解析開始 (${responseText.length}文字)`);
 
+            // JSONコードブロック抽出を改善
+            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
             if (!jsonMatch) {
-                console.error('AIService: JSON形式が見つかりません:', responseText);
-                throw new AIError(
-                    'JSONレスポンスの形式が不正です',
-                    AIErrorCode.RESPONSE_PARSE_ERROR,
-                    responseText
-                );
-            }
+                console.warn('AIService: JSONブロックが見つかりません', {
+                    responsePreview: responseText.substring(0, 100) + '...'
+                });
+                // JSON形式全体を探す
+                const possibleJson = responseText.match(/(\{[\s\S]*\})/);
+                if (!possibleJson) {
+                    console.error('AIService: 有効なJSONが見つかりません');
+                    return null;
+                }
 
-            // JSON抽出
-            const jsonStr = (jsonMatch[1] || jsonMatch[2]).trim();
-            console.log('AIService: 抽出されたJSON文字列:', jsonStr.substring(0, 200) + '...');
-
-            // JSONパース
-            let parsed: any;
-            try {
-                parsed = JSON.parse(jsonStr);
-            } catch (parseError) {
-                console.error('AIService: JSONパースエラー:', parseError);
-
-                // JSON構文エラーの場合は、文字列を修正して再試行
-                const fixedJsonStr = this.attemptToFixJson(jsonStr);
-                if (fixedJsonStr !== jsonStr) {
-                    try {
-                        parsed = JSON.parse(fixedJsonStr);
-                        console.log('AIService: 修正後のJSONをパースしました');
-                    } catch (secondError) {
-                        console.error('AIService: 修正JSON再パースでもエラー:', secondError);
-                        throw new AIError(
-                            'JSONの解析に失敗しました',
-                            AIErrorCode.RESPONSE_PARSE_ERROR,
-                            { error: parseError, text: jsonStr }
-                        );
-                    }
-                } else {
-                    throw new AIError(
-                        'JSONの解析に失敗しました',
-                        AIErrorCode.RESPONSE_PARSE_ERROR,
-                        { error: parseError, text: jsonStr }
-                    );
+                try {
+                    const parsedJson = JSON.parse(possibleJson[1]);
+                    console.log('AIService: JSON形式で解析に成功しました', {
+                        hasFood: !!parsedJson.foods || !!parsedJson.enhancedFoods,
+                        hasNutrition: !!parsedJson.nutrition
+                    });
+                    return parsedJson;
+                } catch (e) {
+                    console.error('AIService: 応答のJSON解析に失敗', e);
+                    return null;
                 }
             }
 
-            // 必須フィールドの確認と自動修正
-            if (requiredField && !parsed[requiredField]) {
-                console.warn(`AIService: 必須フィールド "${requiredField}" が見つかりません - 自動修正します`);
+            // JSON文字列の前処理
+            const jsonStr = jsonMatch[1].trim();
+            console.log(`AIService: 抽出されたJSON文字列プレビュー: ${jsonStr.substring(0, 50)}...`);
 
-                // 特定のフィールドが欠落している場合の対処
-                if (requiredField === 'foods') {
-                    // foodsフィールドがない場合は空の配列を設定
-                    parsed.foods = [];
+            // JSON解析
+            const parsedData = JSON.parse(jsonStr);
 
-                    // 代替フィールドを探す試み
-                    if (parsed.food) {
-                        console.log('AIService: "food" フィールドを "foods" として使用します');
-                        if (Array.isArray(parsed.food)) {
-                            parsed.foods = parsed.food;
-                        } else if (typeof parsed.food === 'object') {
-                            parsed.foods = [parsed.food];
-                        }
-                    } else if (parsed.items) {
-                        console.log('AIService: "items" フィールドを "foods" として使用します');
-                        if (Array.isArray(parsed.items)) {
-                            parsed.foods = parsed.items;
-                        }
-                    } else if (parsed.foodItems) {
-                        console.log('AIService: "foodItems" フィールドを "foods" として使用します');
-                        if (Array.isArray(parsed.foodItems)) {
-                            parsed.foods = parsed.foodItems;
-                        }
-                    } else if (parsed.enhancedFoods) {
-                        console.log('AIService: "enhancedFoods" フィールドを "foods" として使用します');
-                        if (Array.isArray(parsed.enhancedFoods)) {
-                            parsed.foods = parsed.enhancedFoods.map((item: any) => ({
-                                name: item.name || "不明な食品",
-                                quantity: item.quantity || "1人前",
-                                confidence: item.confidence || 0.7
-                            }));
-                        }
-                    }
-                }
-
-                // 他のフィールドの対処も必要に応じて追加
+            // foods/enhancedFoodsフィールドの取り扱い改善
+            if (!parsedData.foods && parsedData.enhancedFoods) {
+                parsedData.foods = parsedData.enhancedFoods;
+                // わかりやすいログメッセージ
+                console.log('AIService: 応答形式を標準化 (enhancedFoods → foods)');
             }
 
-            // スキーマ検証（オプション）とデータ修正
-            if (schema) {
-                const result = schema.safeParse(parsed);
-                if (!result.success) {
-                    console.error('AIService: スキーマ検証エラー:', result.error.issues);
-
-                    // FoodAnalysisResult形式のスキーマエラー時の特別処理
-                    if (requiredField === 'foods') {
-                        // 必須項目の設定
-                        if (!parsed.foods) parsed.foods = [];
-
-                        // foods配列のアイテムを確認、修正
-                        if (Array.isArray(parsed.foods)) {
-                            parsed.foods = parsed.foods.map((item: any) => ({
-                                name: item.name || "不明な食品",
-                                quantity: item.quantity || "",
-                                confidence: item.confidence || 0.5
-                            }));
-                        }
-
-                        // nutritionフィールド確認、修正
-                        if (!parsed.nutrition) {
-                            parsed.nutrition = {
-                                calories: 0,
-                                protein: 0,
-                                iron: 0,
-                                folic_acid: 0,
-                                calcium: 0,
-                                vitamin_d: 0,
-                                confidence_score: 0.5
-                            };
-                        } else {
-                            // 各栄養素フィールドが存在することを確認
-                            const nutritionDefaults = {
-                                calories: 0,
-                                protein: 0,
-                                iron: 0,
-                                folic_acid: 0,
-                                calcium: 0,
-                                vitamin_d: 0,
-                                confidence_score: 0.5
-                            };
-
-                            parsed.nutrition = {
-                                ...nutritionDefaults,
-                                ...parsed.nutrition
-                            };
-                        }
-
-                        // 再検証
-                        const recheck = schema.safeParse(parsed);
-                        if (recheck.success) {
-                            console.log('AIService: 自動修正によりスキーマ検証に成功しました');
-                            return recheck.data;
-                        }
-                    }
-
-                    // それでも失敗する場合はエラー
-                    throw new AIError(
-                        'データ検証エラー',
-                        AIErrorCode.VALIDATION_ERROR,
-                        { errors: result.error.issues, data: parsed }
-                    );
-                }
-                return result.data;
+            // nutrition フィールドの標準化
+            if (!parsedData.nutrition) {
+                console.log('AIService: nutrition フィールドを生成');
+                parsedData.nutrition = {
+                    calories: 0,
+                    protein: 0,
+                    iron: 0,
+                    folic_acid: 0,
+                    calcium: 0,
+                    vitamin_d: 0,
+                    confidence_score: 0.5
+                };
             }
 
-            return parsed;
+            // 検証成功
+            console.log('AIService: 応答解析成功', {
+                foodCount: parsedData.foods?.length || 0,
+                hasNutrition: !!parsedData.nutrition
+            });
+
+            return parsedData;
         } catch (error) {
-            // AIErrorをそのまま再スロー
-            if (error instanceof AIError) throw error;
-
-            // その他のエラーはAIErrorに変換
-            throw new AIError(
-                'JSONの解析処理中にエラーが発生しました',
-                AIErrorCode.RESPONSE_PARSE_ERROR,
-                error
-            );
-        }
-    }
-
-    /**
-     * JSON文字列の修正を試みる
-     */
-    private attemptToFixJson(jsonStr: string): string {
-        try {
-            // 一般的なJSON構文エラーの修正
-
-            // 1. 不要なテキストの除去
-            let fixed = jsonStr.replace(/[\r\n\t]+/g, ' ');
-
-            // 2. クォーテーションの修正
-            fixed = fixed.replace(/(['"])([a-zA-Z0-9_]+)(['"]):/g, '"$2":');
-
-            // 3. 欠落したクォーテーションの追加
-            fixed = fixed.replace(/:([a-zA-Z]+)/g, ':"$1"');
-
-            // 4. 末尾のカンマを修正
-            fixed = fixed.replace(/,\s*([}\]])/g, '$1');
-
-            // 5. 誤った構文の修正
-            fixed = fixed.replace(/([{,])\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
-
-            console.log('AIService: JSON修正を試みました');
-            return fixed;
-        } catch (error) {
-            console.error('AIService: JSON修正エラー:', error);
-            return jsonStr; // 修正に失敗した場合は元の文字列を返す
+            console.error('AIService: 応答解析エラー', error);
+            return null;
         }
     }
 

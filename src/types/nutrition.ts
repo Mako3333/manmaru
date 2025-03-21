@@ -15,20 +15,21 @@ export interface BasicNutritionData {
  * 栄養素データの詳細インターフェース
  * 妊婦に重要な栄養素を含む
  */
-export interface NutritionData extends BasicNutritionData {
-    overall_score: number;
-    deficient_nutrients: string[];
-    sufficient_nutrients: string[];
-    daily_records: {
-        date: string;
-        calories: number;
-        protein: number;
-        fat: number;
-        carbs: number;
-        score: number;
-    }[];
-    // 見つからなかった食品のリスト
+export interface NutritionData {
+    calories: number;
+    protein: number;
+    iron: number;
+    folic_acid: number;
+    calcium: number;
+    vitamin_d: number;
+    confidence_score: number;
     notFoundFoods?: string[];
+    // オプショナルプロパティ
+    overall_score?: number;
+    deficient_nutrients?: string[];
+    sufficient_nutrients?: string[];
+    daily_records?: any; // 日々の記録データ
+    matchedFoods?: Array<{ original: string, matched: string, similarity: number }>;
 }
 
 export interface NutrientSummary {
@@ -214,20 +215,20 @@ export const QUANTITY_CONVERSIONS: Record<QuantityUnitType, number> = {
     [QuantityUnit.SERVINGS]: 200     // 1人前 = 200g と仮定
 };
 
-// データベースアイテムの型定義
+/**
+ * データベース内の食品アイテム
+ */
 export interface DatabaseFoodItem {
     name: string;
-    id?: string;           // 新規追加: 食品ID
     calories: number;
     protein: number;
     iron: number;
     folic_acid: number;
     calcium: number;
-    vitamin_d: number;     // 既存のフィールド
-    standard_quantity: string;
-    category?: FoodCategory;
-    aliases?: string[];
-    notes?: string;
+    vitamin_d?: number;
+    standard_quantity?: string;
+    cooking_method?: string; // 追加：調理法
+    category_id?: string;    // 追加：カテゴリーID
 }
 
 /**
