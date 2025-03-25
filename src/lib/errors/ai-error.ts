@@ -12,6 +12,15 @@ export enum ErrorCode {
     PROMPT_ERROR = 'prompt_error',
     RESPONSE_PARSE_ERROR = 'response_parse_error',
 
+    // Gemini API 固有エラー
+    RATE_LIMIT = 'rate_limit',             // APIリクエスト上限超過
+    INVALID_IMAGE = 'invalid_image',       // 画像形式/サイズエラー
+    TIMEOUT = 'timeout',                   // 応答タイムアウト
+    CONTENT_FILTER = 'content_filter',     // コンテンツフィルター違反
+    QUOTA_EXCEEDED = 'quota_exceeded',     // 月間クォータ制限超過
+    INVALID_REQUEST = 'invalid_request',   // 不正なリクエスト形式
+    MODEL_UNAVAILABLE = 'model_unavailable', // モデルが一時的に利用不可
+
     // 食品分析特有エラー
     IMAGE_PROCESSING_ERROR = 'image_processing_error',
     FOOD_RECOGNITION_ERROR = 'food_recognition_error',

@@ -157,6 +157,10 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
     // キャッシュ有効期限（30分 = 1800000ms）
     private static CACHE_VALIDITY_TIME = 1800000;
 
+    // ローカルストレージのキー
+    private static LOCAL_STORAGE_CACHE_KEY = 'food_database_cache';
+    private static LOCAL_STORAGE_TIMESTAMP_KEY = 'food_database_cache_timestamp';
+
     // 検索クエリキャッシュ
     private queryCache: Map<string, {
         timestamp: number,
@@ -220,6 +224,12 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
                 return;
             }
 
+            // ローカルストレージからのデータロードを試みる
+            if (!forceReload && await this.loadFromLocalStorage()) {
+                console.log('NutritionDatabase: ローカルストレージからロードしました');
+                return;
+            }
+
             console.log('食品データベースを読み込み中...');
 
             // この処理を Promise として保存
@@ -250,10 +260,16 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
                     this.lastLoadTime = Date.now();
                     this.buildIndices();
 
+                    // ローカルストレージにデータを保存
+                    this.saveToLocalStorage();
+
                     console.log(`データベースの読み込み完了: ${Object.keys(this.foodDatabase).length}件`);
                 } catch (error) {
                     this.loadingError = error instanceof Error ? error : new Error(String(error));
                     console.error('食品データベースの読み込みに失敗しました:', this.loadingError);
+
+                    // エラー発生時にフォールバックデータベースを使用
+                    this.useFallbackDatabase();
                 } finally {
                     this.loadPromise = null;
                 }
@@ -263,6 +279,114 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
         } catch (error) {
             console.error('データベース読み込み中に重大なエラーが発生:', error);
             this.loadingError = error instanceof Error ? error : new Error(String(error));
+
+            // エラー発生時にフォールバックデータベースを使用
+            this.useFallbackDatabase();
+        }
+    }
+
+    /**
+     * ローカルストレージからデータをロード
+     * @returns 成功したかどうか
+     */
+    private async loadFromLocalStorage(): Promise<boolean> {
+        if (typeof window === 'undefined') {
+            return false; // サーバーサイドではローカルストレージは使用できない
+        }
+
+        try {
+            const cachedData = localStorage.getItem(NutritionDatabase.LOCAL_STORAGE_CACHE_KEY);
+            const timestampStr = localStorage.getItem(NutritionDatabase.LOCAL_STORAGE_TIMESTAMP_KEY);
+
+            if (!cachedData || !timestampStr) {
+                return false;
+            }
+
+            const timestamp = parseInt(timestampStr, 10);
+            const isExpired = Date.now() - timestamp > NutritionDatabase.CACHE_VALIDITY_TIME;
+
+            if (isExpired) {
+                console.log('NutritionDatabase: キャッシュの有効期限が切れています');
+                return false;
+            }
+
+            try {
+                const parsedData = JSON.parse(cachedData);
+                if (!parsedData || Object.keys(parsedData).length === 0) {
+                    console.warn('NutritionDatabase: キャッシュデータが空または無効です');
+                    return false;
+                }
+
+                this.foodDatabase = parsedData;
+                this.isFullDatabaseLoaded = true;
+                this.lastLoadTime = timestamp;
+                this.buildIndices();
+
+                console.log(`NutritionDatabase: キャッシュから ${Object.keys(this.foodDatabase).length} 件のデータをロードしました`);
+                return true;
+            } catch (parseError) {
+                console.warn('NutritionDatabase: キャッシュデータの解析に失敗しました:', parseError);
+                localStorage.removeItem(NutritionDatabase.LOCAL_STORAGE_CACHE_KEY);
+                localStorage.removeItem(NutritionDatabase.LOCAL_STORAGE_TIMESTAMP_KEY);
+                return false;
+            }
+        } catch (error) {
+            console.warn('NutritionDatabase: ローカルストレージからの読み込みに失敗:', error);
+            return false;
+        }
+    }
+
+    /**
+     * ローカルストレージにデータを保存
+     */
+    private saveToLocalStorage(): void {
+        if (typeof window === 'undefined' || !this.isFullDatabaseLoaded) {
+            return; // サーバーサイドまたはデータ未ロード時は保存しない
+        }
+
+        try {
+            // データサイズを削減するための簡易な最適化
+            const dataToSave = { ...this.foodDatabase };
+
+            // データをJSON文字列に変換
+            const jsonData = JSON.stringify(dataToSave);
+
+            // データサイズをチェック（ローカルストレージの制限は約5MB）
+            if (jsonData.length > 4 * 1024 * 1024) { // 4MBを超える場合
+                console.warn('NutritionDatabase: データサイズが大きすぎるため、キャッシュを保存しません');
+                return;
+            }
+
+            localStorage.setItem(NutritionDatabase.LOCAL_STORAGE_CACHE_KEY, jsonData);
+            localStorage.setItem(NutritionDatabase.LOCAL_STORAGE_TIMESTAMP_KEY, this.lastLoadTime.toString());
+
+            console.log(`NutritionDatabase: ${Object.keys(dataToSave).length} 件のデータをキャッシュしました`);
+        } catch (error) {
+            console.error('NutritionDatabase: ローカルストレージへの保存に失敗:', error);
+
+            // QuotaExceededErrorの場合は古いキャッシュをクリアして再試行
+            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                try {
+                    localStorage.removeItem(NutritionDatabase.LOCAL_STORAGE_CACHE_KEY);
+                    localStorage.removeItem(NutritionDatabase.LOCAL_STORAGE_TIMESTAMP_KEY);
+                    console.log('NutritionDatabase: 古いキャッシュをクリアして再試行します');
+                    this.saveToLocalStorage(); // 再帰呼び出しに注意
+                } catch (retryError) {
+                    console.error('NutritionDatabase: キャッシュのクリア後も保存に失敗:', retryError);
+                }
+            }
+        }
+    }
+
+    /**
+     * フォールバックデータベースを使用
+     * オンラインでのロードに失敗した場合に基本データを使用
+     */
+    private useFallbackDatabase(): void {
+        if (Object.keys(this.foodDatabase).length === 0) {
+            console.log('NutritionDatabase: フォールバックデータベースを使用します');
+            this.foodDatabase = FOOD_DATABASE;
+            this.buildIndices();
         }
     }
 
@@ -303,7 +427,9 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
             food.iron = Math.round(food.iron * 10) / 10;
             food.calcium = Math.round(food.calcium * 10) / 10;
             food.folic_acid = Math.round(food.folic_acid * 10) / 10;
-            food.vitamin_d = Math.round(food.vitamin_d * 10) / 10;
+            if (food.vitamin_d !== undefined) {
+                food.vitamin_d = Math.round(food.vitamin_d * 10) / 10;
+            }
         }
 
         console.log('メモリ使用量の最適化が完了しました');
@@ -410,7 +536,9 @@ export class NutritionDatabase implements NutritionDatabaseLLMAPI {
             // 葉酸
             this.addToNutrientIndex('folic_acid', key, food.folic_acid, 80.0, 30.0);
             // ビタミンD
-            this.addToNutrientIndex('vitamin_d', key, food.vitamin_d, 2.0, 0.5);
+            if (food.vitamin_d !== undefined) {
+                this.addToNutrientIndex('vitamin_d', key, food.vitamin_d, 2.0, 0.5);
+            }
         }
 
         console.log('検索インデックスを構築しました');

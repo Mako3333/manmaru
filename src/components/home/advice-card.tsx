@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface AdviceCardProps {
     date?: string;
@@ -79,7 +80,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                 type: data.advice_type,
                 date: data.advice_date,
                 summaryLength: data.advice_summary?.length,
-                textLength: data.advice_text?.length
+                textLength: data.advice_detail?.length
             });
         } catch (err) {
             console.error('栄養アドバイス取得エラー:', err);
@@ -156,28 +157,10 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                                     "
                                 </div>
                                 <p className="text-[15px] text-gray-700 leading-relaxed relative z-1">
-                                    {advice.advice_summary || advice.advice_text ||
-                                        (profile && profile.pregnancy_week
-                                            ? `妊娠${profile.pregnancy_week}週目の段階に合わせたアドバイスです。`
-                                            : "今週の妊娠の段階に合わせたアドバイスです。")}
+                                    {advice.advice_summary || advice.advice_detail || '栄養アドバイスがありません'}
                                 </p>
                             </div>
 
-                            {advice.recommendations && advice.recommendations.length > 0 && (
-                                <div className="space-y-2 pt-1">
-                                    <h4 className="font-medium text-[15px] text-gray-700">おすすめ対策</h4>
-                                    <ul className="space-y-2">
-                                        {advice.recommendations.map((rec, idx) => (
-                                            <li key={idx} className="flex gap-2 items-start">
-                                                <div className="h-5 w-5 rounded-full bg-[#E3F3ED] flex items-center justify-center mt-0.5">
-                                                    <Check className="h-3 w-3 text-[#2E9E6C]" />
-                                                </div>
-                                                <span className="text-[14px] text-gray-700">{rec}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
                         </div>
                     </CardContent>
                 </Card>

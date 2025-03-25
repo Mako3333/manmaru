@@ -189,7 +189,7 @@ export class AIService {
             if (!parsedData) {
                 throw new AIError(
                     'AIレスポンスの解析に失敗しました',
-                    AIErrorCode.AI_MODEL_ERROR,
+                    AIErrorCode.RESPONSE_PARSE_ERROR,
                 );
             }
 
@@ -203,12 +203,77 @@ export class AIService {
 
             return parsedData as FoodAnalysisResult;
         } catch (error) {
+            // エラー詳細の記録
+            console.error('画像解析エラー詳細:', JSON.stringify(error, null, 2));
+
+            // すでにAIErrorの場合はそのまま再スロー
             if (error instanceof AIError) throw error;
 
+            // errorオブジェクトからメッセージを安全に抽出
+            const errorMessage = error instanceof Error
+                ? error.message
+                : typeof error === 'string'
+                    ? error
+                    : 'Unknown error';
+
+            // Gemini API特有のエラータイプに応じた分岐
+            if (errorMessage.includes('RESOURCE_EXHAUSTED')) {
+                throw new AIError(
+                    'APIリクエスト上限に達しました。しばらく経ってからお試しください。',
+                    AIErrorCode.RATE_LIMIT,
+                    error,
+                    ['少し時間をおいて再度お試しください', 'テキスト入力で食品を記録することもできます']
+                );
+            } else if (errorMessage.includes('INVALID_ARGUMENT')) {
+                throw new AIError(
+                    '画像の形式が正しくありません。別の画像をお試しください。',
+                    AIErrorCode.INVALID_IMAGE,
+                    error,
+                    ['別の画像を撮影してみてください', '画像のサイズを小さくすると解決する場合があります']
+                );
+            } else if (errorMessage.includes('DEADLINE_EXCEEDED')) {
+                throw new AIError(
+                    '応答に時間がかかりすぎています。ネットワーク接続を確認してください。',
+                    AIErrorCode.TIMEOUT,
+                    error,
+                    ['ネットワーク接続を確認してください', 'Wi-Fi環境での利用をお勧めします']
+                );
+            } else if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('content_blocked')) {
+                throw new AIError(
+                    'コンテンツポリシーにより画像を処理できません。別の画像をお試しください。',
+                    AIErrorCode.CONTENT_FILTER,
+                    error,
+                    ['食事の写真をより明確に撮影してみてください', 'テキスト入力で食品を記録することもできます']
+                );
+            } else if (errorMessage.includes('QUOTA_EXCEEDED')) {
+                throw new AIError(
+                    '月間APIクォータを超過しました。しばらくしてからお試しください。',
+                    AIErrorCode.QUOTA_EXCEEDED,
+                    error,
+                    ['テキスト入力で食品を記録することができます', '明日以降に再度お試しください']
+                );
+            } else if (errorMessage.includes('MODEL_NOT_FOUND') || errorMessage.includes('NOT_AVAILABLE')) {
+                throw new AIError(
+                    '現在、AIモデルが利用できません。しばらくしてからお試しください。',
+                    AIErrorCode.MODEL_UNAVAILABLE,
+                    error,
+                    ['テキスト入力で食品を記録することができます', 'しばらく経ってから再度お試しください']
+                );
+            } else if (errorMessage.includes('UNAVAILABLE')) {
+                throw new AIError(
+                    'サービスが一時的に利用できません。しばらくしてからお試しください。',
+                    AIErrorCode.NETWORK_ERROR,
+                    error,
+                    ['ネットワーク接続を確認してください', 'しばらく経ってから再度お試しください']
+                );
+            }
+
+            // その他のエラー
             throw new AIError(
-                '食事分析中にエラーが発生しました',
+                '画像の解析中にエラーが発生しました。もう一度お試しください。',
                 AIErrorCode.AI_MODEL_ERROR,
-                error
+                error,
+                ['別の画像を試してみてください', 'テキスト入力で食品を記録することもできます']
             );
         }
     }
@@ -665,12 +730,62 @@ export class AIService {
             // テキスト形式の応答をパース
             return this.parseNutritionAdvice(responseText);
         } catch (error) {
+            // エラー詳細のログ記録
+            console.error('栄養アドバイス生成エラー詳細:', JSON.stringify(error, null, 2));
+
+            // すでにAIErrorの場合はそのまま再スロー
             if (error instanceof AIError) throw error;
 
+            // errorオブジェクトからメッセージを安全に抽出
+            const errorMessage = error instanceof Error
+                ? error.message
+                : typeof error === 'string'
+                    ? error
+                    : 'Unknown error';
+
+            // Gemini API特有のエラータイプに応じた分岐
+            if (errorMessage.includes('RESOURCE_EXHAUSTED')) {
+                throw new AIError(
+                    'APIリクエスト上限に達しました。しばらく経ってからアドバイスを取得してください。',
+                    AIErrorCode.RATE_LIMIT,
+                    error,
+                    ['少し時間をおいて再度お試しください', 'しばらくすると再度アドバイスを取得できるようになります']
+                );
+            } else if (errorMessage.includes('DEADLINE_EXCEEDED')) {
+                throw new AIError(
+                    '応答に時間がかかりすぎています。ネットワーク接続を確認してください。',
+                    AIErrorCode.TIMEOUT,
+                    error,
+                    ['ネットワーク接続を確認してください', 'Wi-Fi環境での利用をお勧めします']
+                );
+            } else if (errorMessage.includes('QUOTA_EXCEEDED')) {
+                throw new AIError(
+                    '月間APIクォータを超過しました。しばらくしてからお試しください。',
+                    AIErrorCode.QUOTA_EXCEEDED,
+                    error,
+                    ['明日以降に再度お試しください', '基本的な栄養情報は引き続き閲覧できます']
+                );
+            } else if (errorMessage.includes('MODEL_NOT_FOUND') || errorMessage.includes('NOT_AVAILABLE')) {
+                throw new AIError(
+                    '現在、AIモデルが利用できません。しばらくしてからお試しください。',
+                    AIErrorCode.MODEL_UNAVAILABLE,
+                    error,
+                    ['しばらく経ってから再度お試しください', '基本的な栄養情報は引き続き閲覧できます']
+                );
+            } else if (errorMessage.includes('UNAVAILABLE')) {
+                throw new AIError(
+                    'サービスが一時的に利用できません。しばらくしてからお試しください。',
+                    AIErrorCode.NETWORK_ERROR,
+                    error,
+                    ['ネットワーク接続を確認してください', 'しばらく経ってから再度お試しください']
+                );
+            }
+
             throw new AIError(
-                '栄養アドバイス生成中にエラーが発生しました',
+                '栄養アドバイス生成中にエラーが発生しました。後でもう一度お試しください。',
                 AIErrorCode.AI_MODEL_ERROR,
-                error
+                error,
+                ['しばらくしてから再度お試しください', '基本的な栄養情報は引き続き閲覧できます']
             );
         }
     }

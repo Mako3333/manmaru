@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AIService, FoodInput } from '@/lib/ai/ai-service';
-import { AIError, ErrorCode } from '@/lib/errors/ai-error';
+import { AIError, ErrorCode, createErrorResponse } from '@/lib/errors/ai-error';
 import { withErrorHandling } from '@/lib/errors/error-utils';
 
 // リクエスト用のZodスキーマ
@@ -32,7 +32,7 @@ export const POST = withErrorHandling(async (request: Request) => {
                 '食品データが必要です',
                 ErrorCode.VALIDATION_ERROR,
                 null,
-                ['少なくとも1つの食品を入力してください']
+                ['少なくとも1つの食品を入力してください', '例: ごはん、鶏肉、ほうれん草など']
             );
         }
 
@@ -45,7 +45,7 @@ export const POST = withErrorHandling(async (request: Request) => {
                 '有効な食品データが必要です',
                 ErrorCode.VALIDATION_ERROR,
                 null,
-                ['少なくとも1つの有効な食品名を入力してください']
+                ['少なくとも1つの有効な食品名を入力してください', '例: ごはん、鶏肉、ほうれん草など']
             );
         }
 
@@ -64,34 +64,65 @@ export const POST = withErrorHandling(async (request: Request) => {
 
         return NextResponse.json({
             success: true,
-            enhancedFoods: result.foods,
-            ...result
+            data: result
         });
     } catch (error) {
         console.error('テキスト解析API: エラー発生', error);
 
         if (error instanceof AIError) {
-            return NextResponse.json({
-                success: false,
-                error: error.message,
-                code: error.code,
-                details: error.details
-            }, { status: 400 });
+            return NextResponse.json(
+                createErrorResponse(error),
+                { status: getStatusCodeForError(error.code) }
+            );
         }
 
         if (error instanceof z.ZodError) {
-            return NextResponse.json({
-                success: false,
-                error: '入力データが不正です',
-                code: ErrorCode.VALIDATION_ERROR,
-                details: error.errors.map(e => e.message)
-            }, { status: 400 });
+            const validationError = new AIError(
+                '入力データが不正です',
+                ErrorCode.VALIDATION_ERROR,
+                error.errors.map(e => e.message),
+                ['入力データの形式を確認してください', '正しい形式で再度お試しください']
+            );
+            return NextResponse.json(
+                createErrorResponse(validationError),
+                { status: 400 }
+            );
         }
 
-        return NextResponse.json({
-            success: false,
-            error: 'テキスト解析中にエラーが発生しました',
-            code: ErrorCode.UNKNOWN_ERROR
-        }, { status: 500 });
+        // その他のエラーは汎用エラーに変換
+        const genericError = new AIError(
+            'テキスト解析中にエラーが発生しました',
+            ErrorCode.INTERNAL_ERROR,
+            error,
+            ['入力内容を確認して再度お試しください', '別の食品名で試してみてください']
+        );
+
+        return NextResponse.json(
+            createErrorResponse(genericError),
+            { status: 500 }
+        );
     }
 });
+
+/**
+ * エラーコードに応じたHTTPステータスコードを返す
+ */
+function getStatusCodeForError(errorCode: ErrorCode): number {
+    switch (errorCode) {
+        case ErrorCode.VALIDATION_ERROR:
+            return 400; // Bad Request
+        case ErrorCode.AUTHENTICATION_ERROR:
+            return 401; // Unauthorized
+        case ErrorCode.AUTHORIZATION_ERROR:
+            return 403; // Forbidden
+        case ErrorCode.RESOURCE_NOT_FOUND:
+            return 404; // Not Found
+        case ErrorCode.RATE_LIMIT:
+        case ErrorCode.RATE_LIMIT_EXCEEDED:
+            return 429; // Too Many Requests
+        case ErrorCode.CONTENT_FILTER:
+            return 422; // Unprocessable Entity
+        default:
+            return 500; // Internal Server Error
+    }
+}

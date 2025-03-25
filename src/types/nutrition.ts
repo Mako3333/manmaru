@@ -229,23 +229,25 @@ export interface DatabaseFoodItem {
     standard_quantity?: string;
     cooking_method?: string; // 追加：調理法
     category_id?: string;    // 追加：カテゴリーID
+    aliases?: string[];      // 追加：別名・類義語リスト
+    category?: FoodCategory; // 追加：食品カテゴリー
+    id?: string;             // 追加：食品ID
+    notes?: string;          // 追加：備考・メモ
 }
 
 /**
  * 栄養アドバイス
  */
 export interface NutritionAdvice {
-    id: string;
+    id: number;
     user_id: string;
     advice_date: string;
     advice_type: AdviceType;
     advice_summary: string;
-    advice_text: string;
-    advice_detail?: string;
-    recommended_foods?: string[];
-    recommendations?: string[];
-    is_read: boolean;
+    advice_detail: string;
+    recommended_foods: string[];
     created_at: string;
+    is_read: boolean;
 }
 
 /**
