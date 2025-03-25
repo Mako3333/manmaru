@@ -5,6 +5,9 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/utils/profile'
 import { Button } from '@/components/ui/button'
+import { calculatePregnancyWeek } from '@/lib/date-utils'
+import { format } from 'date-fns'
+import { ja } from 'date-fns/locale'
 
 export default function SettingsPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
@@ -117,8 +120,17 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="flex justify-between items-center py-2 border-t border-gray-100">
-                            <span className="text-gray-700">妊娠週数</span>
-                            <span className="text-gray-900">{profile.pregnancy_week || '-'} 週</span>
+                            <span className="text-gray-700">出産予定日</span>
+                            <span className="text-gray-900">
+                                {profile.due_date ? format(new Date(profile.due_date), 'yyyy年MM月dd日', { locale: ja }) : '-'}
+                            </span>
+                        </div>
+
+                        <div className="flex justify-between items-center py-2 border-t border-gray-100">
+                            <span className="text-gray-700">妊娠週数（計算値）</span>
+                            <span className="text-gray-900">
+                                {profile.due_date ? calculatePregnancyWeek(profile.due_date) : '-'} 週
+                            </span>
                         </div>
 
                         <div className="flex justify-between items-center py-2 border-t border-gray-100">

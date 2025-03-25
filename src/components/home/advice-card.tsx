@@ -143,13 +143,6 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
 
                     <CardContent className="p-6 pt-4">
                         <div className="space-y-4">
-                            {/* 妊娠週数表示（profileがある場合） */}
-                            {profile && profile.pregnancy_week && (
-                                <div className="text-sm text-gray-500 mb-1">
-                                    <span className="font-medium">妊娠{profile.pregnancy_week}週目</span>のアドバイス
-                                </div>
-                            )}
-
                             {/* 引用スタイルのアドバイステキスト */}
                             <div className="bg-[#F0F7F4] rounded-xl p-4 pl-8 relative">
                                 {/* 引用符装飾 */}

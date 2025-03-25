@@ -12,17 +12,16 @@ import { DietaryRestriction } from '@/types/user'
 import { differenceInWeeks, addWeeks } from 'date-fns'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { InfoIcon } from 'lucide-react'
+import { calculatePregnancyWeek } from '@/lib/date-utils'
 
 interface ProfileFormData {
     age: number
-    pregnancy_week: number
     height: number
     weight: number
     adult_family_members: number
     child_family_members: number
     due_date: string | null
     dietary_restrictions: string[] | null
-    auto_update_week: boolean
 }
 
 // 食事制限の日本語表示マッピング
@@ -47,49 +46,19 @@ export default function ProfilePage() {
 
     const [formData, setFormData] = useState<ProfileFormData>({
         age: 0,
-        pregnancy_week: 0,
         height: 0,
         weight: 0,
         adult_family_members: 1,
         child_family_members: 0,
         due_date: null,
-        dietary_restrictions: null,
-        auto_update_week: true
+        dietary_restrictions: null
     })
 
-    // 出産予定日から妊娠週数を計算する関数
-    const calculatePregnancyWeek = (dueDateStr: string | null): number => {
-        if (!dueDateStr) return 0;
-
-        const dueDate = new Date(dueDateStr);
-        const today = new Date();
-
-        // 出産予定日は妊娠40週目
-        const conceptionDate = addWeeks(dueDate, -40);
-        const weeksPregnant = differenceInWeeks(today, conceptionDate);
-
-        // 妊娠週数が正の値かつ42以下の場合のみ設定
-        if (weeksPregnant >= 0 && weeksPregnant <= 42) {
-            return weeksPregnant;
-        } else if (weeksPregnant > 42) {
-            // 出産予定日を過ぎている場合
-            return 42;
-        } else {
-            // まだ妊娠していない場合（将来の出産予定日）
-            return 0;
-        }
+    // 出産予定日から妊娠週数を計算する表示用関数
+    const getCurrentPregnancyWeek = (): number => {
+        if (!formData.due_date) return 0;
+        return calculatePregnancyWeek(formData.due_date);
     };
-
-    // 出産予定日が変更されたときに妊娠週数を自動計算
-    useEffect(() => {
-        if (formData.auto_update_week && formData.due_date) {
-            const calculatedWeek = calculatePregnancyWeek(formData.due_date);
-            setFormData(prev => ({
-                ...prev,
-                pregnancy_week: calculatedWeek
-            }));
-        }
-    }, [formData.due_date, formData.auto_update_week]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target
@@ -143,14 +112,6 @@ export default function ProfilePage() {
                 throw new Error('年齢は15歳から60歳の間で入力してください')
             }
 
-            // 出産予定日が設定されている場合は妊娠週数を自動計算
-            let submittingFormData = { ...formData };
-            if (formData.auto_update_week && formData.due_date) {
-                submittingFormData.pregnancy_week = calculatePregnancyWeek(formData.due_date);
-            } else if (formData.pregnancy_week < 1 || formData.pregnancy_week > 42) {
-                throw new Error('妊娠週数は1週から42週の間で入力してください')
-            }
-
             if (formData.height < 130 || formData.height > 200) {
                 throw new Error('身長は130cmから200cmの間で入力してください')
             }
@@ -163,7 +124,7 @@ export default function ProfilePage() {
                 .insert([
                     {
                         user_id: session.user.id,
-                        ...submittingFormData,
+                        ...formData,
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     }
@@ -228,57 +189,19 @@ export default function ProfilePage() {
                                     onChange={handleDateChange}
                                     placeholder="2024-12-31"
                                 />
-                                <div className="flex items-center space-x-2 mt-1">
-                                    <Checkbox
-                                        id="auto_update_week"
-                                        name="auto_update_week"
-                                        checked={formData.auto_update_week}
-                                        onCheckedChange={(checked) =>
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                auto_update_week: checked === true
-                                            }))
-                                        }
-                                    />
-                                    <label
-                                        htmlFor="auto_update_week"
-                                        className="text-sm text-gray-700"
-                                    >
-                                        出産予定日から妊娠週数を自動計算する
-                                    </label>
-                                </div>
                             </div>
 
-                            {formData.auto_update_week && formData.due_date ? (
+                            {formData.due_date ? (
                                 <div className="space-y-2">
                                     <Label>妊娠週数（自動計算）</Label>
                                     <Alert className="bg-green-50 border-green-200">
                                         <InfoIcon className="h-4 w-4 text-green-600" />
                                         <AlertDescription className="text-green-700">
-                                            現在の妊娠週数: <strong>{formData.pregnancy_week}週</strong>
+                                            現在の妊娠週数: <strong>{getCurrentPregnancyWeek()}週</strong>
                                         </AlertDescription>
                                     </Alert>
                                 </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    <Label htmlFor="pregnancy_week">妊娠週数</Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="pregnancy_week"
-                                            name="pregnancy_week"
-                                            type="number"
-                                            value={formData.pregnancy_week === 0 ? '' : formData.pregnancy_week}
-                                            onChange={handleChange}
-                                            required={!formData.due_date}
-                                            min="1"
-                                            max="42"
-                                            className="pr-8"
-                                            placeholder="12"
-                                        />
-                                        <span className="absolute right-3 top-2 text-zinc-500">週</span>
-                                    </div>
-                                </div>
-                            )}
+                            ) : null}
 
                             <div className="space-y-2">
                                 <Label htmlFor="height">身長</Label>
