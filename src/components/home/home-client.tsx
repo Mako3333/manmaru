@@ -198,12 +198,12 @@ export default function HomeClient({ user }: HomeClientProps) {
 
 
     return (
-        <div className="flex flex-col min-h-screen bg-gray-50">
+        <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
             {/* ヘッダー - 有機的な曲線を持つ形状とグラデーション */}
             <header className="relative bg-gradient-to-r from-[#36B37E] via-[#2E9E6C] to-[#36B37E] text-white p-4 pb-12">
                 {/* 波紋エフェクト */}
-                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-24 h-24 bg-white opacity-5 rounded-full"></div>
-                <div className="absolute top-6 right-16 w-16 h-16 bg-white opacity-5 rounded-full"></div>
+                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-24 h-24 bg-white opacity-10 rounded-full"></div>
+                <div className="absolute top-6 right-16 w-16 h-16 bg-white opacity-10 rounded-full"></div>
 
                 <div className="container mx-auto max-w-4xl relative z-10">
                     {/* ヘッダー上部: ロゴ、タイトル、プロフィールアイコン */}
