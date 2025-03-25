@@ -34,6 +34,7 @@ export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loadingProfile, setLoadingProfile] = useState(true)
     const [currentDate, setCurrentDate] = useState(getJapanDate())
+    const [activeTab, setActiveTab] = useState('today')
     const [nutritionData, setNutritionData] = useState<any>({
         calories_percent: 0,
         protein_percent: 0,
@@ -310,7 +311,7 @@ export default function DashboardPage() {
                     </Button>
                 </div>
 
-                <Tabs value="today" className="w-full">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="today">今日</TabsTrigger>
                         <TabsTrigger value="week">週間</TabsTrigger>

@@ -120,19 +120,19 @@ export default function MealLogPage() {
             console.log('API応答:', result);
 
             // 応答データの検証
-            if (!result || !result.foods || !Array.isArray(result.foods)) {
+            if (!result || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
                 console.error('不正な応答形式:', result);
                 toast.error('応答データの形式が不正です。もう一度お試しください。');
                 return;
             }
 
             // 英語の食品名を検出して警告
-            const hasEnglishFoodNames = result.foods.some((food: any) =>
+            const hasEnglishFoodNames = result.data.foods.some((food: any) =>
                 /^[a-zA-Z]/.test(food.name) || /^[0-9]+ [a-z]+/.test(food.quantity)
             );
 
             if (hasEnglishFoodNames) {
-                console.warn('英語の食品名が検出されました:', result.foods);
+                console.warn('英語の食品名が検出されました:', result.data.foods);
                 // 英語の食品名があっても処理は続行
             }
 
@@ -176,7 +176,7 @@ export default function MealLogPage() {
                 meal_date: selectedDate.toISOString().split('T')[0],
                 photo_url: base64Image,
                 food_description: {
-                    items: recognitionData.foods.map((food: any) => ({
+                    items: recognitionData.data.foods.map((food: any) => ({
                         name: food.name,
                         quantity: food.quantity,
                         confidence: food.confidence
@@ -308,13 +308,13 @@ export default function MealLogPage() {
             // 結果の取得
             const result = await response.json();
 
-            if (!result.enhancedFoods || !Array.isArray(result.enhancedFoods)) {
+            if (!result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
                 console.error('APIレスポンス:', result);
                 throw new Error('不正な応答フォーマット');
             }
 
             // IDを保持しつつデータを更新
-            const enhancedFoodsWithIds = result.enhancedFoods.map((item: any, index: number) => ({
+            const enhancedFoodsWithIds = result.data.foods.map((item: any, index: number) => ({
                 id: foods[index]?.id || crypto.randomUUID(),
                 name: item.name,
                 quantity: item.quantity,
@@ -455,8 +455,8 @@ export default function MealLogPage() {
         setInputMode(mode);
 
         // 写真モードからテキストモードに切り替えたとき、認識結果があれば食品リストに変換
-        if (mode === 'text' && recognitionData && recognitionData.foods.length > 0) {
-            const foodsWithIds = recognitionData.foods.map((food: any) => ({
+        if (mode === 'text' && recognitionData && recognitionData.data.foods.length > 0) {
+            const foodsWithIds = recognitionData.data.foods.map((food: any) => ({
                 ...food,
                 id: crypto.randomUUID()
             }));
