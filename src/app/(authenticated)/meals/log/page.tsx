@@ -16,6 +16,8 @@ import { Loader2, Camera, Type, Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { handleError, withErrorHandling, checkApiResponse } from '@/lib/errors/error-handler';
+import { AppError, AiAnalysisError, ErrorCode, DataProcessingError, AuthError } from '@/lib/errors/app-errors';
 
 
 // 入力モードの型定義
@@ -147,15 +149,48 @@ export default function MealLogPage() {
         setRecognitionData(null);
 
         try {
+            if (!base64Image || base64Image.length === 0) {
+                throw new DataProcessingError(
+                    '画像データが不足しています',
+                    '食事画像',
+                    ErrorCode.DATA_VALIDATION_ERROR,
+                    { imageLength: base64Image?.length || 0 },
+                    ['写真を再度撮影してください']
+                );
+            }
+
             console.log('mealType:', mealType);
-            const result = await analyzeMealPhoto(base64Image, mealType);
+
+            // API呼び出し
+            const response = await fetch('/api/analyze-meal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image: base64Image,
+                    mealType
+                }),
+            });
+
+            // レスポンスチェック
+            const result = await checkApiResponse<{
+                success: boolean;
+                data: {
+                    foods: RecognitionFoodItem[];
+                    nutrition: NutritionData;
+                }
+            }>(response, '食事画像の解析に失敗しました');
+
             console.log('API応答:', result);
 
-            // 応答データの検証
-            if (!result || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
-                console.error('不正な応答形式:', result);
-                toast.error('応答データの形式が不正です。もう一度お試しください。');
-                return;
+            // データの存在を確認
+            if (!result.success || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
+                throw new AiAnalysisError(
+                    'AI応答データの形式が不正です',
+                    '解析結果が正しくありません',
+                    ErrorCode.API_RESPONSE_INVALID,
+                    { response: result },
+                    ['別の画像を試してください', '手動での食品入力も可能です']
+                );
             }
 
             // 英語の食品名を検出して警告
@@ -165,32 +200,40 @@ export default function MealLogPage() {
 
             if (hasEnglishFoodNames) {
                 console.warn('英語の食品名が検出されました:', result.data.foods);
-                // 英語の食品名があっても処理は続行
+                // 警告トーストを表示
+                toast.warning('英語の食品名が検出されました', {
+                    description: '手動で日本語に修正することをお勧めします',
+                });
             }
 
             // APIレスポンスを認識データの形式に変換
             const formattedData: RecognitionData = {
                 foods: result.data.foods,
-                nutrition: result.nutrition
+                nutrition: result.data.nutrition
             };
 
             setRecognitionData(formattedData);
+
+            // 成功通知
+            toast.success('食事画像の分析が完了しました', {
+                description: '認識結果を確認・編集してください',
+            });
         } catch (error) {
-            console.error('画像解析エラー詳細:', error);
-
-            // エラーメッセージをより具体的に
-            let errorMessage = '画像の解析に失敗しました。もう一度お試しください。';
-            if (error instanceof Error) {
-                if (error.message.includes('応答形式が不正')) {
-                    errorMessage = 'AIからの応答形式が不正です。別の画像で試してください。';
-                } else if (error.message.includes('タイムアウト')) {
-                    errorMessage = '処理がタイムアウトしました。ネットワーク接続を確認して再試行してください。';
+            // 標準化されたエラーハンドリング
+            handleError(error, {
+                showToast: true,
+                toastOptions: {
+                    title: '画像解析に失敗しました',
+                    description: error instanceof AppError
+                        ? error.userMessage
+                        : '別の画像または手動入力をお試しください',
+                    duration: 5000
                 }
-            }
+            });
 
-            toast.error(errorMessage);
+            console.error('画像解析エラー詳細:', error);
         } finally {
-            console.log('analyzePhoto完了, analyzing:', analyzing);
+            console.log('analyzePhoto完了');
             setAnalyzing(false);
         }
     };
@@ -203,9 +246,15 @@ export default function MealLogPage() {
             setSaving(true);
 
             // セッションチェック
-            const session = await supabase.auth.getSession();
-            if (!session.data.session) {
-                throw new Error('ログインが必要です');
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                throw new AuthError(
+                    'ログインセッションが無効です',
+                    ErrorCode.AUTH_EXPIRED,
+                    'ログインセッションの有効期限が切れました',
+                    { redirectTo: '/auth/login' },
+                    ['再度ログインしてください'],
+                );
             }
 
             // 保存用のデータを準備
@@ -242,7 +291,7 @@ export default function MealLogPage() {
                 servings: 1
             };
 
-            // APIを使用してデータを保存
+            // APIを使用してデータを保存（エラーハンドリング付き）
             const response = await fetch('/api/meals', {
                 method: 'POST',
                 headers: {
@@ -251,10 +300,8 @@ export default function MealLogPage() {
                 body: JSON.stringify(mealData),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || '食事の保存に失敗しました');
-            }
+            // レスポンスのエラーチェック
+            await checkApiResponse(response, '食事データの保存に失敗しました');
 
             // 成功時の処理
             toast.success("食事を記録しました", {
@@ -268,10 +315,14 @@ export default function MealLogPage() {
                 router.push('/home');
             }, 1500);
         } catch (error) {
-            console.error('保存エラー:', error);
-            toast.error("保存に失敗しました", {
-                description: error instanceof Error ? error.message : "もう一度お試しください",
+            // 標準化されたエラーハンドリング
+            handleError(error, {
+                showToast: true,
+                toastOptions: {
+                    title: "食事の保存に失敗しました",
+                }
             });
+            console.error('保存エラー:', error);
         } finally {
             setSaving(false);
         }
