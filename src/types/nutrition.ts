@@ -304,3 +304,69 @@ export const FOOD_ID_CATEGORY_MAP: Record<string, FoodCategory> = {
     '17': FoodCategory.SEASONINGS, // 調味料・香辛料
     '18': FoodCategory.OTHER       // 調理加工食品類
 };
+
+/**
+ * 栄養素の単位を定義
+ */
+export type NutrientUnit = 'g' | 'mg' | 'mcg' | 'kcal' | 'IU' | '%';
+
+/**
+ * 個別の栄養素データ
+ */
+export interface Nutrient {
+    name: string;          // 栄養素名（例: たんぱく質、脂質）
+    value: number;         // 数値
+    unit: NutrientUnit;    // 単位
+    percentDailyValue?: number; // 1日の推奨摂取量に対する割合（任意）
+}
+
+/**
+ * 食品アイテムの栄養データ
+ */
+export interface FoodItemNutrition {
+    calories: number;      // カロリー（kcal）
+    nutrients: Nutrient[]; // 栄養素のリスト
+    servingSize: {
+        value: number;       // 量
+        unit: string;        // 単位（例: g, ml, 個）
+    };
+}
+
+/**
+ * 食事全体の標準化された栄養データ
+ */
+export interface StandardizedMealNutrition {
+    totalCalories: number;         // 総カロリー
+    totalNutrients: Nutrient[];    // 総栄養素
+    foodItems: {
+        id: string;                  // 食品ID
+        name: string;                // 食品名
+        nutrition: FoodItemNutrition; // 食品ごとの栄養データ
+        amount: number;              // 摂取量
+        unit: string;                // 単位
+    }[];
+    // 妊婦向け特別データ
+    pregnancySpecific?: {
+        folatePercentage: number;    // 葉酸摂取割合
+        ironPercentage: number;      // 鉄分摂取割合
+        calciumPercentage: number;   // カルシウム摂取割合
+    };
+}
+
+/**
+ * 食事記録の標準化されたデータ型
+ */
+export interface StandardizedMealData {
+    user_id: string;
+    meal_date: string;           // ISO8601形式の日付文字列
+    meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    meal_items: {
+        name: string;
+        amount: number;
+        unit: string;
+        image_url?: string;
+    }[];
+    nutrition_data: StandardizedMealNutrition; // 標準化された栄養データ
+    image_url?: string;           // 食事画像のURL（任意）
+    notes?: string;               // メモ（任意）
+}

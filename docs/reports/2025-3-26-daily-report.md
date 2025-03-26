@@ -297,4 +297,251 @@
    - 修正前: エラーの原因特定に必要な情報が不足
    - 修正後: エラーコード、メッセージ、詳細情報、スタックトレースなど包括的な情報が取得可能に
 
-この改善により、タイプスクリプトの恩恵を最大限に活かしたコード品質の向上と開発効率の改善、およびエラーハンドリングの一貫性を実現しました。今後も継続的な型安全性とエラー処理の強化を進めていきます。 
+この改善により、タイプスクリプトの恩恵を最大限に活かしたコード品質の向上と開発効率の改善、およびエラーハンドリングの一貫性を実現しました。今後も継続的な型安全性とエラー処理の強化を進めていきます。
+
+## 追加実装：栄養データ処理の標準化と改善
+
+### 問題概要
+
+食事記録機能の栄養データ処理において、以下の問題が見つかりました：
+
+1. **不完全な栄養データ構造**: `handleSaveRecognition`関数内で栄養データを準備する際、必要なフィールドを手動で追加する非効率なアプローチ
+2. **標準化されていないデータ形式**: 複数の場所で異なる栄養データ構造が使用され、整合性が保たれていない
+3. **妊婦向け特別栄養素の不十分な管理**: 妊婦に重要な栄養素（葉酸、鉄分、カルシウムなど）の特別トラッキングが不足
+4. **型安全性の欠如**: 栄養データ処理における型の定義と検証が不十分
+
+### 実施した対策
+
+1. **標準化された型定義の導入**:
+   ```typescript
+   // 栄養素の単位を定義
+   export type NutrientUnit = 'g' | 'mg' | 'mcg' | 'kcal' | 'IU' | '%';
+
+   // 個別の栄養素データ
+   export interface Nutrient {
+     name: string;          // 栄養素名
+     value: number;         // 数値
+     unit: NutrientUnit;    // 単位
+     percentDailyValue?: number; // 1日の推奨摂取量に対する割合
+   }
+
+   // 食事全体の標準化された栄養データ
+   export interface StandardizedMealNutrition {
+     totalCalories: number;
+     totalNutrients: Nutrient[];
+     foodItems: {
+       id: string;
+       name: string;
+       nutrition: FoodItemNutrition;
+       amount: number;
+       unit: string;
+     }[];
+     pregnancySpecific?: {
+       folatePercentage: number;
+       ironPercentage: number;
+       calciumPercentage: number;
+     };
+   }
+   ```
+
+2. **栄養データ処理ユーティリティの作成**:
+   ```typescript
+   // 既存のNutritionData型からStandardizedMealNutritionへの変換
+   export function convertToStandardizedNutrition(
+     nutritionData: NutritionData,
+     foodItems: FoodItem[]
+   ): StandardizedMealNutrition {
+     // 栄養素の配列を作成
+     const nutrients: Nutrient[] = [
+       {
+         name: 'タンパク質',
+         value: nutritionData.protein,
+         unit: 'g' as NutrientUnit
+       },
+       // 他の栄養素...
+     ];
+
+     // FoodItemNutrition形式に変換
+     const standardizedFoodItems = foodItems.map((item, index) => ({
+       id: item.id || `item-${Date.now()}-${index}`,
+       name: item.name,
+       amount: parseFloat(item.quantity?.split(' ')[0] || '1'),
+       unit: item.quantity?.split(' ')[1] || 'g',
+       nutrition: {
+         calories: nutritionData.calories / foodItems.length,
+         nutrients: nutrients.map(n => ({ ...n, value: n.value / foodItems.length })),
+         servingSize: {
+           value: 100,
+           unit: 'g'
+         }
+       }
+     }));
+
+     return {
+       totalCalories: nutritionData.calories,
+       totalNutrients: nutrients,
+       foodItems: standardizedFoodItems,
+       pregnancySpecific: {
+         folatePercentage: (nutritionData.folic_acid / 400) * 100,
+         ironPercentage: (nutritionData.iron / 20) * 100,
+         calciumPercentage: (nutritionData.calcium / 800) * 100
+       }
+     };
+   }
+   ```
+
+3. **データ検証機能の実装**:
+   ```typescript
+   // 食事データを検証する
+   export function validateMealData(mealData: Partial<StandardizedMealData>): { 
+     isValid: boolean; 
+     errors: string[];
+   } {
+     const errors: string[] = [];
+     
+     // 必須フィールドのチェック
+     if (!mealData.user_id) errors.push('ユーザーIDが必要です');
+     if (!mealData.meal_date) errors.push('食事日時が必要です');
+     // 他の検証...
+     
+     return {
+       isValid: errors.length === 0,
+       errors
+     };
+   }
+   ```
+
+4. **食事保存処理の改善**:
+   ```typescript
+   const handleSaveRecognition = async () => {
+     try {
+       setSaving(true);
+
+       // セッションチェック
+       const { data: { session } } = await supabase.auth.getSession();
+       if (!session) {
+         throw new AuthError(/* エラー詳細 */);
+       }
+
+       // AI認識結果から標準化された栄養データを取得
+       const standardizedNutrition = normalizeNutritionData(recognitionData);
+       
+       // 標準化された食事データの準備
+       const standardizedMealData: StandardizedMealData = {
+         user_id: session.user.id,
+         meal_date: selectedDate.toISOString().split('T')[0],
+         meal_type: mealType as any,
+         meal_items: recognitionData.foods.map(food => ({
+           name: food.name,
+           amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
+           unit: food.quantity?.split(' ')[1] || '個',
+           image_url: undefined
+         })),
+         nutrition_data: standardizedNutrition,
+         image_url: base64Image || undefined
+       };
+       
+       // データの検証
+       const validation = validateMealData(standardizedMealData);
+       if (!validation.isValid) {
+         throw new DataProcessingError(
+           `食事データの検証エラー: ${validation.errors.join(', ')}`,
+           '食事データ',
+           undefined,
+           { details: validation.errors }
+         );
+       }
+       
+       // APIリクエスト用にデータを変換
+       const mealData = prepareForApiRequest(standardizedMealData);
+
+       // APIを使用してデータを保存
+       const response = await fetch('/api/meals', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(mealData),
+       });
+
+       // 以下処理継続...
+     } catch (error) {
+       handleError(error, {
+         showToast: true,
+         toastOptions: {
+           title: "食事の保存に失敗しました",
+         }
+       });
+     }
+   };
+   ```
+
+5. **栄養データ表示コンポーネントの作成**:
+   ```typescript
+   export function NutritionDataDisplay({ nutritionData, className }: NutritionDataDisplayProps) {
+     // 栄養素をソート
+     const sortedNutrients = sortNutrients(nutritionData.totalNutrients);
+     
+     // 妊婦向け特別データ
+     const pregnancyData = nutritionData.pregnancySpecific || {
+       folatePercentage: 0,
+       ironPercentage: 0,
+       calciumPercentage: 0
+     };
+     
+     return (
+       <Card className={className}>
+         <CardHeader>
+           <CardTitle className="text-lg">栄養データ</CardTitle>
+         </CardHeader>
+         <CardContent>
+           <div className="space-y-4">
+             {/* カロリー情報 */}
+             <div className="mb-4">
+               <div className="flex justify-between items-center">
+                 <span className="font-medium">カロリー</span>
+                 <span>{Math.round(nutritionData.totalCalories)} kcal</span>
+               </div>
+             </div>
+             
+             {/* 妊婦向け特別栄養素 */}
+             <div className="space-y-3 border rounded-lg p-3 bg-pink-50">
+               <h4 className="font-medium text-sm text-pink-700">妊婦向け重要栄養素</h4>
+               
+               <div className="space-y-2">
+                 {/* 葉酸、鉄分、カルシウムの表示... */}
+               </div>
+             </div>
+             
+             {/* 詳細栄養素 */}
+             <div className="space-y-2 mt-4">
+               {/* 他の栄養素の表示... */}
+             </div>
+           </div>
+         </CardContent>
+       </Card>
+     );
+   }
+   ```
+
+### 検証結果
+
+1. **データ完全性の強化**:
+   - 修正前: 栄養データの一部フィールドが欠落または不完全な状態で保存される可能性
+   - 修正後: 標準化されたデータ構造と検証機能により完全なデータの保存を保証
+
+2. **妊婦向け栄養管理の向上**:
+   - 修正前: 妊婦向けの重要栄養素が特別に管理されていなかった
+   - 修正後: 葉酸、鉄分、カルシウムなどの重要栄養素を特別に表示し、摂取率を視覚的に示す機能を実装
+
+3. **型安全性の向上**:
+   - 修正前: 栄養データ処理における型の定義が不足し、型エラーのリスクが高かった
+   - 修正後: 明確な型定義と型検証により、コンパイル時の型チェックと実行時の検証が可能に
+
+4. **コード再利用性の向上**:
+   - 修正前: 類似のデータ処理コードが複数の場所に散在
+   - 修正後: 共通のユーティリティ関数に集約し、再利用性と保守性が向上
+
+5. **エラーハンドリング強化**:
+   - 修正前: データ処理エラーの検出と処理が不十分
+   - 修正後: 検証エラーの早期検出と明確なエラーメッセージにより、問題の特定と解決が容易に
+
+この追加実装により、既存のエラーハンドリングフレームワークと型システムの恩恵を最大限に活用し、栄養データ処理の堅牢性と妊婦向け特別機能を大幅に強化することができました。さらに、レガシーシステムとの互換性を保ちながら、将来的な拡張にも対応しやすい設計となっています。 

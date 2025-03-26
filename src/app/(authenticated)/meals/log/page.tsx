@@ -18,6 +18,12 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { handleError, withErrorHandling, checkApiResponse } from '@/lib/errors/error-handler';
 import { AppError, AiAnalysisError, ErrorCode, DataProcessingError, AuthError } from '@/lib/errors/app-errors';
+import {
+    normalizeNutritionData,
+    validateMealData,
+    prepareForApiRequest
+} from '@/lib/nutrition/nutrition-utils';
+import { StandardizedMealData } from '@/types/nutrition';
 
 
 // 入力モードの型定義
@@ -257,39 +263,37 @@ export default function MealLogPage() {
                 );
             }
 
-            // 保存用のデータを準備
-            const mealData = {
-                meal_type: mealType,
+            // AI認識結果から標準化された栄養データを取得
+            const standardizedNutrition = normalizeNutritionData(recognitionData);
+
+            // 標準化された食事データの準備
+            const standardizedMealData: StandardizedMealData = {
+                user_id: session.user.id,
                 meal_date: selectedDate.toISOString().split('T')[0],
-                photo_url: base64Image,
-                food_description: {
-                    items: recognitionData.foods.map((food) => ({
-                        name: food.name,
-                        quantity: food.quantity,
-                        confidence: food.confidence
-                    }))
-                },
-                // データベース構造に合わせて栄養データをフォーマット
-                nutrition_data: {
-                    ...recognitionData.nutrition,
-                    // NutritionData型に必要な追加フィールド
-                    overall_score: 0,
-                    deficient_nutrients: [],
-                    sufficient_nutrients: [],
-                    daily_records: []
-                },
-                // meal_nutrientsテーブル用のデータも含める
-                nutrition: {
-                    calories: recognitionData.nutrition.calories,
-                    protein: recognitionData.nutrition.protein,
-                    iron: recognitionData.nutrition.iron,
-                    folic_acid: recognitionData.nutrition.folic_acid,
-                    calcium: recognitionData.nutrition.calcium,
-                    vitamin_d: recognitionData.nutrition.vitamin_d || 0,
-                    confidence_score: recognitionData.nutrition.confidence_score
-                },
-                servings: 1
+                meal_type: mealType as any,
+                meal_items: recognitionData.foods.map((food) => ({
+                    name: food.name,
+                    amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
+                    unit: food.quantity?.split(' ')[1] || '個',
+                    image_url: undefined
+                })),
+                nutrition_data: standardizedNutrition,
+                image_url: base64Image || undefined
             };
+
+            // データの検証
+            const validation = validateMealData(standardizedMealData);
+            if (!validation.isValid) {
+                throw new DataProcessingError(
+                    `食事データの検証エラー: ${validation.errors.join(', ')}`,
+                    '食事データ',
+                    undefined,
+                    { details: validation.errors }
+                );
+            }
+
+            // APIリクエスト用にデータを変換（レガシーシステムとの互換性のため）
+            const mealData = prepareForApiRequest(standardizedMealData);
 
             // APIを使用してデータを保存（エラーハンドリング付き）
             const response = await fetch('/api/meals', {

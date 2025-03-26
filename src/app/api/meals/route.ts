@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { convertToLegacyNutrition, validateMealData } from '@/lib/nutrition/nutrition-utils';
+import { ApiError } from '@/lib/errors/app-errors';
 
 export async function POST(req: Request) {
     try {
@@ -30,6 +32,12 @@ export async function POST(req: Request) {
                 { status: 401 }
             );
         }
+
+        // 栄養データのログを記録（デバッグ用）
+        console.log('栄養データ受信:', {
+            nutrition_data: { ...nutrition_data, dailyRecords: nutrition_data?.daily_records ? '...省略' : undefined },
+            nutrition: nutrition
+        });
 
         // トランザクション的に処理するため、まずmealsテーブルに保存
         const { data: mealData, error: mealError } = await supabase
@@ -83,6 +91,14 @@ export async function POST(req: Request) {
         });
     } catch (error) {
         console.error('食事保存APIエラー:', error);
+
+        if (error instanceof ApiError) {
+            return NextResponse.json(
+                { error: error.userMessage, details: error.details },
+                { status: error.statusCode }
+            );
+        }
+
         return NextResponse.json(
             { error: '食事保存中にエラーが発生しました', details: (error as Error).message },
             { status: 500 }
