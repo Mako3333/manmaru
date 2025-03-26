@@ -1,42 +1,38 @@
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 import { RecipeIngredient } from '@/types/recipe';
 import { AIService } from '@/lib/ai/ai-service';
+import { withAuthAndErrorHandling, createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
+import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 
 interface CalculateNutrientsRequest {
     ingredients: RecipeIngredient[];
     servings: number;
 }
 
-export async function POST(req: Request) {
-    try {
-        // ユーザー認証確認
-        const supabase = createRouteHandlerClient({ cookies });
-        const { data: { user } } = await supabase.auth.getUser();
+export const POST = withAuthAndErrorHandling(
+    async (req, { user }) => {
+        // リクエストを検証
+        const { ingredients, servings } = await validateRequestData<CalculateNutrientsRequest>(
+            req,
+            ['ingredients', 'servings']
+        );
 
-        if (!user) {
-            return NextResponse.json(
-                { error: '認証が必要です' },
-                { status: 401 }
+        // 追加の検証
+        if (!Array.isArray(ingredients) || ingredients.length === 0) {
+            throw new ApiError(
+                '材料データが空または無効です',
+                ErrorCode.DATA_VALIDATION_ERROR,
+                '材料データが必要です',
+                400
             );
         }
 
-        // リクエストボディを取得
-        const requestData = await req.json() as CalculateNutrientsRequest;
-        const { ingredients, servings } = requestData;
-
-        if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
-            return NextResponse.json(
-                { error: '材料データが必要です' },
-                { status: 400 }
-            );
-        }
-
-        if (!servings || servings <= 0) {
-            return NextResponse.json(
-                { error: '有効な人数を指定してください' },
-                { status: 400 }
+        if (servings <= 0) {
+            throw new ApiError(
+                `無効なサービング数: ${servings}`,
+                ErrorCode.DATA_VALIDATION_ERROR,
+                '有効な人数を指定してください',
+                400
             );
         }
 
@@ -61,23 +57,18 @@ export async function POST(req: Request) {
                 vitamin_d: nutritionResult.nutrition.vitamin_d ? nutritionResult.nutrition.vitamin_d / servings : 0
             };
 
-            return NextResponse.json({
-                success: true,
+            return NextResponse.json(createSuccessResponse({
                 nutrition_per_serving: nutritionPerServing,
                 meta: nutritionResult.meta
-            });
-        } catch (aiError: any) {
-            console.error('栄養計算AI処理エラー:', aiError);
-            return NextResponse.json(
-                { error: `栄養素の計算に失敗しました: ${aiError.message || '不明なエラー'}` },
-                { status: 500 }
+            }));
+        } catch (aiError) {
+            throw new ApiError(
+                `栄養計算AI処理エラー: ${aiError instanceof Error ? aiError.message : String(aiError)}`,
+                ErrorCode.NUTRITION_CALCULATION_ERROR,
+                '栄養素の計算に失敗しました。入力内容を確認してください。',
+                500,
+                { originalError: aiError }
             );
         }
-    } catch (error: any) {
-        console.error('栄養計算APIエラー:', error);
-        return NextResponse.json(
-            { error: `栄養素の計算中にエラーが発生しました: ${error.message || '不明なエラー'}` },
-            { status: 500 }
-        );
     }
-} 
+); 

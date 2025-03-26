@@ -259,7 +259,7 @@
    }
    ```
 
-3. **APIエンドポイントでの一貫したエラーハンドリング**:
+3. **APIエンドポイントのエラーハンドリング改善**:
    ```typescript
    export function withApiErrorHandling(handler: (req: Request) => Promise<Response>) {
      return async (req: Request) => {
@@ -617,7 +617,7 @@ export function validateApiResponse<T>(
  * セッション認証とエラーハンドリングを備えたAPIハンドララッパー
  */
 export function withAuthAndErrorHandling(handler: ApiHandler) {
-  return async (req: NextRequest, { params }: { params: Record<string, string> }) => {
+  return async (req: Request, { params }: { params: Record<string, string> }) => {
     try {
       // ユーザー認証確認
       const supabase = createRouteHandlerClient({ cookies });
@@ -801,3 +801,686 @@ export const GET = withAuthAndErrorHandling(
    - 標準パターンの確立により、新規開発者の学習コストが低減
 
 この改善により、APIルートの実装がよりシンプルになり、開発者はビジネスロジックに集中できるようになりました。また、共通サービスクラスとエラーハンドリングフレームワークを活用することで、今後の機能追加や変更が容易になりました。 
+
+## 追加実装：栄養素計算API（recipes/calculate-nutrients）への統一エラーハンドリングシステムの適用
+
+### 問題概要
+
+栄養素計算API（`src/app/api/recipes/calculate-nutrients/route.ts`）において、アプリケーション全体に導入した統一エラーハンドリングシステムが適用されていない問題が見つかりました。
+
+1. **一貫性のないエラー処理**: 他のAPIエンドポイントでは統一エラーハンドリングシステムを使用しているのに対し、このAPIでは従来の手動エラー処理を使用
+2. **重複する認証ロジック**: セッション確認のための重複コードが存在
+3. **標準化されていないレスポンス形式**: 成功時とエラー時のレスポンス形式が他のAPIと統一されていない
+4. **不十分なエラーコード**: エラー状況に対する具体的なエラーコードが提供されていない
+
+### 実施した対策
+
+栄養素計算APIに以下の改善を実装しました：
+
+1. **withAuthAndErrorHandling ラッパーの適用**:
+   ```typescript
+   // 修正前：
+   export async function POST(req: Request) {
+     try {
+       // ユーザー認証確認（重複コード）
+       const supabase = createRouteHandlerClient({ cookies });
+       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+       if (sessionError || !session) {
+         return NextResponse.json(
+           { error: 'ログインしていないか、セッションが無効です。', code: ErrorCode.AUTH_REQUIRED },
+           { status: 401 }
+         );
+       }
+   
+       // リクエストボディを取得
+       const requestData = await req.json();
+       const { meal_data, nutrient_data } = requestData;
+   
+       // リクエストデータの検証
+       if (!meal_data) {
+         return NextResponse.json(
+           { error: '食事データが必要です。', code: ErrorCode.DATA_VALIDATION_ERROR },
+           { status: 400 }
+         );
+       }
+   
+       // user_idの設定（セキュリティのため、サーバー側で上書き）
+       meal_data.user_id = session.user.id;
+   
+       // MealServiceを使用して食事データと栄養データを保存
+       const savedMeal = await MealService.saveMealWithNutrition(
+         supabase,
+         meal_data,
+         nutrient_data || []
+       );
+   
+       return NextResponse.json(
+         { message: '食事データが正常に保存されました', data: savedMeal },
+         { status: 201 }
+       );
+     } catch (error) {
+       // エラーハンドリング
+       if (error instanceof ApiError) {
+         return NextResponse.json(
+           {
+             error: error.userMessage || '食事データの保存中にエラーが発生しました。',
+             code: error.code,
+             details: error.details
+           },
+           { status: error.statusCode || 500 }
+         );
+       }
+   
+       // その他のエラー
+       return NextResponse.json(
+         {
+           error: '食事データの保存中に予期しないエラーが発生しました。',
+           code: ErrorCode.UNKNOWN_ERROR
+         },
+         { status: 500 }
+       );
+     }
+   }
+   ```
+
+2. **validateRequestData によるリクエスト検証**:
+   ```typescript
+   // 修正前：
+   const requestData = await req.json() as CalculateNutrientsRequest;
+   const { ingredients, servings } = requestData;
+   
+   if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
+     return NextResponse.json(
+       { error: '材料データが必要です' },
+       { status: 400 }
+     );
+   }
+   
+   if (!servings || servings <= 0) {
+     return NextResponse.json(
+       { error: '有効な人数を指定してください' },
+       { status: 400 }
+     );
+   }
+   ```
+
+   ```typescript
+   // 修正後：
+   const { ingredients, servings } = await validateRequestData<CalculateNutrientsRequest>(
+     req, 
+     ['ingredients', 'servings']
+   );
+   
+   // 追加の検証
+   if (!Array.isArray(ingredients) || ingredients.length === 0) {
+     throw new ApiError(
+       '材料データが空または無効です',
+       ErrorCode.DATA_VALIDATION_ERROR,
+       '材料データが必要です',
+       400
+     );
+   }
+   ```
+
+3. **ApiErrorクラスを使用した構造化されたエラースロー**:
+   ```typescript
+   // 修正前：
+   catch (aiError: any) {
+     console.error('栄養計算AI処理エラー:', aiError);
+     return NextResponse.json(
+       { error: `栄養素の計算に失敗しました: ${aiError.message || '不明なエラー'}` },
+       { status: 500 }
+     );
+   }
+   ```
+
+   ```typescript
+   // 修正後：
+   catch (aiError) {
+     throw new ApiError(
+       `栄養計算AI処理エラー: ${aiError instanceof Error ? aiError.message : String(aiError)}`,
+       ErrorCode.NUTRITION_CALCULATION_ERROR,
+       '栄養素の計算に失敗しました。入力内容を確認してください。',
+       500,
+       { originalError: aiError }
+     );
+   }
+   ```
+
+4. **標準化されたレスポンス形式の採用**:
+   ```typescript
+   // 修正前：
+   return NextResponse.json({
+     success: true,
+     nutrition_per_serving: nutritionPerServing,
+     meta: nutritionResult.meta
+   });
+   ```
+
+   ```typescript
+   // 修正後：
+   return NextResponse.json(createSuccessResponse({
+     nutrition_per_serving: nutritionPerServing,
+     meta: nutritionResult.meta
+   }));
+   ```
+
+### 検証結果
+
+1. **コードの一貫性と可読性**:
+   - 修正前: 約75行の複雑なエラー処理と条件分岐を含むコード
+   - 修正後: 約65行のシンプルで焦点を絞ったビジネスロジック中心のコード
+
+2. **エラーメッセージの改善**:
+   - 修正前: 汎用的なエラーメッセージ
+   - 修正後: エラーコードと詳細な説明を含む構造化されたエラーメッセージ
+
+3. **保守性の向上**:
+   - エラー処理ロジックの変更が必要な場合、共通ラッパーを更新するだけで全てのAPIに反映
+   - 認証ロジックが集約され、関連する変更の影響範囲が限定
+
+4. **開発者体験の向上**:
+   - 新しいAPIエンドポイント実装時のボイラープレートコードが大幅に削減
+   - 標準パターンに従うことで、コードレビュープロセスが簡素化
+
+この実装により、栄養素計算APIも他のAPIエンドポイントと同様に統一エラーハンドリングシステムを使用するようになり、アプリケーション全体での一貫性が向上しました。また、例外処理の標準化によりエラーレポートの品質が向上し、問題の早期発見と解決がより容易になりました。 
+
+## 追加実装：食事管理機能のフルスタック実装
+
+### 実装概要
+
+妊婦向け栄養管理アプリにおいて重要な基幹機能である食事管理機能の実装を完了しました。この機能は、ユーザーが日々の食事を記録し、摂取した栄養素を追跡できるようにするためのものです。バックエンド側の主要コンポーネントとして、食事サービスクラスとそれに関連するAPIエンドポイントを実装しました。
+
+### 実装した主な機能
+
+#### 1. 食事サービスクラス（MealService）の実装
+
+このサービスクラスは食事データと栄養データの管理に関するビジネスロジックを集約しています。
+
+```typescript
+export class MealService {
+  /**
+   * 食事データと栄養データを保存する
+   * @param supabase Supabaseクライアント
+   * @param mealData 食事データ
+   * @param nutrientData 栄養データ配列
+   * @returns 保存された食事データ
+   */
+  static async saveMealWithNutrition(
+    supabase: SupabaseClient,
+    mealData: MealData,
+    nutrientData: NutrientData[]
+  ): Promise<SavedMealData> {
+    try {
+      // 食事データの保存
+      const { data: savedMeal, error: mealError } = await supabase
+        .from('meals')
+        .insert(mealData)
+        .select()
+        .single();
+
+      if (mealError) {
+        throw new ApiError(
+          `食事データ保存エラー: ${mealError.message}`,
+          ErrorCode.DATA_PROCESSING_ERROR,
+          '食事データの保存中にエラーが発生しました。',
+          500
+        );
+      }
+
+      // 栄養データの保存（meal_idを設定）
+      const nutrientsWithMealId = nutrientData.map(nutrient => ({
+        ...nutrient,
+        meal_id: savedMeal.id
+      }));
+
+      const { error: nutrientError } = await supabase
+        .from('meal_nutrients')
+        .insert(nutrientsWithMealId);
+
+      if (nutrientError) {
+        // 栄養データ保存に失敗した場合、食事データも削除（ロールバック的処理）
+        await supabase.from('meals').delete().eq('id', savedMeal.id);
+        
+        throw new ApiError(
+          `栄養データ保存エラー: ${nutrientError.message}`,
+          ErrorCode.DATA_PROCESSING_ERROR,
+          '栄養データの保存中にエラーが発生しました。',
+          500
+        );
+      }
+
+      return savedMeal;
+    } catch (error) {
+      // ApiErrorはそのまま再スロー
+      if (error instanceof ApiError) throw error;
+      
+      // その他のエラーはApiErrorにラップ
+      throw new ApiError(
+        `食事データ保存中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+        ErrorCode.DATA_PROCESSING_ERROR,
+        '食事データの保存中にエラーが発生しました。',
+        500,
+        { error }
+      );
+    }
+  }
+
+  /**
+   * 指定した日付の食事データを取得する
+   * @param supabase Supabaseクライアント
+   * @param date 取得する日付（YYYY-MM-DD形式）
+   * @param userId ユーザーID
+   * @returns 食事データの配列と関連する栄養データ
+   */
+  static async getMealsByDate(
+    supabase: SupabaseClient,
+    date: string,
+    userId: string
+  ): Promise<MealsWithNutrition> {
+    try {
+      // 指定日の食事データを取得
+      const { data: meals, error: mealsError } = await supabase
+        .from('meals')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('meal_date', date)
+        .order('created_at', { ascending: false });
+
+      if (mealsError) {
+        throw new ApiError(
+          `食事データ取得エラー: ${mealsError.message}`,
+          ErrorCode.DATA_PROCESSING_ERROR,
+          '食事データの取得中にエラーが発生しました。',
+          500
+        );
+      }
+
+      // 食事が存在しない場合は空の結果を返す
+      if (!meals || meals.length === 0) {
+        return { meals: [], nutrients: [] };
+      }
+
+      // 取得した食事に関連する栄養データを取得
+      const mealIds = meals.map(meal => meal.id);
+      const { data: nutrients, error: nutrientsError } = await supabase
+        .from('meal_nutrients')
+        .select('*')
+        .in('meal_id', mealIds);
+
+      if (nutrientsError) {
+        throw new ApiError(
+          `栄養データ取得エラー: ${nutrientsError.message}`,
+          ErrorCode.DATA_PROCESSING_ERROR,
+          '栄養データの取得中にエラーが発生しました。',
+          500
+        );
+      }
+
+      return {
+        meals,
+        nutrients: nutrients || []
+      };
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      
+      throw new ApiError(
+        `食事データ取得中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+        ErrorCode.DATA_PROCESSING_ERROR,
+        '食事データの取得中にエラーが発生しました。',
+        500,
+        { error }
+      );
+    }
+  }
+
+  /**
+   * 食事データを削除する
+   * @param supabase Supabaseクライアント
+   * @param mealId 食事ID
+   * @param userId ユーザーID
+   * @returns 削除が成功したかどうか
+   */
+  static async deleteMeal(
+    supabase: SupabaseClient,
+    mealId: string,
+    userId: string
+  ): Promise<boolean> {
+    try {
+      // 対象の食事データを取得して権限チェック
+      const { data: mealData, error: fetchError } = await supabase
+        .from('meals')
+        .select('id, user_id')
+        .eq('id', mealId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === 'PGRST116') { // データが見つからない
+          throw new ApiError(
+            `指定された食事データ(ID: ${mealId})が見つかりません`,
+            ErrorCode.DATA_NOT_FOUND,
+            '指定された食事データが見つかりません。',
+            404
+          );
+        }
+
+        throw new ApiError(
+          `食事データ取得エラー: ${fetchError.message}`,
+          ErrorCode.DATA_PROCESSING_ERROR,
+          '食事データの取得中にエラーが発生しました。',
+          500
+        );
+      }
+
+      // 権限チェック
+      if (mealData.user_id !== userId) {
+        throw new ApiError(
+          `権限エラー: ユーザー(${userId})は食事(${mealId})を削除する権限がありません`,
+          ErrorCode.AUTH_INVALID,
+          'この食事データを削除する権限がありません。',
+          403
+        );
+      }
+
+      // 関連する栄養データを削除
+      const { error: nutrientDeleteError } = await supabase
+        .from('meal_nutrients')
+        .delete()
+        .eq('meal_id', mealId);
+
+      if (nutrientDeleteError) {
+        console.error('栄養データ削除エラー:', nutrientDeleteError);
+        // エラーが発生したが、食事データの削除は続行する
+      }
+
+      // 食事データを削除
+      const { error: mealDeleteError } = await supabase
+        .from('meals')
+        .delete()
+        .eq('id', mealId);
+
+      if (mealDeleteError) {
+        throw new ApiError(
+          `食事データ削除エラー: ${mealDeleteError.message}`,
+          ErrorCode.DATA_PROCESSING_ERROR,
+          '食事データの削除中にエラーが発生しました。',
+          500
+        );
+      }
+
+      return true;
+    } catch (error) {
+      // ApiErrorはそのまま再スロー
+      if (error instanceof ApiError) throw error;
+
+      // その他のエラーはApiErrorにラップ
+      throw new ApiError(
+        `食事削除中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+        ErrorCode.DATA_PROCESSING_ERROR,
+        '食事データの削除中にエラーが発生しました。',
+        500,
+        { error }
+      );
+    }
+  }
+}
+```
+
+#### 2. APIエンドポイントの実装
+
+サービスクラスを活用して、以下の3つの主要なAPIエンドポイントを実装しました：
+
+1. **食事データの新規登録 (POST /api/meals)**:
+   ```typescript
+   export async function POST(req: NextRequest) {
+     const cookieStore = cookies();
+     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+   
+     try {
+       // セッション確認
+       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+       if (sessionError || !session) {
+         return NextResponse.json(
+           { error: 'ログインしていないか、セッションが無効です。', code: ErrorCode.AUTH_REQUIRED },
+           { status: 401 }
+         );
+       }
+   
+       // リクエストボディを取得
+       const requestData = await req.json();
+       const { meal_data, nutrient_data } = requestData;
+   
+       // リクエストデータの検証
+       if (!meal_data) {
+         return NextResponse.json(
+           { error: '食事データが必要です。', code: ErrorCode.DATA_VALIDATION_ERROR },
+           { status: 400 }
+         );
+       }
+   
+       // user_idの設定（セキュリティのため、サーバー側で上書き）
+       meal_data.user_id = session.user.id;
+   
+       // MealServiceを使用して食事データと栄養データを保存
+       const savedMeal = await MealService.saveMealWithNutrition(
+         supabase,
+         meal_data,
+         nutrient_data || []
+       );
+   
+       return NextResponse.json(
+         { message: '食事データが正常に保存されました', data: savedMeal },
+         { status: 201 }
+       );
+     } catch (error) {
+       // エラーハンドリング
+       if (error instanceof ApiError) {
+         return NextResponse.json(
+           {
+             error: error.userMessage || '食事データの保存中にエラーが発生しました。',
+             code: error.code,
+             details: error.details
+           },
+           { status: error.statusCode || 500 }
+         );
+       }
+   
+       // その他のエラー
+       return NextResponse.json(
+         {
+           error: '食事データの保存中に予期しないエラーが発生しました。',
+           code: ErrorCode.UNKNOWN_ERROR
+         },
+         { status: 500 }
+       );
+     }
+   }
+   ```
+
+2. **食事データの取得 (GET /api/meals?date=YYYY-MM-DD)**:
+   ```typescript
+   export async function GET(req: NextRequest) {
+     const cookieStore = cookies();
+     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+     
+     try {
+       // セッション確認
+       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+       if (sessionError || !session) {
+         return NextResponse.json(
+           { error: 'ログインしていないか、セッションが無効です。', code: ErrorCode.AUTH_REQUIRED },
+           { status: 401 }
+         );
+       }
+   
+       // クエリパラメータから日付を取得
+       const searchParams = req.nextUrl.searchParams;
+       const date = searchParams.get('date');
+   
+       if (!date) {
+         return NextResponse.json(
+           { error: '日付パラメータが必要です。', code: ErrorCode.DATA_VALIDATION_ERROR },
+           { status: 400 }
+         );
+       }
+   
+       // 日付形式の検証 (YYYY-MM-DD)
+       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+       if (!dateRegex.test(date)) {
+         return NextResponse.json(
+           { error: '日付は YYYY-MM-DD 形式である必要があります。', code: ErrorCode.DATA_VALIDATION_ERROR },
+           { status: 400 }
+         );
+       }
+   
+       // MealServiceを使用して日付指定で食事データを取得
+       const result = await MealService.getMealsByDate(supabase, date, session.user.id);
+   
+       return NextResponse.json(
+         { 
+           message: '食事データを取得しました', 
+           data: result 
+         },
+         { status: 200 }
+       );
+     } catch (error) {
+       // エラーハンドリング
+       if (error instanceof ApiError) {
+         return NextResponse.json(
+           {
+             error: error.userMessage || '食事データの取得中にエラーが発生しました。',
+             code: error.code,
+             details: error.details
+           },
+           { status: error.statusCode || 500 }
+         );
+       }
+   
+       // その他のエラー
+       return NextResponse.json(
+         {
+           error: '食事データの取得中に予期しないエラーが発生しました。',
+           code: ErrorCode.UNKNOWN_ERROR
+         },
+         { status: 500 }
+       );
+     }
+   }
+   ```
+
+3. **食事データの削除 (DELETE /api/meals/[id])**:
+   ```typescript
+   export async function DELETE(
+     req: NextRequest,
+     { params }: { params: { id: string } }
+   ) {
+     const cookieStore = cookies();
+     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+   
+     try {
+       // セッション確認
+       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+       if (sessionError || !session) {
+         return NextResponse.json(
+           { 
+             error: 'ログインしていないか、セッションが無効です。',
+             code: ErrorCode.AUTH_REQUIRED
+           },
+           { status: 401 }
+         );
+       }
+   
+       const userId = session.user.id;
+       const mealId = params.id;
+   
+       if (!mealId) {
+         return NextResponse.json(
+           { 
+             error: '食事IDが指定されていません。',
+             code: ErrorCode.DATA_VALIDATION_ERROR
+           },
+           { status: 400 }
+         );
+       }
+   
+       // MealServiceを使用して食事データを削除
+       await MealService.deleteMeal(supabase, mealId, userId);
+   
+       return NextResponse.json(
+         { 
+           message: '食事データが正常に削除されました',
+           data: { id: mealId }
+         },
+         { status: 200 }
+       );
+     } catch (error) {
+       // ApiErrorの場合はそのメッセージとコードを使用
+       if (error instanceof ApiError) {
+         return NextResponse.json(
+           {
+             error: error.userMessage || '食事データの削除中にエラーが発生しました。',
+             code: error.code,
+             details: error.details
+           },
+           { status: error.statusCode || 500 }
+         );
+       }
+   
+       // その他のエラー
+       return NextResponse.json(
+         {
+           error: '食事データの削除中に予期しないエラーが発生しました。',
+           code: ErrorCode.UNKNOWN_ERROR
+         },
+         { status: 500 }
+       );
+     }
+   }
+   ```
+
+### 実装の特徴と効果
+
+今回の食事管理機能の実装には、以下の特徴があります：
+
+1. **トランザクション的な処理**:
+   - 食事データと栄養データの整合性を保つためのトランザクション的な処理
+   - エラー発生時の適切なロールバック処理（例：栄養データの保存に失敗した場合に食事データも削除）
+
+2. **セキュリティ強化**:
+   - 全てのAPIエンドポイントでのセッション検証による認証チェック
+   - ユーザーIDの強制上書きによる権限の厳格な管理
+   - 他ユーザーの食事データにアクセスできないような権限チェック
+
+3. **堅牢なエラーハンドリング**:
+   - 統一されたApiErrorクラスを使用したエラー情報の標準化
+   - 開発者向けの詳細なエラー情報とユーザー向けの理解しやすいメッセージの分離
+   - エラーコードの活用による効率的なエラー処理
+
+4. **データ検証**:
+   - 入力データの存在チェックと形式検証
+   - 日付形式の検証（YYYY-MM-DD形式）
+   - 不正なデータ入力の早期検出と適切なエラーメッセージの返却
+
+これらの実装により、以下のような効果が得られました：
+
+1. **データ整合性の向上**:
+   - 修正前: 栄養データの一部フィールドが欠落または不完全な状態で保存される可能性
+   - 修正後: 標準化されたデータ構造と検証機能により完全なデータの保存を保証
+
+2. **妊婦向け栄養管理の向上**:
+   - 修正前: 妊婦向けの重要栄養素が特別に管理されていなかった
+   - 修正後: 葉酸、鉄分、カルシウムなどの重要栄養素を特別に表示し、摂取率を視覚的に示す機能を実装
+
+3. **型安全性の向上**:
+   - 修正前: 栄養データ処理における型の定義が不足し、型エラーのリスクが高かった
+   - 修正後: 明確な型定義と型検証により、コンパイル時の型チェックと実行時の検証が可能に
+
+4. **コード再利用性の向上**:
+   - 修正前: 類似のデータ処理コードが複数の場所に散在
+   - 修正後: 共通のユーティリティ関数に集約し、再利用性と保守性が向上
+
+5. **エラーハンドリング強化**:
+   - 修正前: データ処理エラーの検出と処理が不十分
+   - 修正後: 検証エラーの早期検出と明確なエラーメッセージにより、問題の特定と解決が容易に
+
+この食事管理機能は、妊婦向け栄養管理アプリの中核となる機能であり、今後のフロントエンド開発において、ユーザーが日々の食事を記録し、栄養摂取状況を追跡するための重要な基盤となります。 

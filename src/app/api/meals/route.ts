@@ -1,106 +1,183 @@
-import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { convertToLegacyNutrition, validateMealData } from '@/lib/nutrition/nutrition-utils';
-import { ApiError } from '@/lib/errors/app-errors';
+import { NextRequest, NextResponse } from 'next/server';
+import { MealService, SaveMealRequest, SaveMealNutritionRequest } from '@/lib/services/meal-service';
+import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 
-export async function POST(req: Request) {
+/**
+ * 食事データを登録するAPI
+ * POST /api/meals
+ */
+export async function POST(req: NextRequest) {
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+
     try {
-        // リクエストボディの解析
-        const body = await req.json();
-        const { meal_type, meal_date, photo_url, food_description, nutrition_data, nutrition, servings } = body;
-
-        // バリデーション
-        if (!meal_type || !meal_date) {
+        // セッション確認
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) {
             return NextResponse.json(
-                { error: '食事タイプと日付は必須です' },
-                { status: 400 }
-            );
-        }
-
-        // サーバーサイドSupabaseクライアントの初期化
-        const cookieStore = cookies();
-        const supabase = createServerComponentClient({ cookies: () => cookieStore });
-
-        // 現在のユーザーセッションを取得
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session) {
-            return NextResponse.json(
-                { error: '認証されていません' },
+                {
+                    error: 'ログインしていないか、セッションが無効です。',
+                    code: ErrorCode.AUTH_REQUIRED
+                },
                 { status: 401 }
             );
         }
 
-        // 栄養データのログを記録（デバッグ用）
-        console.log('栄養データ受信:', {
-            nutrition_data: { ...nutrition_data, dailyRecords: nutrition_data?.daily_records ? '...省略' : undefined },
-            nutrition: nutrition
-        });
+        const userId = session.user.id;
+        const requestData = await req.json();
 
-        // トランザクション的に処理するため、まずmealsテーブルに保存
-        const { data: mealData, error: mealError } = await supabase
-            .from('meals')
-            .insert({
-                user_id: session.user.id,
-                meal_type,
-                meal_date,
-                photo_url,
-                food_description,
-                nutrition_data,
-                servings: servings || 1
-            })
-            .select('id')
-            .single();
-
-        if (mealError) {
-            console.error('Supabase meals保存エラー:', mealError);
+        // リクエストデータの基本検証
+        if (!requestData || typeof requestData !== 'object') {
             return NextResponse.json(
-                { error: '食事の保存に失敗しました', details: mealError.message },
-                { status: 500 }
+                {
+                    error: '無効なリクエストデータです。',
+                    code: ErrorCode.DATA_VALIDATION_ERROR
+                },
+                { status: 400 }
             );
         }
 
-        // 次にmeal_nutrientsテーブルに栄養データを保存
-        if (nutrition && mealData) {
-            const { error: nutrientError } = await supabase
-                .from('meal_nutrients')
-                .insert({
-                    meal_id: mealData.id,
-                    calories: nutrition.calories,
-                    protein: nutrition.protein,
-                    iron: nutrition.iron,
-                    folic_acid: nutrition.folic_acid,
-                    calcium: nutrition.calcium,
-                    vitamin_d: nutrition.vitamin_d || 0,
-                    confidence_score: nutrition.confidence_score || 0.8
-                });
+        // 食事データ構築
+        const mealData: SaveMealRequest = {
+            user_id: userId,
+            meal_type: requestData.meal_type,
+            meal_date: requestData.meal_date,
+            photo_url: requestData.photo_url,
+            food_description: requestData.food_description,
+            nutrition_data: requestData.nutrition_data,
+            servings: requestData.servings || 1
+        };
 
-            if (nutrientError) {
-                console.error('Supabase meal_nutrients保存エラー:', nutrientError);
-                // meal_nutrientsの保存に失敗しても、mealsの保存は成功しているので、警告だけ出す
-                console.warn('栄養データの保存に失敗しましたが、食事データは保存されました');
-            }
+        // 栄養データの構築（存在する場合）
+        let nutritionData: SaveMealNutritionRequest | undefined;
+        if (requestData.nutrition) {
+            nutritionData = {
+                calories: parseFloat(requestData.nutrition.calories || '0'),
+                protein: parseFloat(requestData.nutrition.protein || '0'),
+                iron: parseFloat(requestData.nutrition.iron || '0'),
+                folic_acid: parseFloat(requestData.nutrition.folic_acid || '0'),
+                calcium: parseFloat(requestData.nutrition.calcium || '0'),
+                vitamin_d: parseFloat(requestData.nutrition.vitamin_d || '0'),
+                confidence_score: parseFloat(requestData.nutrition.confidence_score || '0.8')
+            };
         }
 
-        return NextResponse.json({
-            success: true,
-            message: '食事が保存されました',
-            data: { id: mealData.id }
-        });
-    } catch (error) {
-        console.error('食事保存APIエラー:', error);
-
-        if (error instanceof ApiError) {
-            return NextResponse.json(
-                { error: error.userMessage, details: error.details },
-                { status: error.statusCode }
-            );
-        }
+        // MealServiceを使用して食事データを保存
+        const result = await MealService.saveMealWithNutrition(
+            supabase,
+            mealData,
+            nutritionData
+        );
 
         return NextResponse.json(
-            { error: '食事保存中にエラーが発生しました', details: (error as Error).message },
+            {
+                message: '食事データが正常に保存されました',
+                data: result
+            },
+            { status: 201 }
+        );
+    } catch (error) {
+        console.error('食事保存エラー:', error);
+
+        // ApiErrorの場合はそのメッセージとコードを使用
+        if (error instanceof ApiError) {
+            return NextResponse.json(
+                {
+                    error: error.userMessage || '食事データの保存中にエラーが発生しました。',
+                    code: error.code,
+                    details: error.details
+                },
+                { status: error.statusCode || 500 }
+            );
+        }
+
+        // その他のエラー
+        return NextResponse.json(
+            {
+                error: '食事データの保存中に予期しないエラーが発生しました。',
+                code: ErrorCode.UNKNOWN_ERROR
+            },
+            { status: 500 }
+        );
+    }
+}
+
+/**
+ * 食事データを取得するAPI
+ * GET /api/meals?date=YYYY-MM-DD
+ */
+export async function GET(req: NextRequest) {
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+
+    try {
+        // セッション確認
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) {
+            return NextResponse.json(
+                {
+                    error: 'ログインしていないか、セッションが無効です。',
+                    code: ErrorCode.AUTH_REQUIRED
+                },
+                { status: 401 }
+            );
+        }
+
+        const userId = session.user.id;
+
+        // URLパラメータから日付を取得
+        const url = new URL(req.url);
+        const date = url.searchParams.get('date');
+
+        if (!date) {
+            return NextResponse.json(
+                {
+                    error: '日付パラメータ(date)が必要です。',
+                    code: ErrorCode.DATA_VALIDATION_ERROR
+                },
+                { status: 400 }
+            );
+        }
+
+        // 日付形式の検証
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(date)) {
+            return NextResponse.json(
+                {
+                    error: '日付はYYYY-MM-DD形式である必要があります。',
+                    code: ErrorCode.DATA_VALIDATION_ERROR
+                },
+                { status: 400 }
+            );
+        }
+
+        // 指定日の食事データ取得
+        const meals = await MealService.getMealsByDate(supabase, userId, date);
+
+        return NextResponse.json({ data: meals }, { status: 200 });
+    } catch (error) {
+        console.error('食事データ取得エラー:', error);
+
+        // ApiErrorの場合はそのメッセージとコードを使用
+        if (error instanceof ApiError) {
+            return NextResponse.json(
+                {
+                    error: error.userMessage || '食事データの取得中にエラーが発生しました。',
+                    code: error.code,
+                    details: error.details
+                },
+                { status: error.statusCode || 500 }
+            );
+        }
+
+        // その他のエラー
+        return NextResponse.json(
+            {
+                error: '食事データの取得中に予期しないエラーが発生しました。',
+                code: ErrorCode.UNKNOWN_ERROR
+            },
             { status: 500 }
         );
     }
