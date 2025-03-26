@@ -103,7 +103,7 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
     return (
         <div className="container px-4 py-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                <h1 className="text-2xl font-bold">マイレシピ</h1>
+                <h1 className="text-2xl text-green-600 font-bold">マイレシピ</h1>
 
                 <div className="flex space-x-2 w-full md:w-auto">
                     <div className="relative flex-grow">
