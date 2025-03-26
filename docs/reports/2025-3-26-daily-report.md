@@ -545,3 +545,259 @@
    - 修正後: 検証エラーの早期検出と明確なエラーメッセージにより、問題の特定と解決が容易に
 
 この追加実装により、既存のエラーハンドリングフレームワークと型システムの恩恵を最大限に活用し、栄養データ処理の堅牢性と妊婦向け特別機能を大幅に強化することができました。さらに、レガシーシステムとの互換性を保ちながら、将来的な拡張にも対応しやすい設計となっています。 
+
+## 追加実装：長すぎる条件式とコードの重複改善
+
+### 問題概要
+
+アプリケーション内のAPIルートとクライアントコードで以下の問題が発見されました：
+
+1. **長すぎる条件式**: API応答の検証やエラーハンドリングのコードで複雑な条件式が使用され、可読性が低下
+2. **認証処理の重複**: 各APIルートで同様の認証コードが繰り返し実装されている
+3. **エラー処理の重複**: 類似のエラーハンドリングロジックがファイル間で重複している
+4. **レシピ関連処理の重複**: レシピデータの取得、お気に入り状態の切り替え、URLからのレシピ解析など複数のエンドポイントで同様のロジックが重複
+
+### 実施した改善
+
+#### 1. 検証用ユーティリティの作成 - `src/lib/validation/response-validators.ts`
+
+APIレスポンスおよびリクエストの検証を行う汎用関数を実装しました。
+
+```typescript
+/**
+ * APIレスポンスの基本的な検証を行います
+ */
+export function validateApiResponse<T>(
+  response: any, 
+  options: {
+    requireData?: boolean;
+    requireItems?: boolean;
+    itemsValidator?: (items: any[]) => boolean;
+  } = {}
+): { isValid: boolean; errorMessage?: string; data?: T } {
+  const { requireData = true, requireItems = false, itemsValidator } = options;
+  
+  // データの存在確認
+  if (requireData && !response.data) {
+    return { isValid: false, errorMessage: 'レスポンスにデータが含まれていません' };
+  }
+  
+  // アイテム配列の確認
+  if (requireItems) {
+    if (!response.data.items) {
+      return { isValid: false, errorMessage: 'レスポンスにアイテムが含まれていません' };
+    }
+    
+    if (!Array.isArray(response.data.items)) {
+      return { isValid: false, errorMessage: 'アイテムは配列形式である必要があります' };
+    }
+    
+    if (response.data.items.length === 0) {
+      return { isValid: false, errorMessage: 'アイテムが空です' };
+    }
+    
+    // カスタム検証
+    if (itemsValidator && !itemsValidator(response.data.items)) {
+      return { isValid: false, errorMessage: 'アイテムの内容が無効です' };
+    }
+  }
+  
+  return { isValid: true, data: response.data as T };
+}
+```
+
+このユーティリティにより、以前は多数のif文で構成されていた条件式が、意味のある関数として分解され、コードの可読性が向上しました。
+
+#### 2. 共通APIハンドラの作成 - `src/lib/api/api-handlers.ts`
+
+認証とエラーハンドリングを共通化する高階関数を実装しました。
+
+```typescript
+/**
+ * セッション認証とエラーハンドリングを備えたAPIハンドララッパー
+ */
+export function withAuthAndErrorHandling(handler: ApiHandler) {
+  return async (req: NextRequest, { params }: { params: Record<string, string> }) => {
+    try {
+      // ユーザー認証確認
+      const supabase = createRouteHandlerClient({ cookies });
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        return NextResponse.json(
+          { error: '認証が必要です', code: ErrorCode.AUTH_REQUIRED },
+          { status: 401 }
+        );
+      }
+      
+      // ハンドラ実行
+      return await handler(req, { params, user });
+      
+    } catch (error) {
+      console.error('API error:', error);
+      
+      // APIエラーの場合
+      if (error instanceof ApiError) {
+        return NextResponse.json(
+          { 
+            error: error.userMessage, 
+            code: error.code,
+            details: process.env.NODE_ENV === 'development' ? error.details : undefined
+          },
+          { status: error.statusCode }
+        );
+      }
+      
+      // その他のエラー処理...
+    }
+  };
+}
+```
+
+この関数により、各APIルートで繰り返し実装されていた認証とエラー処理のコードが大幅に簡略化されました。
+
+#### 3. レシピサービスクラスの作成 - `src/lib/services/recipe-service.ts`
+
+レシピ関連のビジネスロジックを集約したサービスクラスを実装しました。
+
+```typescript
+export class RecipeService {
+  /**
+   * レシピをIDで取得
+   */
+  static async getRecipeById(recipeId: string, userId?: string) {
+    try {
+      const supabase = createRouteHandlerClient({ cookies });
+      
+      // レシピデータ取得
+      const { data: recipe, error } = await supabase
+        .from('clipped_recipes')
+        .select('*')
+        .eq('id', recipeId)
+        .eq('user_id', userId)
+        .single();
+      
+      // エラー処理と結果返却...
+    } catch (error) {
+      // エラーハンドリング...
+    }
+  }
+  
+  /**
+   * レシピのお気に入り状態を切り替え
+   */
+  static async toggleFavorite(recipeId: string, userId: string) {
+    // 実装...
+  }
+  
+  /**
+   * 外部URLからレシピデータを解析
+   */
+  static async parseRecipeFromUrl(url: string) {
+    // 実装...
+  }
+  
+  /**
+   * ユーザーのお気に入りレシピを取得
+   */
+  static async getUserFavorites(userId: string, options: {
+    page?: number;
+    limit?: number;
+    includeNutrition?: boolean;
+  } = {}) {
+    // 実装...
+  }
+}
+```
+
+#### 4. APIルート実装の改善
+
+リファクタリング前と後の実装例として、レシピ取得APIの改善を示します：
+
+**改善前**:
+```typescript
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+    try {
+        const { id } = params;
+        if (!id) {
+            return NextResponse.json(
+                { error: 'レシピIDが必要です' },
+                { status: 400 }
+            );
+        }
+
+        // ユーザー認証確認
+        const supabase = createRouteHandlerClient({ cookies });
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return NextResponse.json(
+                { error: '認証が必要です' },
+                { status: 401 }
+            );
+        }
+
+        // レシピデータ取得
+        const { data: recipe, error } = await supabase
+            .from('clipped_recipes')
+            .select('*')
+            .eq('id', id)
+            .eq('user_id', user.id)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') {
+                return NextResponse.json(
+                    { error: 'レシピが見つかりません' },
+                    { status: 404 }
+                );
+            }
+            throw error;
+        }
+
+        return NextResponse.json(recipe);
+
+    } catch (error) {
+        console.error('Recipe fetch error:', error);
+        return NextResponse.json(
+            { error: 'レシピの取得中にエラーが発生しました' },
+            { status: 500 }
+        );
+    }
+}
+```
+
+**改善後**:
+```typescript
+export const GET = withAuthAndErrorHandling(
+  async (req, { params, user }) => {
+    const { id } = params;
+    
+    const recipe = await RecipeService.getRecipeById(id, user.id);
+    
+    return NextResponse.json(createSuccessResponse(recipe));
+  }
+);
+```
+
+同様に、お気に入り切り替えAPIやURL解析APIも大幅に簡略化され、コードの重複が削減されました。
+
+### 検証結果
+
+1. **コードの可読性向上**:
+   - 関心の分離により、各コンポーネントの責任が明確に
+   - 複雑な条件式が整理され、理解しやすく
+
+2. **保守性の向上**:
+   - 共通ロジックが一箇所にまとまり、変更が容易に
+   - エラー処理の一貫性が向上
+
+3. **バグの削減**:
+   - 一貫したデータ検証により、不正入力の早期検出
+   - 共通処理によるエラーハンドリングの統一
+
+4. **開発効率の向上**:
+   - 共通コンポーネントを再利用することで、新機能開発が迅速に
+   - 標準パターンの確立により、新規開発者の学習コストが低減
+
+この改善により、APIルートの実装がよりシンプルになり、開発者はビジネスロジックに集中できるようになりました。また、共通サービスクラスとエラーハンドリングフレームワークを活用することで、今後の機能追加や変更が容易になりました。 
