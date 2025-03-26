@@ -29,8 +29,40 @@ interface FoodItem {
     confidence: number;
 }
 
+// 栄養情報の型定義
+interface NutritionData {
+    calories: number;
+    protein: number;
+    iron: number;
+    folic_acid: number;
+    calcium: number;
+    vitamin_d?: number;
+    confidence_score: number;
+}
+
+// 解析結果の食品アイテム型
+interface RecognitionFoodItem {
+    name: string;
+    quantity: string;
+    confidence: number;
+}
+
+// 認識データの型定義 (RecognitionEditorコンポーネントと互換性のある形式)
+interface RecognitionData {
+    foods: RecognitionFoodItem[];
+    nutrition: NutritionData;
+}
+
+// APIからのレスポンスデータのラッパー型
+interface ApiRecognitionResponse {
+    data: {
+        foods: RecognitionFoodItem[];
+    };
+    nutrition: NutritionData;
+}
+
 // 初期の栄養情報
-const initialNutrition = {
+const initialNutrition: NutritionData = {
     calories: 0,
     protein: 0,
     iron: 0,
@@ -57,7 +89,7 @@ export default function MealLogPage() {
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [base64Image, setBase64Image] = useState<string | null>(null)
     const [analyzing, setAnalyzing] = useState(false)
-    const [recognitionData, setRecognitionData] = useState<any | null>(null)
+    const [recognitionData, setRecognitionData] = useState<RecognitionData | null>(null)
 
     // テキスト入力関連の状態
     const [foodItems, setFoodItems] = useState<FoodItem[]>([])
@@ -127,8 +159,8 @@ export default function MealLogPage() {
             }
 
             // 英語の食品名を検出して警告
-            const hasEnglishFoodNames = result.data.foods.some((food: any) =>
-                /^[a-zA-Z]/.test(food.name) || /^[0-9]+ [a-z]+/.test(food.quantity)
+            const hasEnglishFoodNames = result.data.foods.some((food: RecognitionFoodItem) =>
+                /^[a-zA-Z]/.test(food.name) || (food.quantity && typeof food.quantity === 'string' && /^[0-9]+ [a-z]+/.test(food.quantity))
             );
 
             if (hasEnglishFoodNames) {
@@ -136,7 +168,13 @@ export default function MealLogPage() {
                 // 英語の食品名があっても処理は続行
             }
 
-            setRecognitionData(result);
+            // APIレスポンスを認識データの形式に変換
+            const formattedData: RecognitionData = {
+                foods: result.data.foods,
+                nutrition: result.nutrition
+            };
+
+            setRecognitionData(formattedData);
         } catch (error) {
             console.error('画像解析エラー詳細:', error);
 
@@ -176,7 +214,7 @@ export default function MealLogPage() {
                 meal_date: selectedDate.toISOString().split('T')[0],
                 photo_url: base64Image,
                 food_description: {
-                    items: recognitionData.data.foods.map((food: any) => ({
+                    items: recognitionData.foods.map((food) => ({
                         name: food.name,
                         quantity: food.quantity,
                         confidence: food.confidence
@@ -280,7 +318,7 @@ export default function MealLogPage() {
         );
     };
 
-    // ここに enhanceFoodItems 関数を追加
+    // 食品データを強化する関数
     const enhanceFoodItems = async (foods: FoodItem[], suppressErrorToast: boolean = false): Promise<FoodItem[]> => {
         try {
             // ローディング通知（sonnerスタイル）
@@ -313,13 +351,19 @@ export default function MealLogPage() {
                 throw new Error('不正な応答フォーマット');
             }
 
-            // IDを保持しつつデータを更新
-            const enhancedFoodsWithIds = result.data.foods.map((item: any, index: number) => ({
-                id: foods[index]?.id || crypto.randomUUID(),
-                name: item.name,
-                quantity: item.quantity,
-                confidence: item.confidence || 1.0
-            }));
+            // 型安全なマッピング
+            const enhancedFoodsWithIds: FoodItem[] = [];
+            result.data.foods.forEach((item: RecognitionFoodItem, index: number) => {
+                const originalItem = foods[index];
+                if (originalItem) {
+                    enhancedFoodsWithIds.push({
+                        id: originalItem.id,
+                        name: item.name || originalItem.name,
+                        quantity: item.quantity || originalItem.quantity,
+                        confidence: typeof item.confidence === 'number' ? item.confidence : originalItem.confidence
+                    });
+                }
+            });
 
             // 成功通知
             toast.success("分析完了", {
@@ -342,7 +386,7 @@ export default function MealLogPage() {
         }
     };
 
-    // handleSaveTextInput 関数を修正
+    // テキスト入力の保存処理
     const handleSaveTextInput = async () => {
         // 入力チェック
         if (foodItems.length === 0) {
@@ -370,6 +414,7 @@ export default function MealLogPage() {
             }
 
             // 保存用のデータ準備
+            // 型安全に変換
             const foodsData = enhancedFoods.map(({ id, ...rest }) => rest);
 
             // 栄養計算APIを呼び出す
@@ -383,7 +428,9 @@ export default function MealLogPage() {
                 throw new Error('栄養計算に失敗しました');
             }
 
-            const { nutrition } = await nutritionResponse.json();
+            const nutritionResult = await nutritionResponse.json();
+            // 型安全に栄養データを取得
+            const nutrition: NutritionData = nutritionResult.nutrition || initialNutrition;
 
             // APIを使用してデータを保存
             const response = await fetch('/api/meals', {
@@ -455,10 +502,12 @@ export default function MealLogPage() {
         setInputMode(mode);
 
         // 写真モードからテキストモードに切り替えたとき、認識結果があれば食品リストに変換
-        if (mode === 'text' && recognitionData && recognitionData.data.foods.length > 0) {
-            const foodsWithIds = recognitionData.data.foods.map((food: any) => ({
-                ...food,
-                id: crypto.randomUUID()
+        if (mode === 'text' && recognitionData && recognitionData.foods.length > 0) {
+            const foodsWithIds: FoodItem[] = recognitionData.foods.map((food: RecognitionFoodItem) => ({
+                id: crypto.randomUUID(),
+                name: food.name,
+                quantity: food.quantity,
+                confidence: food.confidence
             }));
             setFoodItems(foodsWithIds);
         }
