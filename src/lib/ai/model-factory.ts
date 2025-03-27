@@ -1,3 +1,4 @@
+//src\lib\ai\model-factory.ts
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createImageContent } from '@/lib/utils/image-utils';
 

@@ -1,6 +1,7 @@
 /**
  * 基本的な栄養素データ（集計や保存に使用）
  */
+//src\types\nutrition.ts
 export interface BasicNutritionData {
     calories: number;
     protein: number;

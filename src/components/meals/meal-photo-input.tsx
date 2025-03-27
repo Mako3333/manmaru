@@ -1,5 +1,5 @@
 "use client";
-
+//src\components\meals\meal-photo-input.tsx
 import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

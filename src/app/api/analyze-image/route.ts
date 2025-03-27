@@ -1,3 +1,4 @@
+//src\app\api\analyze-image\route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AIService } from "@/lib/ai/ai-service";

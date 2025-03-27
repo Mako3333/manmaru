@@ -4,6 +4,7 @@ export interface RecipeParser {
      * @param document 解析対象のHTMLドキュメント
      * @returns 材料情報の配列
      */
+    //src\lib\recipe-parsers\parser-interface.ts
     extractIngredients(document: Document): {
         name: string;
         quantity?: string;

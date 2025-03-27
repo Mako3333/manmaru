@@ -1,6 +1,7 @@
 /**
  * APIレスポンスの基本的な検証を行います
  */
+//src\lib\validation\response-validators.ts
 export function validateApiResponse<T>(
     response: any,
     options: {

@@ -1,3 +1,4 @@
+//src\lib\nutrition\supabase-db.ts
 import { createClient } from '@supabase/supabase-js';
 import { FoodItem, NutritionData, DatabaseFoodItem } from '@/types/nutrition';
 import { FoodAnalysisError, ErrorCode } from '@/lib/errors/food-analysis-error';

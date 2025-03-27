@@ -1,6 +1,7 @@
 /**
  * 食品分析プロンプトテンプレート v1
  */
+//src\lib\ai\prompts\templates\food-analysis\v1.ts
 export const template = `
 この食事の写真から含まれている食品を識別してください。
 食事タイプは「{{mealType}}」です。

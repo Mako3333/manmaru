@@ -1,3 +1,4 @@
+//src\app\api\recipes\calculate-nutrients\route.ts
 import { NextResponse } from 'next/server';
 import { RecipeIngredient } from '@/types/recipe';
 import { AIService } from '@/lib/ai/ai-service';
