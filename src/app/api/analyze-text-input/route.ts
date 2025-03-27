@@ -1,129 +1,86 @@
 //src\app\api\analyze-text-input\route.ts
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { AIService, FoodInput } from '@/lib/ai/ai-service';
-import { AIError, ErrorCode, createErrorResponse } from '@/lib/errors/ai-error';
-import { withErrorHandling } from '@/lib/errors/error-utils';
+import { NextRequest, NextResponse } from 'next/server';
+import { AIServiceFactory } from '@/lib/ai/ai-service-factory';
+import { FoodInputParser } from '@/lib/food/food-input-parser';
+import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
+import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 
-// リクエスト用のZodスキーマ
-const RequestSchema = z.object({
-    foods: z.array(z.object({
-        name: z.string(),
-        quantity: z.string().optional()
-    })),
-    mealType: z.string().optional()
-});
-
-// テキスト入力解析のAPIエンドポイント
-export const POST = withErrorHandling(async (request: Request) => {
-    console.log('テキスト解析API: リクエスト受信');
-
+export async function POST(request: NextRequest) {
     try {
+        // リクエストボディからテキストを取得
         const body = await request.json();
-        console.log('テキスト解析API: リクエストボディ:', body);
+        const text = body.text;
 
-        // リクエストデータの検証
-        const validatedData = RequestSchema.parse(body);
-        const { foods, mealType = 'その他' } = validatedData;
-
-        // 食品データがない場合はエラー
-        if (!foods || foods.length === 0) {
-            console.log('テキスト解析API: 食品データなしエラー');
-            throw new AIError(
-                '食品データが必要です',
-                ErrorCode.VALIDATION_ERROR,
-                null,
-                ['少なくとも1つの食品を入力してください', '例: ごはん、鶏肉、ほうれん草など']
-            );
-        }
-
-        // 空の食品名をフィルタリング
-        const validFoods = foods.filter(food => food.name && food.name.trim() !== '');
-
-        if (validFoods.length === 0) {
-            console.log('テキスト解析API: 有効な食品データなしエラー');
-            throw new AIError(
-                '有効な食品データが必要です',
-                ErrorCode.VALIDATION_ERROR,
-                null,
-                ['少なくとも1つの有効な食品名を入力してください', '例: ごはん、鶏肉、ほうれん草など']
-            );
-        }
-
-        // AIサービスのインスタンスを取得
-        const aiService = AIService.getInstance();
-
-        // テキスト入力を解析
-        console.log('テキスト解析API: 解析開始', { foodsCount: validFoods.length, mealType });
-        const result = await aiService.analyzeTextInput(validFoods as FoodInput[], mealType);
-
-        console.log('テキスト解析API: 解析成功', {
-            foodsCount: result.foods.length,
-            calories: result.nutrition.calories,
-            protein: result.nutrition.protein
-        });
-
-        return NextResponse.json({
-            success: true,
-            data: result
-        });
-    } catch (error) {
-        console.error('テキスト解析API: エラー発生', error);
-
-        if (error instanceof AIError) {
+        if (!text) {
             return NextResponse.json(
-                createErrorResponse(error),
-                { status: getStatusCodeForError(error.code) }
-            );
-        }
-
-        if (error instanceof z.ZodError) {
-            const validationError = new AIError(
-                '入力データが不正です',
-                ErrorCode.VALIDATION_ERROR,
-                error.errors.map(e => e.message),
-                ['入力データの形式を確認してください', '正しい形式で再度お試しください']
-            );
-            return NextResponse.json(
-                createErrorResponse(validationError),
+                { error: 'テキストが提供されていません' },
                 { status: 400 }
             );
         }
 
-        // その他のエラーは汎用エラーに変換
-        const genericError = new AIError(
-            'テキスト解析中にエラーが発生しました',
-            ErrorCode.INTERNAL_ERROR,
-            error,
-            ['入力内容を確認して再度お試しください', '別の食品名で試してみてください']
+        // AIサービスのテキスト解析を実行
+        const aiService = AIServiceFactory.getService();
+
+        // 単純なテキスト入力の場合、まずFoodInputParserで解析を試みる
+        if (text.length < 100 && !text.includes('\n')) {
+            const directParseResults = FoodInputParser.parseBulkInput(text);
+
+            if (directParseResults.length > 0) {
+                // 直接解析に成功した場合
+                const nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(
+                    directParseResults
+                );
+
+                // 栄養計算サービスで栄養計算
+                const foodRepository = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
+                const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepository);
+                const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(
+                    nameQuantityPairs
+                );
+
+                return NextResponse.json({
+                    foods: directParseResults,
+                    nutrition: nutritionResult,
+                    processingTimeMs: 0,
+                    directParsed: true
+                });
+            }
+        }
+
+        // 直接解析できない場合はAIに依頼
+        const aiResult = await aiService.analyzeMealText(text);
+
+        if (aiResult.error) {
+            return NextResponse.json(
+                { error: aiResult.error },
+                { status: 500 }
+            );
+        }
+
+        // AIによる解析結果から栄養計算
+        const nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(
+            aiResult.parseResult.foods
         );
 
+        const foodRepository = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
+        const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepository);
+        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(
+            nameQuantityPairs
+        );
+
+        // レスポンスの作成
+        return NextResponse.json({
+            foods: aiResult.parseResult.foods,
+            nutrition: nutritionResult,
+            processingTimeMs: aiResult.processingTimeMs,
+            rawResponse: process.env.NODE_ENV === 'development' ? aiResult.rawResponse : undefined
+        });
+    } catch (error: unknown) {
+        console.error('テキスト解析API エラー:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
         return NextResponse.json(
-            createErrorResponse(genericError),
+            { error: 'テキスト解析中にエラーが発生しました: ' + errorMessage },
             { status: 500 }
         );
-    }
-});
-
-/**
- * エラーコードに応じたHTTPステータスコードを返す
- */
-function getStatusCodeForError(errorCode: ErrorCode): number {
-    switch (errorCode) {
-        case ErrorCode.VALIDATION_ERROR:
-            return 400; // Bad Request
-        case ErrorCode.AUTHENTICATION_ERROR:
-            return 401; // Unauthorized
-        case ErrorCode.AUTHORIZATION_ERROR:
-            return 403; // Forbidden
-        case ErrorCode.RESOURCE_NOT_FOUND:
-            return 404; // Not Found
-        case ErrorCode.RATE_LIMIT:
-        case ErrorCode.RATE_LIMIT_EXCEEDED:
-            return 429; // Too Many Requests
-        case ErrorCode.CONTENT_FILTER:
-            return 422; // Unprocessable Entity
-        default:
-            return 500; // Internal Server Error
     }
 }

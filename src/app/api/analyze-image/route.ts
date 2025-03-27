@@ -1,95 +1,62 @@
 //src\app\api\analyze-image\route.ts
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { AIService } from "@/lib/ai/ai-service";
-import { AIError, ErrorCode, createErrorResponse } from "@/lib/errors/ai-error";
-import { withErrorHandling } from "@/lib/errors/error-utils";
+import { NextRequest, NextResponse } from 'next/server';
+import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
+import { FoodInputParser } from '@/lib/food/food-input-parser';
+import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
+import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 
-// リクエスト用のZodスキーマ
-const RequestSchema = z.object({
-    imageBase64: z.string(),
-    mimeType: z.string().optional().default('image/jpeg')
-});
-
-// 画像解析のAPIエンドポイント
-export const POST = withErrorHandling(async (request: Request) => {
-    console.log('画像解析リクエスト受信');
-    const body = await request.json();
-
-    // リクエストデータの検証
-    const { imageBase64, mimeType } = RequestSchema.parse(body);
-
-    // 画像データがない場合はエラー
-    if (!imageBase64) {
-        throw new AIError(
-            '画像データが必要です',
-            ErrorCode.VALIDATION_ERROR,
-            null,
-            ['画像データを提供してください', 'テキスト入力で食品を記録することもできます']
-        );
-    }
-
+export async function POST(request: NextRequest) {
     try {
-        // AIサービスのインスタンスを取得
-        const aiService = AIService.getInstance();
+        // フォームデータからファイルを取得
+        const formData = await request.formData();
+        const file = formData.get('image') as File;
 
-        // 食事タイプは「その他」として解析
-        const result = await aiService.analyzeMeal(imageBase64, 'その他');
-
-        console.log('画像解析API: 解析成功', JSON.stringify(result).substring(0, 100) + '...');
-
-        // 結果を返却
-        return NextResponse.json({
-            success: true,
-            data: result
-        });
-    } catch (error) {
-        console.error('画像解析APIエラー:', error);
-
-        // AIErrorの場合は詳細なエラー情報を返す
-        if (error instanceof AIError) {
+        if (!file) {
             return NextResponse.json(
-                createErrorResponse(error),
-                { status: getStatusCodeForError(error.code) }
+                { error: '画像ファイルが提供されていません' },
+                { status: 400 }
             );
         }
 
-        // その他のエラーは汎用エラーに変換
-        const genericError = new AIError(
-            '画像の解析中にエラーが発生しました',
-            ErrorCode.INTERNAL_ERROR,
-            error,
-            ['別の画像をお試しください', 'テキスト入力で食品を記録することもできます']
+        // ファイルをバッファに変換
+        const buffer = Buffer.from(await file.arrayBuffer());
+
+        // AIサービスの取得と画像解析
+        const aiService = AIServiceFactory.getService();
+        const aiResult = await aiService.analyzeMealImage(buffer);
+
+        if (aiResult.error) {
+            return NextResponse.json(
+                { error: aiResult.error },
+                { status: 500 }
+            );
+        }
+
+        // 食品入力解析結果から名前と量のペアを生成
+        const nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(
+            aiResult.parseResult.foods
         );
 
+        // 栄養計算サービスの取得と栄養計算
+        const foodRepository = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
+        const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepository);
+        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(
+            nameQuantityPairs
+        );
+
+        // レスポンスの作成
+        return NextResponse.json({
+            foods: aiResult.parseResult.foods,
+            nutrition: nutritionResult,
+            processingTimeMs: aiResult.processingTimeMs,
+            rawResponse: process.env.NODE_ENV === 'development' ? aiResult.rawResponse : undefined
+        });
+    } catch (error: unknown) {
+        console.error('画像解析API エラー:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
         return NextResponse.json(
-            createErrorResponse(genericError),
+            { error: '画像解析中にエラーが発生しました: ' + errorMessage },
             { status: 500 }
         );
-    }
-});
-
-/**
- * エラーコードに応じたHTTPステータスコードを返す
- */
-function getStatusCodeForError(errorCode: ErrorCode): number {
-    switch (errorCode) {
-        case ErrorCode.VALIDATION_ERROR:
-            return 400; // Bad Request
-        case ErrorCode.AUTHENTICATION_ERROR:
-            return 401; // Unauthorized
-        case ErrorCode.AUTHORIZATION_ERROR:
-            return 403; // Forbidden
-        case ErrorCode.RESOURCE_NOT_FOUND:
-            return 404; // Not Found
-        case ErrorCode.RATE_LIMIT:
-        case ErrorCode.RATE_LIMIT_EXCEEDED:
-            return 429; // Too Many Requests
-        case ErrorCode.CONTENT_FILTER:
-            return 422; // Unprocessable Entity
-        case ErrorCode.INVALID_IMAGE:
-            return 415; // Unsupported Media Type
-        default:
-            return 500; // Internal Server Error
     }
 } 

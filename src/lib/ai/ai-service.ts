@@ -7,6 +7,7 @@ import { NutritionDatabase, NutritionDatabaseLLMAPI } from '@/lib/nutrition/data
 import { SupabaseFoodDatabase } from '@/lib/nutrition/supabase-db';
 import { FoodItem, NutritionData, DatabaseFoodItem } from '@/types/nutrition';
 import { FoodAnalysisError, ErrorCode as FoodErrorCode } from '@/lib/errors/food-analysis-error';
+import { AIParseResult } from './ai-response-parser';
 
 // 食品分析結果の型とスキーマ
 export interface FoodAnalysisResult {
@@ -102,6 +103,47 @@ export interface NutritionAdviceResult {
 export interface FoodInput {
     name: string;
     quantity?: string;
+}
+
+/**
+ * AI処理結果
+ */
+export interface AIProcessResult {
+    /** 解析結果 */
+    parseResult: AIParseResult;
+    /** 生のAI応答 */
+    rawResponse: string;
+    /** 処理時間（ミリ秒） */
+    processingTimeMs: number;
+    /** エラーメッセージ */
+    error?: string;
+}
+
+/**
+ * 新しいAIサービスのインターフェース
+ * フェーズ5の再設計において使用される新しいインターフェース
+ */
+export interface AIServiceV2 {
+    /**
+     * 食事画像から食品を解析
+     * @param imageData 画像データ
+     * @returns 解析結果
+     */
+    analyzeMealImage(imageData: any): Promise<AIProcessResult>;
+
+    /**
+     * テキスト入力から食品を解析
+     * @param text テキスト入力
+     * @returns 解析結果
+     */
+    analyzeMealText(text: string): Promise<AIProcessResult>;
+
+    /**
+     * レシピテキストから食品を解析
+     * @param recipeText レシピテキスト
+     * @returns 解析結果
+     */
+    analyzeRecipeText(recipeText: string): Promise<AIProcessResult>;
 }
 
 /**

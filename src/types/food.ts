@@ -19,6 +19,7 @@ export interface FoodNutrition {
     folic_acid: number;   // 葉酸 (μg)
     calcium: number;      // カルシウム (mg)
     vitamin_d: number;    // ビタミンD (μg)
+    confidence?: number;  // 栄養データの信頼度
 }
 
 /**
@@ -39,8 +40,10 @@ export interface FoodQuantity {
  */
 export interface MealFoodItem {
     foodId: string;       // 食品ID
+    food: Food;           // 食品データ
     quantity: FoodQuantity; // 量
     confidence: number;   // 確信度スコア (0.0-1.0)
+    originalInput?: string; // 元の入力文字列
 }
 
 /**
@@ -48,8 +51,11 @@ export interface MealFoodItem {
  */
 export interface FoodMatchResult {
     food: Food;           // マッチした食品
+    matchedFood: Food;    // マッチした食品（互換性維持用）
     similarity: number;   // 類似度スコア (0.0-1.0)
+    confidence: number;   // 確信度スコア (0.0-1.0)
     originalInput: string; // 元の入力文字列
+    inputName: string;    // 入力された食品名
 }
 
 /**

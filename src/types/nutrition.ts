@@ -2,6 +2,8 @@
  * 基本的な栄養素データ（集計や保存に使用）
  */
 //src\types\nutrition.ts
+import { Food } from './food';
+
 export interface BasicNutritionData {
     calories: number;
     protein: number;
@@ -10,6 +12,41 @@ export interface BasicNutritionData {
     calcium: number;     // カルシウム (mg)
     vitamin_d: number;   // ビタミンD (μg)
     confidence_score?: number; // AI分析の信頼度
+}
+
+/**
+ * 新しい栄養素データ構造（リファクタリング後）
+ */
+export interface NutrientData {
+    energy: number;
+    protein: number;
+    fat: number;
+    carbohydrate: number;
+    dietaryFiber: number;
+    sugars: number;
+    salt: number;
+    minerals: {
+        sodium: number;
+        calcium: number;
+        iron: number;
+        potassium: number;
+        magnesium: number;
+        phosphorus: number;
+        zinc: number;
+    };
+    vitamins: {
+        vitaminA: number;
+        vitaminD: number;
+        vitaminE: number;
+        vitaminK: number;
+        vitaminB1: number;
+        vitaminB2: number;
+        vitaminB6: number;
+        vitaminB12: number;
+        vitaminC: number;
+        folicAcid: number;
+    };
+    [key: string]: any;
 }
 
 /**
@@ -370,4 +407,28 @@ export interface StandardizedMealData {
     nutrition_data: StandardizedMealNutrition; // 標準化された栄養データ
     image_url?: string;           // 食事画像のURL（任意）
     notes?: string;               // メモ（任意）
+}
+
+import { FoodQuantity } from './food';
+
+/**
+ * 新しい栄養計算結果インターフェース
+ */
+export interface NutritionCalculationResult {
+    // 基本栄養素データ
+    nutrients: NutrientData;
+
+    // 計算の信頼性情報
+    reliability: {
+        confidence: number;       // 全体の確信度 (0.0-1.0)
+        balanceScore: number;     // 栄養バランススコア (0-100)
+        completeness: number;     // データの完全性 (0.0-1.0)
+    };
+
+    // 食品ごとのマッチング詳細
+    matchResults: Array<{
+        inputName: string;         // 入力された食品名
+        matchedFood: Food;         // マッチした食品
+        confidence: number;        // 確信度
+    }>;
 }

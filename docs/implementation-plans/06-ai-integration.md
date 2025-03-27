@@ -1,4 +1,4 @@
-# フェーズ5: AI連携の改善
+# フェーズ5: AI連携の改善（Gemini API対応版）
 
 ## 1. AI応答解析の抽象化と強化
 
@@ -43,18 +43,18 @@ export interface AIResponseParser {
 }
 ```
 
-### 1.2 OpenAI応答パーサー
+### 1.2 Gemini応答パーサー
 
 ```typescript
-// src/lib/ai/openai-response-parser.ts を新規作成
+// src/lib/ai/gemini-response-parser.ts を新規作成
 
 import { AIResponseParser, AIParseResult } from './ai-response-parser';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 /**
- * OpenAI APIの応答を解析するパーサー
+ * Gemini APIの応答を解析するパーサー
  */
-export class OpenAIResponseParser implements AIResponseParser {
+export class GeminiResponseParser implements AIResponseParser {
   /**
    * AI応答テキストから食品リストを解析
    */
@@ -74,7 +74,7 @@ export class OpenAIResponseParser implements AIResponseParser {
       // JSONフォーマットの検出
       const jsonMatch = responseText.match(/```json([\s\S]*?)```|{[\s\S]*}/);
       if (!jsonMatch) {
-        console.error('OpenAIResponseParser: JSON形式の応答が見つかりませんでした', responseText);
+        console.error('GeminiResponseParser: JSON形式の応答が見つかりませんでした', responseText);
         return {
           ...defaultResult,
           debug: { rawResponse: responseText }
@@ -97,7 +97,7 @@ export class OpenAIResponseParser implements AIResponseParser {
       try {
         parsedData = JSON.parse(jsonText);
       } catch (e) {
-        console.error('OpenAIResponseParser: JSON解析エラー', e, jsonText);
+        console.error('GeminiResponseParser: JSON解析エラー', e, jsonText);
         return {
           ...defaultResult,
           error: 'JSON解析エラー: ' + e.message,
@@ -107,7 +107,7 @@ export class OpenAIResponseParser implements AIResponseParser {
       
       // 期待される形式の確認
       if (!parsedData.foods || !Array.isArray(parsedData.foods)) {
-        console.error('OpenAIResponseParser: 期待される形式ではありません', parsedData);
+        console.error('GeminiResponseParser: 期待される形式ではありません', parsedData);
         return {
           ...defaultResult,
           error: '応答フォーマットエラー: foods配列がありません',
@@ -141,7 +141,7 @@ export class OpenAIResponseParser implements AIResponseParser {
         debug: { parsedData }
       };
     } catch (error) {
-      console.error('OpenAIResponseParser: 予期しないエラー', error);
+      console.error('GeminiResponseParser: 予期しないエラー', error);
       return {
         foods: [],
         confidence: 0,
@@ -241,19 +241,19 @@ export interface AIService {
 }
 ```
 
-### 2.2 OpenAI APIサービス実装
+### 2.2 Gemini APIサービス実装
 
 ```typescript
-// src/lib/ai/openai-service.ts を新規作成
+// src/lib/ai/gemini-service.ts を新規作成
 
 import { AIService, AIProcessResult } from './ai-service';
-import { OpenAIResponseParser } from './openai-response-parser';
+import { GeminiResponseParser } from './gemini-response-parser';
 import { AIParseResult } from './ai-response-parser';
 
 /**
- * OpenAI API設定
+ * Gemini API設定
  */
-interface OpenAIServiceConfig {
+interface GeminiServiceConfig {
   /** API URL */
   apiUrl: string;
   /** APIキー */
@@ -261,34 +261,84 @@ interface OpenAIServiceConfig {
   /** モデル名 */
   model: string;
   /** 最大トークン */
-  maxTokens: number;
+  maxOutputTokens: number;
   /** 温度パラメータ */
   temperature: number;
 }
 
 /**
- * OpenAI APIを使用したAIサービス
+ * セーフティ設定オプション
  */
-export class OpenAIService implements AIService {
-  private config: OpenAIServiceConfig;
-  private parser: OpenAIResponseParser;
+enum HarmBlockThreshold {
+  BLOCK_NONE = 'BLOCK_NONE',
+  BLOCK_ONLY_HIGH = 'BLOCK_ONLY_HIGH',
+  BLOCK_MEDIUM_AND_ABOVE = 'BLOCK_MEDIUM_AND_ABOVE',
+  BLOCK_LOW_AND_ABOVE = 'BLOCK_LOW_AND_ABOVE',
+  HARM_BLOCK_THRESHOLD_UNSPECIFIED = 'HARM_BLOCK_THRESHOLD_UNSPECIFIED'
+}
+
+/**
+ * セーフティ設定カテゴリ
+ */
+enum HarmCategory {
+  HARM_CATEGORY_HATE_SPEECH = 'HARM_CATEGORY_HATE_SPEECH', 
+  HARM_CATEGORY_DANGEROUS_CONTENT = 'HARM_CATEGORY_DANGEROUS_CONTENT',
+  HARM_CATEGORY_SEXUALLY_EXPLICIT = 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  HARM_CATEGORY_HARASSMENT = 'HARM_CATEGORY_HARASSMENT'
+}
+
+/**
+ * セーフティ設定
+ */
+interface SafetySetting {
+  category: HarmCategory;
+  threshold: HarmBlockThreshold;
+}
+
+/**
+ * Gemini APIを使用したAIサービス
+ */
+export class GeminiService implements AIService {
+  private config: GeminiServiceConfig;
+  private parser: GeminiResponseParser;
+  private safetySettings: SafetySetting[];
   
   /**
    * コンストラクタ
    * @param config API設定
    */
-  constructor(config: Partial<OpenAIServiceConfig> = {}) {
+  constructor(config: Partial<GeminiServiceConfig> = {}) {
     // デフォルト設定
     this.config = {
-      apiUrl: 'https://api.openai.com/v1/chat/completions',
-      apiKey: process.env.OPENAI_API_KEY || '',
-      model: 'gpt-4-1106-preview',
-      maxTokens: 1000,
+      apiUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
+      apiKey: process.env.GEMINI_API_KEY || '',
+      model: 'gemini-2.0-flash-001',
+      maxOutputTokens: 2048,
       temperature: 0.3,
       ...config
     };
     
-    this.parser = new OpenAIResponseParser();
+    // セーフティ設定
+    this.safetySettings = [
+      {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
+      }
+    ];
+    
+    this.parser = new GeminiResponseParser();
   }
   
   /**
@@ -306,41 +356,44 @@ export class OpenAIService implements AIService {
         imageDescription: '食事の写真が提供されています。'
       });
       
+      // API呼び出しURL
+      const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+      
       // API呼び出し
-      const response = await fetch(this.config.apiUrl, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: this.config.model,
-          messages: [
+          contents: [
             {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
+              parts: [
+                { text: prompt },
                 {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:image/jpeg;base64,${base64Image}`
+                  inline_data: {
+                    mime_type: 'image/jpeg',
+                    data: base64Image
                   }
                 }
               ]
             }
           ],
-          max_tokens: this.config.maxTokens,
-          temperature: this.config.temperature
+          safety_settings: this.safetySettings,
+          generation_config: {
+            temperature: this.config.temperature,
+            max_output_tokens: this.config.maxOutputTokens
+          }
         })
       });
       
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`OpenAI API エラー: ${response.status} ${error}`);
+        throw new Error(`Gemini API エラー: ${response.status} ${error}`);
       }
       
       const data = await response.json();
-      const rawResponse = data.choices?.[0]?.message?.content || '';
+      const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
       // レスポンスの解析
       const parseResult = await this.parser.parseResponse(rawResponse);
@@ -354,7 +407,7 @@ export class OpenAIService implements AIService {
         processingTimeMs
       };
     } catch (error) {
-      console.error('OpenAIService: 画像解析エラー', error);
+      console.error('GeminiService: 画像解析エラー', error);
       return {
         parseResult: {
           foods: [],
@@ -378,33 +431,38 @@ export class OpenAIService implements AIService {
       // プロンプト生成
       const prompt = this.parser.generatePrompt({ text });
       
+      // API呼び出しURL
+      const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+      
       // API呼び出し
-      const response = await fetch(this.config.apiUrl, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: this.config.model,
-          messages: [
+          contents: [
             {
-              role: 'user',
-              content: prompt
+              parts: [
+                { text: prompt }
+              ]
             }
           ],
-          max_tokens: this.config.maxTokens,
-          temperature: this.config.temperature
+          safety_settings: this.safetySettings,
+          generation_config: {
+            temperature: this.config.temperature,
+            max_output_tokens: this.config.maxOutputTokens
+          }
         })
       });
       
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`OpenAI API エラー: ${response.status} ${error}`);
+        throw new Error(`Gemini API エラー: ${response.status} ${error}`);
       }
       
       const data = await response.json();
-      const rawResponse = data.choices?.[0]?.message?.content || '';
+      const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
       // レスポンスの解析
       const parseResult = await this.parser.parseResponse(rawResponse);
@@ -418,7 +476,7 @@ export class OpenAIService implements AIService {
         processingTimeMs
       };
     } catch (error) {
-      console.error('OpenAIService: テキスト解析エラー', error);
+      console.error('GeminiService: テキスト解析エラー', error);
       return {
         parseResult: {
           foods: [],
@@ -479,13 +537,13 @@ ${recipeText}
 // src/lib/ai/ai-service-factory.ts を新規作成
 
 import { AIService } from './ai-service';
-import { OpenAIService } from './openai-service';
+import { GeminiService } from './gemini-service';
 
 /**
  * AI種類
  */
 export enum AIServiceType {
-  OPENAI = 'openai',
+  GEMINI = 'gemini',
   MOCK = 'mock' // テスト用モック
 }
 
@@ -498,11 +556,11 @@ export class AIServiceFactory {
   /**
    * AIサービスのインスタンスを取得
    */
-  static getService(type: AIServiceType = AIServiceType.OPENAI): AIService {
+  static getService(type: AIServiceType = AIServiceType.GEMINI): AIService {
     if (!this.instances.has(type)) {
       switch (type) {
-        case AIServiceType.OPENAI:
-          this.instances.set(type, new OpenAIService());
+        case AIServiceType.GEMINI:
+          this.instances.set(type, new GeminiService());
           break;
         case AIServiceType.MOCK:
           // TODO: モックサービスの実装
@@ -518,10 +576,10 @@ export class AIServiceFactory {
   /**
    * インスタンスを強制的に再作成
    */
-  static recreateService(type: AIServiceType = AIServiceType.OPENAI, config?: any): AIService {
+  static recreateService(type: AIServiceType = AIServiceType.GEMINI, config?: any): AIService {
     switch (type) {
-      case AIServiceType.OPENAI:
-        this.instances.set(type, new OpenAIService(config));
+      case AIServiceType.GEMINI:
+        this.instances.set(type, new GeminiService(config));
         break;
       case AIServiceType.MOCK:
         // TODO: モックサービスの実装
@@ -690,12 +748,21 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-## 4. 実装手順
+## 4. 環境変数の設定
+
+```typescript
+// .env.local および .env.example に追加
+
+# Gemini API キー
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+## 5. 実装手順
 
 1. `src/lib/ai/ai-response-parser.ts` を作成し、AI応答パーサーインターフェースを定義
-2. `src/lib/ai/openai-response-parser.ts` を作成し、OpenAI応答パーサーを実装
+2. `src/lib/ai/gemini-response-parser.ts` を作成し、Gemini応答パーサーを実装
 3. `src/lib/ai/ai-service.ts` を修正し、AIサービスインターフェースを定義
-4. `src/lib/ai/openai-service.ts` を作成し、OpenAI APIサービスを実装
+4. `src/lib/ai/gemini-service.ts` を作成し、Gemini APIサービスを実装
 5. `src/lib/ai/ai-service-factory.ts` を作成し、AIサービスファクトリを実装
 6. `src/app/api/analyze-image/route.ts` を修正し、画像解析APIを更新
 7. `src/app/api/analyze-text-input/route.ts` を修正し、テキスト解析APIを更新
