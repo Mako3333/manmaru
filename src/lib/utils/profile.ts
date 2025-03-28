@@ -1,5 +1,4 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import type { Database } from '@/lib/supabase/types'
 
 export interface Profile {
     id: string;
@@ -19,9 +18,16 @@ export interface Profile {
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {
-    const supabase = createClientComponentClient<Database>()
+    const supabase = createClientComponentClient()
 
     try {
+        console.log('プロフィール取得開始: userId =', userId)
+
+        if (!userId) {
+            console.error('プロフィール取得エラー: userIdが空です')
+            return null
+        }
+
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
@@ -31,22 +37,32 @@ export async function getProfile(userId: string): Promise<Profile | null> {
         if (error) {
             if (error.code === 'PGRST116') {
                 // データが見つからない場合は null を返す
+                console.log('プロフィールが存在しません: userId =', userId)
                 return null
             }
+            console.error('プロフィール取得エラー:', error)
             throw error
         }
 
-        return data
+        console.log('プロフィール取得成功: userId =', userId)
+        return data as Profile
     } catch (error) {
-        console.error('Profile fetch error:', error)
+        console.error('プロフィール取得例外:', error)
         return null
     }
 }
 
 export async function createProfile(userId: string, profileData: Partial<Profile>) {
-    const supabase = createClientComponentClient<Database>()
+    const supabase = createClientComponentClient()
 
     try {
+        console.log('プロフィール作成開始: userId =', userId)
+
+        if (!userId) {
+            console.error('プロフィール作成エラー: userIdが空です')
+            throw new Error('ユーザーIDが必要です')
+        }
+
         const { data, error } = await supabase
             .from('profiles')
             .insert([
@@ -58,10 +74,15 @@ export async function createProfile(userId: string, profileData: Partial<Profile
             .select()
             .single()
 
-        if (error) throw error
-        return data
+        if (error) {
+            console.error('プロフィール作成エラー:', error)
+            throw error
+        }
+
+        console.log('プロフィール作成成功: userId =', userId)
+        return data as Profile
     } catch (error) {
-        console.error('Profile creation error:', error)
+        console.error('プロフィール作成例外:', error)
         throw error
     }
 }

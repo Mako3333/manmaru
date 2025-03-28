@@ -17,7 +17,6 @@ const PUBLIC_PATHS = [
     '/auth/login',
     '/auth/register',
     '/auth/callback',
-    '/',
     '/terms',
     '/api/health', // ヘルスチェック用API
 ]
@@ -29,6 +28,24 @@ export async function middleware(req: NextRequest) {
     try {
         const res = NextResponse.next()
         const pathname = req.nextUrl.pathname
+
+        // ルートパスの特別処理: ログイン状態をチェックして/homeにリダイレクト
+        if (pathname === '/') {
+            const cookieStore = cookies();
+            const supabase = createServerComponentClient({
+                cookies: () => cookieStore
+            });
+            const { data: { session } } = await supabase.auth.getSession()
+
+            // ログイン済みの場合はホームページにリダイレクト
+            if (session) {
+                console.log('ルートパスでログイン状態を検出: /homeにリダイレクト')
+                return NextResponse.redirect(new URL('/home', req.url))
+            }
+
+            // 未ログインの場合はそのままランディングページを表示
+            return res
+        }
 
         // 公開パスはチェックをスキップ
         for (const path of PUBLIC_PATHS) {
@@ -59,7 +76,10 @@ export async function middleware(req: NextRequest) {
         }
 
         // セッションの存在確認
-        const supabase = createServerComponentClient({ cookies })
+        const cookieStore = cookies();
+        const supabase = createServerComponentClient({
+            cookies: () => cookieStore
+        });
         const {
             data: { session },
         } = await supabase.auth.getSession()

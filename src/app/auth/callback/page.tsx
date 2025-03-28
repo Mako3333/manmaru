@@ -12,29 +12,37 @@ export default function AuthCallbackPage() {
     useEffect(() => {
         const handleCallback = async () => {
             try {
+                console.log('認証コールバック処理を開始します')
                 const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
-                if (sessionError) throw sessionError
+                if (sessionError) {
+                    console.error('セッション取得エラー:', sessionError)
+                    throw sessionError
+                }
 
                 if (!session) {
-                    router.push('/auth/login')
+                    console.log('セッションが存在しません、ログインページにリダイレクトします')
+                    router.replace('/auth/login')
                     return
                 }
 
+                console.log('セッション取得成功:', session.user.id)
                 // プロフィールの確認
                 const profile = await getProfile(session.user.id)
 
                 if (!profile) {
                     // 新規ユーザーの場合はプロフィール登録ページへ
-                    router.push('/profile')
+                    console.log('プロフィールが存在しません、プロフィール登録ページにリダイレクトします')
+                    router.replace('/profile')
                 } else {
                     // 既存ユーザーの場合はホームページへ
-                    router.push('/home')
+                    console.log('プロフィールが存在します、ホームページにリダイレクトします')
+                    router.replace('/home')
                 }
             } catch (error) {
-                console.error('Error in auth callback:', error)
+                console.error('認証コールバック処理中にエラーが発生しました:', error)
                 // エラーが発生した場合はログインページへ
-                router.push('/auth/login')
+                router.replace('/auth/login?error=callback_error')
             }
         }
 
@@ -42,17 +50,22 @@ export default function AuthCallbackPage() {
         const hasError = window.location.search.includes('error')
         const hasCode = window.location.search.includes('code')
 
+        console.log('URL確認: hasError=', hasError, 'hasCode=', hasCode)
+
         if (hasError) {
             // エラーパラメータがある場合はログインページへ
-            router.push('/auth/login')
+            console.log('エラーパラメータが存在します、ログインページにリダイレクトします')
+            router.replace('/auth/login?error=auth_error')
         } else if (hasCode) {
             // 認証コードがある場合はコールバック処理を実行
+            console.log('認証コードが存在します、コールバック処理を実行します')
             handleCallback()
         } else {
             // パラメータがない場合もログインページへ
-            router.push('/auth/login')
+            console.log('有効なパラメータが存在しません、ログインページにリダイレクトします')
+            router.replace('/auth/login')
         }
-    }, [])
+    }, [router])
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">

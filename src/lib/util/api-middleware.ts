@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { AppError, ErrorCode, ApiError } from '../errors/app-errors';
+
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 /**
  * レスポンス形式の統一
@@ -39,30 +40,32 @@ export function withAuthAndErrorHandling<T>(
     handler: ApiHandler<T>,
     requireAuth: boolean = true
 ) {
-    return async (
-        req: NextRequest,
-        context: { params: any }
-    ): Promise<NextResponse> => {
+    return async (req: NextRequest, context: { params: any }) => {
         const startTime = Date.now();
 
         try {
-            // セッションの取得
-            const session = await getServerSession(authOptions);
+            // セッション変数を条件文の前で初期化
+            let session = null;
 
-            // 認証チェック
-            if (requireAuth && !session) {
-                throw new ApiError(
-                    '認証が必要です',
-                    ErrorCode.AUTH_REQUIRED,
-                    'この操作を行うにはログインが必要です',
-                    401,
-                    { path: req.nextUrl.pathname },
-                    'warning',
-                    ['ログインしてから再度お試しください']
-                );
+            if (requireAuth) {
+                const cookieStore = cookies();
+                const supabase = createServerComponentClient({
+                    cookies: () => cookieStore
+                });
+                const { data } = await supabase.auth.getSession();
+                session = data.session;
+
+                if (!session) {
+                    throw new ApiError(
+                        '認証が必要です',
+                        ErrorCode.AUTH_REQUIRED,
+                        'このAPIを使用するにはログインが必要です',
+                        401
+                    );
+                }
             }
 
-            // ハンドラーの実行
+            // 常にsessionを渡せるようになる
             const result = await handler(req, context, session);
 
             // 処理時間の追加（ある場合のみ）

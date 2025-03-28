@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { MealTypeSelector, type MealType } from '@/components/meals/meal-type-selector'
 import { MealPhotoInput } from '@/components/meals/meal-photo-input'
 import { RecognitionEditor } from '@/components/meals/recognition-editor'
-import { analyzeMealPhoto } from '@/lib/api'
+import { analyzeMealPhoto, analyzeTextInput } from '@/lib/api'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, Camera, Type, Plus, Trash2 } from 'lucide-react'
@@ -167,24 +167,8 @@ export default function MealLogPage() {
 
             console.log('mealType:', mealType);
 
-            // API呼び出し
-            const response = await fetch('/api/analyze-meal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    image: base64Image,
-                    mealType
-                }),
-            });
-
-            // レスポンスチェック
-            const result = await checkApiResponse<{
-                success: boolean;
-                data: {
-                    foods: RecognitionFoodItem[];
-                    nutrition: NutritionData;
-                }
-            }>(response, '食事画像の解析に失敗しました');
+            // 新APIを使用
+            const result = await analyzeMealPhoto(base64Image, mealType);
 
             console.log('API応答:', result);
 
@@ -382,26 +366,16 @@ export default function MealLogPage() {
                 description: "AIが入力内容を解析しています"
             });
 
-            // APIリクエスト
-            const response = await fetch('/api/analyze-text-input', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ foods }),
-            });
+            // 食品名を結合してテキスト入力として解析
+            const foodText = foods.map(food => `${food.name} ${food.quantity}`).join('、');
+
+            // 新APIを使用
+            const result = await analyzeTextInput(foodText);
 
             // ローディング通知を閉じる
             toast.dismiss("enhance-foods");
 
-            // エラーハンドリング
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || '食品解析に失敗しました');
-            }
-
-            // 結果の取得
-            const result = await response.json();
-
-            if (!result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
+            if (!result.success || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
                 console.error('APIレスポンス:', result);
                 throw new Error('不正な応答フォーマット');
             }
@@ -409,7 +383,7 @@ export default function MealLogPage() {
             // 型安全なマッピング
             const enhancedFoodsWithIds: FoodItem[] = [];
             result.data.foods.forEach((item: RecognitionFoodItem, index: number) => {
-                const originalItem = foods[index];
+                const originalItem = foods[index < foods.length ? index : foods.length - 1];
                 if (originalItem) {
                     enhancedFoodsWithIds.push({
                         id: originalItem.id,
@@ -468,24 +442,98 @@ export default function MealLogPage() {
                 return;
             }
 
-            // 保存用のデータ準備
-            // 型安全に変換
+            // 保存用のデータ準備（型安全に変換）
             const foodsData = enhancedFoods.map(({ id, ...rest }) => rest);
 
-            // 栄養計算APIを呼び出す
-            const nutritionResponse = await fetch('/api/calculate-nutrition', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ foods: foodsData }),
-            });
+            // 食品テキストを生成して新APIで栄養計算
+            const foodText = enhancedFoods.map(food => `${food.name} ${food.quantity}`).join('、');
+            const nutritionResult = await analyzeTextInput(foodText);
 
-            if (!nutritionResponse.ok) {
+            if (!nutritionResult.success || !nutritionResult.data || !nutritionResult.data.nutrition) {
                 throw new Error('栄養計算に失敗しました');
             }
 
-            const nutritionResult = await nutritionResponse.json();
             // 型安全に栄養データを取得
-            const nutrition: NutritionData = nutritionResult.nutrition || initialNutrition;
+            const nutrition: NutritionData = nutritionResult.data.nutrition || initialNutrition;
+
+            // 標準化された食事データの準備
+            const standardizedMealData: StandardizedMealData = {
+                user_id: session.user.id,
+                meal_date: selectedDate.toISOString().split('T')[0],
+                meal_type: mealType as any,
+                meal_items: enhancedFoods.map((food) => ({
+                    name: food.name,
+                    amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
+                    unit: food.quantity?.split(' ')[1] || '個',
+                    image_url: undefined
+                })),
+                // 簡易的な変換を行う（本来は詳細な変換が必要）
+                nutrition_data: {
+                    totalCalories: nutrition.calories,
+                    totalNutrients: [
+                        {
+                            name: 'たんぱく質',
+                            value: nutrition.protein,
+                            unit: 'g'
+                        },
+                        {
+                            name: '鉄分',
+                            value: nutrition.iron,
+                            unit: 'mg'
+                        },
+                        {
+                            name: '葉酸',
+                            value: nutrition.folic_acid,
+                            unit: 'mcg'
+                        },
+                        {
+                            name: 'カルシウム',
+                            value: nutrition.calcium,
+                            unit: 'mg'
+                        },
+                        {
+                            name: 'ビタミンD',
+                            value: nutrition.vitamin_d || 0,
+                            unit: 'mcg'
+                        }
+                    ],
+                    // 食品データは簡易的な構造で代用
+                    foodItems: enhancedFoods.map(food => ({
+                        id: food.id,
+                        name: food.name,
+                        nutrition: {
+                            calories: nutrition.calories / enhancedFoods.length,
+                            nutrients: [],
+                            servingSize: {
+                                value: 1,
+                                unit: '人前'
+                            }
+                        },
+                        amount: 1,
+                        unit: '人前'
+                    })),
+                    pregnancySpecific: {
+                        folatePercentage: 0,  // 詳細データがないため0を設定
+                        ironPercentage: 0,
+                        calciumPercentage: 0
+                    }
+                },
+                image_url: undefined
+            };
+
+            // データの検証
+            const validation = validateMealData(standardizedMealData);
+            if (!validation.isValid) {
+                throw new DataProcessingError(
+                    `食事データの検証エラー: ${validation.errors.join(', ')}`,
+                    '食事データ',
+                    undefined,
+                    { details: validation.errors }
+                );
+            }
+
+            // APIリクエスト用にデータを変換
+            const mealData = prepareForApiRequest(standardizedMealData);
 
             // APIを使用してデータを保存
             const response = await fetch('/api/meals', {
@@ -493,39 +541,11 @@ export default function MealLogPage() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    meal_type: mealType,
-                    meal_date: selectedDate.toISOString().split('T')[0],
-                    food_description: {
-                        items: foodsData
-                    },
-                    // データベース構造に合わせて栄養データをフォーマット
-                    nutrition_data: {
-                        ...nutrition,
-                        // NutritionData型に必要な追加フィールド
-                        overall_score: 0,
-                        deficient_nutrients: [],
-                        sufficient_nutrients: [],
-                        daily_records: []
-                    },
-                    // meal_nutrientsテーブル用のデータも含める
-                    nutrition: {
-                        calories: nutrition.calories,
-                        protein: nutrition.protein,
-                        iron: nutrition.iron,
-                        folic_acid: nutrition.folic_acid,
-                        calcium: nutrition.calcium,
-                        vitamin_d: nutrition.vitamin_d || 0,
-                        confidence_score: nutrition.confidence_score || 1.0
-                    },
-                    servings: 1
-                }),
+                body: JSON.stringify(mealData),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || '食事の保存に失敗しました');
-            }
+            // レスポンスのエラーチェック
+            await checkApiResponse(response, '食事データの保存に失敗しました');
 
             // 成功通知
             toast.success("保存完了", {

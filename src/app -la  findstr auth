@@ -1,0 +1,176 @@
+[1mdiff --git a/src/lib/util/api-middleware.ts b/src/lib/util/api-middleware.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..43ac788[m
+[1m--- /dev/null[m
+[1m+++ b/src/lib/util/api-middleware.ts[m
+[36m@@ -0,0 +1,169 @@[m
+[32m+[m[32mimport { NextRequest, NextResponse } from 'next/server';[m[41m[m
+[32m+[m[32mimport { getServerSession } from 'next-auth/next';[m[41m[m
+[32m+[m[32mimport { authOptions } from '@/app/api/auth/[...nextauth]/route';[m[41m[m
+[32m+[m[32mimport { AppError, ErrorCode, ApiError } from '../errors/app-errors';[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m/**[m[41m[m
+[32m+[m[32m * レスポンス形式の統一[m[41m[m
+[32m+[m[32m */[m[41m[m
+[32m+[m[32mexport interface ApiResponse<T> {[m[41m[m
+[32m+[m[32m    success: boolean;[m[41m[m
+[32m+[m[32m    data?: T;[m[41m[m
+[32m+[m[32m    error?: {[m[41m[m
+[32m+[m[32m        code: string;[m[41m[m
+[32m+[m[32m        message: string;[m[41m[m
+[32m+[m[32m        details?: any;[m[41m[m
+[32m+[m[32m        suggestions?: string[];[m[41m[m
+[32m+[m[32m    };[m[41m[m
+[32m+[m[32m    meta?: {[m[41m[m
+[32m+[m[32m        processingTimeMs?: number;[m[41m[m
+[32m+[m[32m        warning?: string;[m[41m[m
+[32m+[m[32m    };[m[41m[m
+[32m+[m[32m}[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m/**[m[41m[m
+[32m+[m[32m * ハンドラー関数の型[m[41m[m
+[32m+[m[32m */[m[41m[m
+[32m+[m[32mexport type ApiHandler<T = any> = ([m[41m[m
+[32m+[m[32m    req: NextRequest,[m[41m[m
+[32m+[m[32m    context: { params: any },[m[41m[m
+[32m+[m[32m    session: any[m[41m[m
+[32m+[m[32m) => Promise<ApiResponse<T>>;[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m/**[m[41m[m
+[32m+[m[32m * 認証とエラーハンドリングを含むAPIミドルウェア[m[41m[m
+[32m+[m[32m * @param handler APIハンドラー関数[m[41m[m
+[32m+[m[32m * @param requireAuth 認証が必要かどうか[m[41m[m
+[32m+[m[32m */[m[41m[m
+[32m+[m[32mexport function withAuthAndErrorHandling<T>([m[41m[m
+[32m+[m[32m    handler: ApiHandler<T>,[m[41m[m
+[32m+[m[32m    requireAuth: boolean = true[m[41m[m
+[32m+[m[32m) {[m[41m[m
+[32m+[m[32m    return async ([m[41m[m
+[32m+[m[32m        req: NextRequest,[m[41m[m
+[32m+[m[32m        context: { params: any }[m[41m[m
+[32m+[m[32m    ): Promise<NextResponse> => {[m[41m[m
+[32m+[m[32m        const startTime = Date.now();[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m        try {[m[41m[m
+[32m+[m[32m            // セッションの取得[m[41m[m
+[32m+[m[32m            const session = await getServerSession(authOptions);[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m            // 認証チェック[m[41m[m
+[32m+[m[32m            if (requireAuth && !session) {[m[41m[m
+[32m+[m[32m                throw new ApiError([m[41m[m
+[32m+[m[32m                    '認証が必要です',[m[41m[m
+[32m+[m[32m                    ErrorCode.AUTH_REQUIRED,[m[41m[m
+[32m+[m[32m                    'この操作を行うにはログインが必要です',[m[41m[m
+[32m+[m[32m                    401,[m[41m[m
+[32m+[m[32m                    { path: req.nextUrl.pathname },[m[41m[m
+[32m+[m[32m                    'warning',[m[41m[m
+[32m+[m[32m                    ['ログインしてから再度お試しください'][m[41m[m
+[32m+[m[32m                );[m[41m[m
+[32m+[m[32m            }[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m            // ハンドラーの実行[m[41m[m
+[32m+[m[32m            const result = await handler(req, context, session);[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m            // 処理時間の追加（ある場合のみ）[m[41m[m
+[32m+[m[32m            if (!result.meta) {[m[41m[m
+[32m+[m[32m                result.meta = {};[m[41m[m
+[32m+[m[32m            }[m[41m[m
+[32m+[m[32m            result.meta.processingTimeMs = Date.now() - startTime;[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m            // 成功レスポンスの返却[m[41m[m
+[32m+[m[32m            return NextResponse.json(result, { status: 200 });[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m        } catch (error) {[m[41m[m
+[32m+[m[32m            // エラー処理[m[41m[m
+[32m+[m[32m            const processingTimeMs = Date.now() - startTime;[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m            if (error instanceof ApiError) {[m[41m[m
+[32m+[m[32m                // APIエラーの場合はそのまま返却[m[41m[m
+[32m+[m[32m                return NextResponse.json([m[41m[m
+[32m+[m[32m                    {[m[41m[m
+[32m+[m[32m                        success: false,[m[41m[m
+[32m+[m[32m                        error: {[m[41m[m
+[32m+[m[32m                            code: error.code,[m[41m[m
+[32m+[m[32m                            message: error.userMessage,[m[41m[m
+[32m+[m[32m                            details: error.details,[m[41m[m
+[32m+[m[32m                            suggestions: error.suggestions[m[41m[m
+[32m+[m[32m                        },[m[41m[m
+[32m+[m[32m                        meta: { processingTimeMs }[m[41m[m
+[32m+[m[32m                    },[m[41m[m
+[32m+[m[32m                    { status: error.statusCode }[m[41m[m
+[32m+[m[32m                );[m[41m[m
+[32m+[m[32m            } else if (error instanceof AppError) {[m[41m[m
+[32m+[m[32m                // 一般アプリエラーの場合はApiErrorに変換[m[41m[m
+[32m+[m[32m                const apiError = new ApiError([m[41m[m
+[32m+[m[32m                    error.message,[m[41m[m
+[32m+[m[32m                    error.code,[m[41m[m
+[32m+[m[32m                    error.userMessage,[m[41m[m
+[32m+[m[32m                    error.code === ErrorCode.AUTH_REQUIRED ? 401 :[m[41m[m
+[32m+[m[32m                        error.code === ErrorCode.DATA_VALIDATION_ERROR ? 400 : 500,[m[41m[m
+[32m+[m[32m                    error.details,[m[41m[m
+[32m+[m[32m                    error.severity,[m[41m[m
+[32m+[m[32m                    error.suggestions,[m[41m[m
+[32m+[m[32m                    error.originalError[m[41m[m
+[32m+[m[32m                );[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m                return NextResponse.json([m[41m[m
+[32m+[m[32m                    {[m[41m[m
+[32m+[m[32m                        success: false,[m[41m[m
+[32m+[m[32m                        error: {[m[41m[m
+[32m+[m[32m                            code: apiError.code,[m[41m[m
+[32m+[m[32m                            message: apiError.userMessage,[m[41m[m
+[32m+[m[32m                            details: apiError.details,[m[41m[m
+[32m+[m[32m                            suggestions: apiError.suggestions[m[41m[m
+[32m+[m[32m                        },[m[41m[m
+[32m+[m[32m                        meta: { processingTimeMs }[m[41m[m
+[32m+[m[32m                    },[m[41m[m
+[32m+[m[32m                    { status: apiError.statusCode }[m[41m[m
+[32m+[m[32m                );[m[41m[m
+[32m+[m[32m            } else {[m[41m[m
+[32m+[m[32m                // 未知のエラーの場合[m[41m[m
+[32m+[m[32m                console.error('Unhandled API error:', error);[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m                const message = error instanceof Error ? error.message : '不明なエラーが発生しました';[m[41m[m
+[32m+[m[32m                return NextResponse.json([m[41m[m
+[32m+[m[32m                    {[m[41m[m
+[32m+[m[32m                        success: false,[m[41m[m
+[32m+[m[32m                        error: {[m[41m[m
+[32m+[m[32m                            code: ErrorCode.UNKNOWN_ERROR,[m[41m[m
+[32m+[m[32m                            message: 'エラーが発生しました。しばらく経ってから再度お試しください。',[m[41m[m
+[32m+[m[32m                            details: process.env.NODE_ENV === 'development' ? { message } : undefined[m[41m[m
+[32m+[m[32m                        },[m[41m[m
+[32m+[m[32m                        meta: { processingTimeMs }[m[41m[m
+[32m+[m[32m                    },[m[41m[m
+[32m+[m[32m                    { status: 500 }[m[41m[m
+[32m+[m[32m                );[m[41m[m
+[32m+[m[32m            }[m[41m[m
+[32m+[m[32m        }[m[41m[m
+[32m+[m[32m    };[m[41m[m
+[32m+[m[32m}[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m/**[m[41m[m
+[32m+[m[32m * 標準的な成功レスポンスを作成[m[41m[m
+[32m+[m[32m */[m[41m[m
+[32m+[m[32mexport function createSuccessResponse<T>(data: T, warning?: string): ApiResponse<T> {[m[41m[m
+[32m+[m[32m    return {[m[41m[m
+[32m+[m[32m        success: true,[m[41m[m
+[32m+[m[32m        data,[m[41m[m
+[32m+[m[32m        meta: warning ? { warning } : undefined[m[41m[m
+[32m+[m[32m    };[m[41m[m
+[32m+[m[32m}[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m/**[m[41m[m
+[32m+[m[32m * 標準的なエラーレスポンスを作成[m[41m[m
+[32m+[m[32m */[m[41m[m
+[32m+[m[32mexport function createErrorResponse(error: AppError): ApiResponse<never> {[m[41m[m
+[32m+[m[32m    return {[m[41m[m
+[32m+[m[32m        success: false,[m[41m[m
+[32m+[m[32m        error: {[m[41m[m
+[32m+[m[32m            code: error.code,[m[41m[m
+[32m+[m[32m            message: error.userMessage,[m[41m[m
+[32m+[m[32m            details: error.details,[m[41m[m
+[32m+[m[32m            suggestions: error.suggestions[m[41m[m
+[32m+[m[32m        }[m[41m[m
+[32m+[m[32m    };[m[41m[m
+[32m+[m[32m}[m[41m [m
+\ No newline at end of file[m
