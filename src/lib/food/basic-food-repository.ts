@@ -11,6 +11,7 @@ export class BasicFoodRepository implements FoodRepository {
     private foodsByName: Map<string, Food> = new Map(); // 正規化名をキーにした食品マップ
     private aliasMap: Map<string, string> = new Map(); // エイリアス→食品IDのマップ
     private cacheLoaded = false;
+    private isInitialized = false;
 
     private constructor() { }
 
@@ -28,39 +29,96 @@ export class BasicFoodRepository implements FoodRepository {
      * キャッシュ読み込み確認
      */
     private async ensureCacheLoaded(): Promise<void> {
-        if (this.cacheLoaded) return;
+        if (this.isInitialized) return;
 
         try {
-            // 基本食品リストJSONの読み込み
-            const response = await fetch('/data/food_nutrition_database.json');
-            const data = await response.json();
+            // 環境に応じたデータ読み込み方法
+            let url: string;
+            if (typeof window === 'undefined') {
+                // サーバーサイド: Node.jsのfsモジュールを使用
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(process.cwd(), 'public/data/food_nutrition_database.json');
+                const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-            // 食品データのキャッシュ構築
-            for (const [key, food] of Object.entries(data.foods)) {
-                const foodItem = food as Food;
-
-                // IDによるマップ
-                this.foods.set(foodItem.id, foodItem);
-
-                // 正規化名によるマップ
-                const normalizedName = normalizeText(foodItem.name);
-                this.foodsByName.set(normalizedName, foodItem);
-
-                // エイリアスマップの構築
-                if (foodItem.aliases && foodItem.aliases.length > 0) {
-                    for (const alias of foodItem.aliases) {
-                        const normalizedAlias = normalizeText(alias);
-                        this.aliasMap.set(normalizedAlias, foodItem.id);
-                    }
-                }
+                // データを直接ロード
+                this.initializeCache(data);
+                this.isInitialized = true;
+                return;
+            } else {
+                // ブラウザサイド: fetch APIを使用
+                url = '/data/food_nutrition_database.json';
+                const response = await fetch(url);
+                const data = await response.json();
+                this.initializeCache(data);
             }
 
-            this.cacheLoaded = true;
-            console.log(`BasicFoodRepository: キャッシュ読み込み完了 (${this.foods.size}件の食品)`);
+            this.isInitialized = true;
         } catch (error) {
             console.error('BasicFoodRepository: キャッシュ読み込みエラー', error);
             throw error;
         }
+    }
+
+    private initializeCache(data: any): void {
+        // データの構造を確認
+        console.log(`BasicFoodRepository: データ構造: ${Object.keys(data).join(', ')}`);
+
+        // 食品データの位置確認
+        let foodsData: any = {};
+
+        if (data.foods && typeof data.foods === 'object') {
+            // 正常なケース：data.foodsにオブジェクトがある
+            foodsData = data.foods;
+            console.log(`BasicFoodRepository: 通常構造のデータ（data.foods）が見つかりました`);
+        } else {
+            // 異常なケース：data自体が食品リストの可能性
+            const foodKeys = Object.keys(data).filter(key =>
+                key !== 'foods' && typeof data[key] === 'object' && data[key].name && data[key].id);
+
+            if (foodKeys.length > 0) {
+                console.log(`BasicFoodRepository: 異常構造のデータが見つかりました。トップレベルに${foodKeys.length}件の食品データがあります`);
+                // foodsキー以外のオブジェクトをfoodsDataに集約
+                for (const key of foodKeys) {
+                    foodsData[key] = data[key];
+                }
+            } else {
+                console.error('BasicFoodRepository: 有効な食品データが見つかりませんでした');
+            }
+        }
+
+        // 食品データのキャッシュ構築
+        console.log(`BasicFoodRepository: キャッシュ構築開始 (${Object.keys(foodsData).length}件の食品データ)`);
+
+        for (const [key, food] of Object.entries(foodsData)) {
+            const foodItem = food as Food;
+
+            // 最低限必要なプロパティの検証
+            if (!foodItem.id || !foodItem.name) {
+                console.warn(`BasicFoodRepository: 不正な食品データをスキップします: ${JSON.stringify(foodItem).substring(0, 100)}...`);
+                continue;
+            }
+
+            // IDによるマップ
+            this.foods.set(foodItem.id, foodItem);
+
+            // 正規化名によるマップ
+            const normalizedName = normalizeText(foodItem.name);
+            this.foodsByName.set(normalizedName, foodItem);
+
+            // エイリアスマップの構築
+            if (foodItem.aliases && foodItem.aliases.length > 0) {
+                for (const alias of foodItem.aliases) {
+                    const normalizedAlias = normalizeText(alias);
+                    this.aliasMap.set(normalizedAlias, foodItem.id);
+                }
+            }
+        }
+
+        this.cacheLoaded = true;
+        // データの詳細情報を出力
+        console.log(`BasicFoodRepository: キャッシュ読み込み完了 (${this.foods.size}件の食品)`);
+        console.log(`BasicFoodRepository: データ内の食品全件数: ${Object.keys(foodsData).length}件`);
     }
 
     // インターフェース実装メソッド

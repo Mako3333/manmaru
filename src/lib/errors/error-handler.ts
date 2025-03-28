@@ -108,24 +108,24 @@ export function handleError(error: unknown, options: ErrorHandlerOptions = {}): 
         // エラーの深刻度に応じてトーストの種類を変える
         switch (appError.severity) {
             case 'info':
-                toast.info(title || description, {
-                    description: title ? description : undefined,
-                    duration
-                });
+                toast(
+                    title ? `${title}${description ? `\n${description}` : ''}` : description,
+                    { duration, style: { background: '#3498db', color: 'white' } }
+                );
                 break;
             case 'warning':
-                toast.warning(title || description, {
-                    description: title ? description : undefined,
-                    duration
-                });
+                toast(
+                    title ? `${title}${description ? `\n${description}` : ''}` : description,
+                    { duration, style: { background: '#f39c12', color: 'white' } }
+                );
                 break;
             case 'critical':
             case 'error':
             default:
-                toast.error(title || description, {
-                    description: title ? description : undefined,
-                    duration
-                });
+                toast.error(
+                    title ? `${title}${description ? `\n${description}` : ''}` : description,
+                    { duration }
+                );
                 break;
         }
     }

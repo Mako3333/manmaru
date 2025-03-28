@@ -2,6 +2,7 @@
 import { AIServiceV2, AIProcessResult } from './ai-service';
 import { GeminiResponseParser } from './gemini-response-parser';
 import { AIParseResult } from './ai-response-parser';
+import { PromptService, PromptType } from './prompts/prompt-service';
 
 /**
  * Gemini API設定
@@ -55,6 +56,7 @@ export class GeminiService implements AIServiceV2 {
     private config: GeminiServiceConfig;
     private parser: GeminiResponseParser;
     private safetySettings: SafetySetting[];
+    private promptService: PromptService;
 
     /**
      * コンストラクタ
@@ -92,6 +94,7 @@ export class GeminiService implements AIServiceV2 {
         ];
 
         this.parser = new GeminiResponseParser();
+        this.promptService = PromptService.getInstance();
     }
 
     /**
@@ -104,9 +107,10 @@ export class GeminiService implements AIServiceV2 {
             // 画像のBase64エンコーディング
             const base64Image = imageData.toString('base64');
 
-            // プロンプト生成
-            const prompt = this.parser.generatePrompt({
-                imageDescription: '食事の写真が提供されています。'
+            // プロンプト生成（PromptServiceを使用）
+            const prompt = this.promptService.generatePrompt(PromptType.FOOD_ANALYSIS, {
+                mealType: '食事',
+                trimester: undefined
             });
 
             // API呼び出しURL
@@ -182,8 +186,10 @@ export class GeminiService implements AIServiceV2 {
         try {
             const startTime = Date.now();
 
-            // プロンプト生成
-            const prompt = this.parser.generatePrompt({ text });
+            // プロンプト生成（PromptServiceを使用）
+            const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
+                foodsText: text
+            });
 
             // API呼び出しURL
             const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
@@ -249,38 +255,71 @@ export class GeminiService implements AIServiceV2 {
      * レシピテキストから食品を解析
      */
     async analyzeRecipeText(recipeText: string): Promise<AIProcessResult> {
-        // レシピ向けの特別なプロンプトで処理
-        const recipePrompt = `
-あなたは日本の妊婦向け栄養管理アプリの食品認識AIです。
-以下のレシピから使用されている食材を特定し、JSON形式で出力してください。
+        try {
+            const startTime = Date.now();
 
-# 指示
-1. レシピから食材とその量を特定する
-2. 調味料も含めて全ての食材を抽出する
-3. 各食材を最もシンプルな基本形で表現する（例: 「刻みねぎ」→「ねぎ」）
-4. 下記のJSON形式で出力する
+            // プロンプト生成（PromptServiceを使用）
+            const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
+                foodsText: recipeText
+            });
 
-# 出力フォーマット
-\`\`\`json
-{
-  "foods": [
-    {
-      "name": "食品名1",
-      "quantity": "量（例: 100g、1個）",
-      "confidence": 0.9
-    },
-    // 他の食材...
-  ],
-  "confidence": 0.85
-}
-\`\`\`
+            // API呼び出しURL
+            const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
 
-# レシピ
-${recipeText}
+            // API呼び出し
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            parts: [
+                                { text: prompt }
+                            ]
+                        }
+                    ],
+                    safety_settings: this.safetySettings,
+                    generation_config: {
+                        temperature: this.config.temperature,
+                        max_output_tokens: this.config.maxOutputTokens
+                    }
+                })
+            });
 
-# 出力
-`;
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Gemini API エラー: ${response.status} ${errorText}`);
+            }
 
-        return this.analyzeMealText(recipePrompt);
+            const data = await response.json();
+            const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+            // レスポンスの解析
+            const parseResult = await this.parser.parseResponse(rawResponse);
+
+            // 処理時間の計算
+            const processingTimeMs = Date.now() - startTime;
+
+            return {
+                parseResult,
+                rawResponse,
+                processingTimeMs
+            };
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('GeminiService: レシピ解析エラー', error);
+            return {
+                parseResult: {
+                    foods: [],
+                    confidence: 0,
+                    error: errorMessage
+                },
+                rawResponse: '',
+                processingTimeMs: 0,
+                error: errorMessage
+            };
+        }
     }
 } 

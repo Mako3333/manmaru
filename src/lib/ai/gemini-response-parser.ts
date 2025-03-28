@@ -105,9 +105,12 @@ export class GeminiResponseParser implements AIResponseParser {
 
     /**
      * AIモデルに送信するプロンプトを生成
+     * @deprecated PromptServiceを使用してください
      */
     generatePrompt(inputData: any): string {
-        // 食品認識用のプロンプトテンプレート
+        console.warn('GeminiResponseParser.generatePrompt is deprecated. Use PromptService instead.');
+
+        // プロンプトテンプレート（互換性のために残していますが、実際にはPromptServiceを使用します）
         const promptTemplate = `
 あなたは日本の妊婦向け栄養管理アプリの食品認識AIです。
 以下の食事情報から含まれる食品を特定し、JSON形式で出力してください。
