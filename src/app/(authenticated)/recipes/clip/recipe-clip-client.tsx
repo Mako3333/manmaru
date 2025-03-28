@@ -33,17 +33,17 @@ export default function RecipeClipClient() {
             const url = new URL(data.url);
             const hostname = url.hostname;
 
-            // ソーシャルメディアの場合は専用のAPIを使用
-            const apiEndpoint = isSocialMedia
-                ? '/api/recipes/parse-social-url'
-                : '/api/recipes/parse-url';
+            console.log('レシピURL解析開始:', data.url, 'ソーシャル:', isSocialMedia);
+
+            // APIエンドポイント：新しいv2 APIエンドポイントを使用
+            const apiEndpoint = '/api/v2/recipe/parse';
 
             const response = await fetch(apiEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(data),
+                body: JSON.stringify({ url: data.url }),
             });
 
             if (!response.ok) {
@@ -51,12 +51,15 @@ export default function RecipeClipClient() {
                 throw new Error(errorData.error || 'URLの解析に失敗しました');
             }
 
-            const parsedData = await response.json();
+            const responseData = await response.json();
+            const parsedData = responseData.data; // 成功レスポンスのデータフィールドを取得
 
             // ソーシャルメディア情報を追加
             if (isSocialMedia && !parsedData.is_social_media) {
                 parsedData.is_social_media = true;
             }
+
+            console.log('レシピ解析結果:', parsedData);
 
             setParsedRecipe(parsedData);
             setEditedRecipe({
@@ -68,24 +71,9 @@ export default function RecipeClipClient() {
             setUsePlaceholder(isSocialMedia);
 
             setStep('confirm');
-        } catch (err) {
-            console.error('URL処理エラー:', err);
-
-            // URLが有効かどうかの確認
-            let errorMessage = '';
-            if (err instanceof Error) {
-                if (err.message.includes('CORS') || err.message.includes('ブロック')) {
-                    errorMessage = 'CORSエラー: このサイトからのデータ取得が制限されています。別のサイトをお試しください。';
-                } else if (err.message.includes('ネットワーク') || err.message.includes('network')) {
-                    errorMessage = 'ネットワークエラー: インターネット接続を確認してください。';
-                } else {
-                    errorMessage = err.message;
-                }
-            } else {
-                errorMessage = '予期せぬエラーが発生しました';
-            }
-
-            setError(errorMessage);
+        } catch (error) {
+            console.error('レシピ解析エラー:', error);
+            setError(error instanceof Error ? error.message : '不明なエラーが発生しました');
         } finally {
             setIsLoading(false);
         }

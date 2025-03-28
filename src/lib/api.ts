@@ -74,14 +74,15 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
             throw new Error('画像データが含まれていません');
         }
 
-        console.log('APIエンドポイント呼び出し...');
-        const response = await fetch('/api/analyze-meal', {
+        console.log('APIエンドポイント呼び出し: 新システム使用');
+        // 新しいv2エンドポイントを使用
+        const response = await fetch('/api/v2/image/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                image: base64Image,
+                imageData: base64Image,
                 mealType
             }),
         });
@@ -112,6 +113,115 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
     } catch (error) {
         console.error('画像解析エラー:', error instanceof Error ? error.message : String(error));
         // エラーオブジェクトを適切に文字列化して投げる
+        if (error instanceof Error) {
+            throw error;
+        } else {
+            throw new Error(String(error));
+        }
+    }
+}
+
+/**
+ * テキスト入力を解析するAPI呼び出し
+ * @param text 食品テキスト（例: "ご飯 茶碗1杯、味噌汁 1杯"）
+ * @returns 解析結果（食品リストと栄養情報）
+ */
+export async function analyzeTextInput(text: string) {
+    try {
+        console.log('テキスト解析API呼び出し開始:', text);
+
+        // テキストデータのバリデーション
+        if (!text || text.trim() === '') {
+            console.error('テキストデータが空です');
+            throw new Error('テキストデータが含まれていません');
+        }
+
+        // 新しいv2エンドポイントを使用
+        const response = await fetch('/api/v2/food/parse', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                text: text.trim()
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: errorText || '不明なエラー' };
+            }
+            console.error('APIレスポンスエラー:', errorData);
+            throw new Error(errorData.error || 'テキストの分析に失敗しました');
+        }
+
+        const result = await response.json();
+        console.log('テキスト解析API結果構造:', Object.keys(result));
+
+        // 結果の検証
+        if (!validateApiResponse(result)) {
+            throw new Error('APIからの応答形式が不正です');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('テキスト解析エラー:', error instanceof Error ? error.message : String(error));
+        if (error instanceof Error) {
+            throw error;
+        } else {
+            throw new Error(String(error));
+        }
+    }
+}
+
+/**
+ * レシピURLを解析するAPI呼び出し
+ * @param url レシピのURL
+ * @returns 解析結果（レシピ情報と栄養情報）
+ */
+export async function analyzeRecipeUrl(url: string) {
+    try {
+        console.log('レシピURL解析API呼び出し開始:', url);
+
+        // URLのバリデーション
+        if (!url || url.trim() === '') {
+            console.error('URLが空です');
+            throw new Error('URLが含まれていません');
+        }
+
+        // 新しいv2エンドポイントを使用
+        const response = await fetch('/api/v2/recipe/parse', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                url: url.trim()
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: errorText || '不明なエラー' };
+            }
+            console.error('APIレスポンスエラー:', errorData);
+            throw new Error(errorData.error || 'レシピURLの解析に失敗しました');
+        }
+
+        const result = await response.json();
+        console.log('レシピURL解析API結果構造:', Object.keys(result));
+
+        return result;
+    } catch (error) {
+        console.error('レシピURL解析エラー:', error instanceof Error ? error.message : String(error));
         if (error instanceof Error) {
             throw error;
         } else {
