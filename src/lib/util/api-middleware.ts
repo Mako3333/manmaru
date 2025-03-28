@@ -5,9 +5,9 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
 /**
- * レスポンス形式の統一
+ * 標準API応答フォーマット
  */
-export interface ApiResponse<T> {
+export interface StandardApiResponse<T> {
     success: boolean;
     data?: T;
     error?: {
@@ -22,6 +22,9 @@ export interface ApiResponse<T> {
     };
 }
 
+// 下位互換性のための型エイリアス
+export type ApiResponse<T> = StandardApiResponse<T>;
+
 /**
  * ハンドラー関数の型
  */
@@ -29,7 +32,7 @@ export type ApiHandler<T = any> = (
     req: NextRequest,
     context: { params: any },
     session: any
-) => Promise<ApiResponse<T>>;
+) => Promise<StandardApiResponse<T>>;
 
 /**
  * 認証とエラーハンドリングを含むAPIミドルウェア
@@ -146,27 +149,71 @@ export function withAuthAndErrorHandling<T>(
 }
 
 /**
- * 標準的な成功レスポンスを作成
+ * 成功応答を生成
  */
-export function createSuccessResponse<T>(data: T, warning?: string): ApiResponse<T> {
-    return {
+export function createSuccessResponse<T>(
+    data: T,
+    warning?: string,
+    processingTimeMs?: number
+): NextResponse {
+    const response: StandardApiResponse<T> = {
         success: true,
-        data,
-        meta: warning ? { warning } : undefined
+        data
     };
+
+    if (warning || processingTimeMs) {
+        response.meta = {};
+        if (warning) response.meta.warning = warning;
+        if (processingTimeMs) response.meta.processingTimeMs = processingTimeMs;
+    }
+
+    return NextResponse.json(response);
 }
 
 /**
- * 標準的なエラーレスポンスを作成
+ * エラー応答を生成
  */
-export function createErrorResponse(error: AppError): ApiResponse<never> {
-    return {
+export function createErrorResponse(error: AppError): NextResponse {
+    const response: StandardApiResponse<never> = {
         success: false,
         error: {
             code: error.code,
             message: error.userMessage,
-            details: error.details,
             suggestions: error.suggestions
         }
     };
+
+    if (process.env.NODE_ENV === 'development') {
+        response.error!.details = error.details;
+    }
+
+    const statusCode = getStatusCodeFromErrorCode(error.code);
+    return NextResponse.json(response, { status: statusCode });
+}
+
+/**
+ * エラーコードからHTTPステータスコードを取得
+ */
+function getStatusCodeFromErrorCode(code: ErrorCode): number {
+    switch (code) {
+        case ErrorCode.AUTH_REQUIRED:
+        case ErrorCode.AUTH_INVALID:
+        case ErrorCode.AUTH_EXPIRED:
+            return 401;
+
+        case ErrorCode.DATA_VALIDATION_ERROR:
+        case ErrorCode.QUANTITY_PARSE_ERROR:
+            return 400;
+
+        case ErrorCode.DATA_NOT_FOUND:
+        case ErrorCode.FOOD_NOT_FOUND:
+            return 404;
+
+        case ErrorCode.RATE_LIMIT_EXCEEDED:
+        case ErrorCode.QUOTA_EXCEEDED:
+            return 429;
+
+        default:
+            return 500;
+    }
 } 

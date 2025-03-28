@@ -8,7 +8,7 @@ import { AIErrorHandler } from '@/lib/ai/ai-error-handler';
 import { NutritionErrorHandler } from '@/lib/nutrition/nutrition-error-handler';
 import { FoodInputParser } from '@/lib/food/food-input-parser';
 import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
-
+//src\app\api\v2\food\parse\route.ts
 /**
  * 食品テキスト入力解析API v2
  * 

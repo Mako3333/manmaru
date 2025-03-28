@@ -38,6 +38,9 @@ alwaysApply: false
 |   `-- prompt-service.test.ts
 |-- components.json
 |-- eslint.config.mjs
+|-- fix-db.js
+|-- fix-db2.js
+|-- fixdb.js
 |-- jest.config.js
 |-- next-env.d.ts
 |-- next.config.ts
@@ -45,6 +48,8 @@ alwaysApply: false
 |-- package.json
 |-- postcss.config.mjs
 |-- rendered-prompt.txt
+|-- scripts
+|   `-- migrate-food-data.ts
 |-- src
 |   |-- app
 |   |   |-- (authenticated)
@@ -79,7 +84,7 @@ alwaysApply: false
 |   |   |   |-- calculate-nutrition
 |   |   |   |   `-- route.ts
 |   |   |   |-- meals
-|   |   |   |   |-- [date]
+|   |   |   |   |-- [id]
 |   |   |   |   |   `-- route.ts
 |   |   |   |   |-- from-recipe
 |   |   |   |   |   `-- route.ts
@@ -93,6 +98,11 @@ alwaysApply: false
 |   |   |   |-- recipes
 |   |   |   |   |-- [id]
 |   |   |   |   |   |-- favorite
+|   |   |   |   |   |   `-- route.ts
+|   |   |   |   |   `-- route.ts
+|   |   |   |   |-- calculate-nutrients
+|   |   |   |   |   `-- route.ts
+|   |   |   |   |-- parse-social-url
 |   |   |   |   |   `-- route.ts
 |   |   |   |   |-- parse-url
 |   |   |   |   |   `-- route.ts
@@ -101,8 +111,23 @@ alwaysApply: false
 |   |   |   |       `-- route.ts
 |   |   |   |-- recommend-recipes
 |   |   |   |   `-- route.ts
-|   |   |   `-- update-nutrition-log
-|   |   |       `-- route.ts
+|   |   |   |-- recommendations
+|   |   |   |   `-- home-recipes
+|   |   |   |       `-- route.ts
+|   |   |   |-- test-nutrition-system
+|   |   |   |   `-- route.ts
+|   |   |   |-- update-nutrition-log
+|   |   |   |   `-- route.ts
+|   |   |   `-- v2
+|   |   |       |-- food
+|   |   |       |   `-- parse
+|   |   |       |       `-- route.ts
+|   |   |       |-- image
+|   |   |       |   `-- analyze
+|   |   |       |       `-- route.ts
+|   |   |       `-- recipe
+|   |   |           `-- parse
+|   |   |               `-- route.ts
 |   |   |-- auth
 |   |   |   |-- callback
 |   |   |   |   `-- page.tsx
@@ -113,13 +138,16 @@ alwaysApply: false
 |   |   |-- favicon.ico
 |   |   |-- globals.css
 |   |   |-- layout.tsx
+|   |   |-- meals
+|   |   |   `-- recognition
+|   |   |       |-- enhanced-page.tsx
+|   |   |       `-- page.tsx
 |   |   |-- page.tsx
 |   |   `-- terms
 |   |       `-- page.tsx
 |   |-- components
 |   |   |-- auth
-|   |   |   |-- login-form.tsx
-|   |   |   `-- register-form.tsx
+|   |   |   `-- login-form.tsx
 |   |   |-- dashboard
 |   |   |   |-- daily-nutrition-scores.tsx
 |   |   |   |-- meal-history-list.tsx
@@ -129,24 +157,47 @@ alwaysApply: false
 |   |   |   |-- pregnancy-week-info.tsx
 |   |   |   |-- tabs-container.tsx
 |   |   |   `-- weight-chart.tsx
+|   |   |-- food
+|   |   |   |-- confidence-indicator.stories.tsx
+|   |   |   |-- confidence-indicator.tsx
+|   |   |   |-- food-edit-modal.stories.tsx
+|   |   |   |-- food-edit-modal.tsx
+|   |   |   |-- food-list-editor.stories.tsx
+|   |   |   |-- food-list-editor.tsx
+|   |   |   |-- food-match-badge.tsx
+|   |   |   `-- food-search-input.tsx
 |   |   |-- home
 |   |   |   |-- action-card.tsx
 |   |   |   |-- advice-card.tsx
 |   |   |   |-- daily-record-card.tsx
 |   |   |   |-- home-client.tsx
+|   |   |   |-- morning-nutrition-view.tsx
 |   |   |   |-- nutrition-summary.tsx
+|   |   |   |-- onboarding-message.tsx
 |   |   |   |-- pregnancy-week-info.tsx
 |   |   |   |-- progress-card.tsx
-|   |   |   `-- recipe-preview.tsx
+|   |   |   |-- recipe-preview.tsx
+|   |   |   `-- recommended-recipes.tsx
 |   |   |-- layout
 |   |   |   `-- bottom-navigation.tsx
 |   |   |-- meals
+|   |   |   |-- enhanced-recognition-editor.stories.tsx
+|   |   |   |-- enhanced-recognition-editor.tsx
 |   |   |   |-- meal-photo-input.tsx
 |   |   |   |-- meal-type-selector.tsx
 |   |   |   `-- recognition-editor.tsx
+|   |   |-- nutrition
+|   |   |   |-- NutritionDataDisplay.tsx
+|   |   |   |-- nutrition-summary.stories.tsx
+|   |   |   |-- nutrition-summary.tsx
+|   |   |   |-- reliability-indicator.stories.tsx
+|   |   |   `-- reliability-indicator.tsx
 |   |   |-- recipes
 |   |   |   |-- add-to-meal-dialog.tsx
+|   |   |   |-- manual-ingredients-form.tsx
 |   |   |   |-- recipe-card.tsx
+|   |   |   |-- screenshot-uploader.tsx
+|   |   |   |-- social-media-placeholder.tsx
 |   |   |   `-- url-clip-form.tsx
 |   |   `-- ui
 |   |       |-- alert.tsx
@@ -173,7 +224,12 @@ alwaysApply: false
 |   |   `-- useNutrition.ts
 |   |-- lib
 |   |   |-- ai
+|   |   |   |-- ai-error-handler.ts
+|   |   |   |-- ai-response-parser.ts
+|   |   |   |-- ai-service-factory.ts
 |   |   |   |-- ai-service.ts
+|   |   |   |-- gemini-response-parser.ts
+|   |   |   |-- gemini-service.ts
 |   |   |   |-- model-factory.ts
 |   |   |   |-- prompts
 |   |   |   |   |-- ab-testing
@@ -185,44 +241,97 @@ alwaysApply: false
 |   |   |   |   |-- template-engine.ts
 |   |   |   |   |-- templates
 |   |   |   |   |   |-- food-analysis
+|   |   |   |   |   |   `-- v1.ts
 |   |   |   |   |   |-- nutrition-advice
+|   |   |   |   |   |   `-- v1.ts
 |   |   |   |   |   |-- recipe-recommendation
+|   |   |   |   |   |   `-- v1.ts
 |   |   |   |   |   `-- text-input-analysis
+|   |   |   |   |       `-- v1.ts
 |   |   |   |   `-- version-manager.ts
 |   |   |   `-- response-parser.ts
+|   |   |-- api
+|   |   |   `-- api-handlers.ts
 |   |   |-- api.ts
 |   |   |-- date-utils.ts
+|   |   |-- error
+|   |   |   |-- error-codes.ts
+|   |   |   `-- nutrition-errors.ts
 |   |   |-- errors
 |   |   |   |-- ai-error.ts
+|   |   |   |-- app-errors.ts
+|   |   |   |-- error-handler.ts
 |   |   |   |-- error-utils.ts
 |   |   |   `-- food-analysis-error.ts
+|   |   |-- food
+|   |   |   |-- basic-food-repository.ts
+|   |   |   |-- food-input-parser.ts
+|   |   |   |-- food-matching-error-handler.ts
+|   |   |   |-- food-matching-service-factory.ts
+|   |   |   |-- food-matching-service-impl.ts
+|   |   |   |-- food-matching-service.ts
+|   |   |   |-- food-repository-factory.ts
+|   |   |   `-- food-repository.ts
 |   |   |-- nutrition
 |   |   |   |-- calculator.ts
 |   |   |   |-- database.ts
-|   |   |   `-- nutritionUtils.ts
+|   |   |   |-- nutrition-error-handler.ts
+|   |   |   |-- nutrition-service-factory.ts
+|   |   |   |-- nutrition-service-impl.ts
+|   |   |   |-- nutrition-service.ts
+|   |   |   |-- nutrition-utils.ts
+|   |   |   |-- nutritionUtils.ts
+|   |   |   |-- quantity-parser.ts
+|   |   |   |-- supabase-db.ts
+|   |   |   `-- utils.ts
 |   |   |-- nutrition-utils.ts
+|   |   |-- recipe-parsers
+|   |   |   |-- cookpad.ts
+|   |   |   |-- delishkitchen.ts
+|   |   |   |-- generic.ts
+|   |   |   |-- kurashiru.ts
+|   |   |   |-- parser-factory.ts
+|   |   |   |-- parser-interface.ts
+|   |   |   `-- shirogohan.ts
+|   |   |-- services
+|   |   |   |-- meal-service.ts
+|   |   |   `-- recipe-service.ts
 |   |   |-- supabase
 |   |   |   `-- client.ts
+|   |   |-- tests
+|   |   |   `-- nutrition-system-test.ts
+|   |   |-- util
+|   |   |   |-- api-middleware.ts
+|   |   |   |-- request-validation.ts
+|   |   |   `-- string-utils.ts
 |   |   |-- utils
 |   |   |   |-- date-utils.ts
 |   |   |   |-- date.ts
+|   |   |   |-- deep-link.ts
 |   |   |   |-- image-utils.ts
 |   |   |   |-- nutrition.ts
 |   |   |   `-- profile.ts
-|   |   `-- utils.ts
+|   |   |-- utils.ts
+|   |   `-- validation
+|   |       `-- response-validators.ts
 |   |-- middleware.ts
 |   `-- types
+|       |-- food.ts
 |       |-- meal.ts
 |       |-- nutrition.ts
 |       |-- recipe.ts
 |       `-- user.ts
 |-- supabase
 |   |-- config.toml
+|   |-- functions
+|   |   `-- fuzzy_food_search.sql
 |   `-- migrations
-|       `-- 20250317010051_add_recipe_clip_tables.sql
+|       |-- 20250317010051_add_recipe_clip_tables.sql
+|       `-- 20250318000000_add_food_data_tables.sql
 |-- tailwind.config.ts
 |-- test-meal-image.jpg
 |-- test-prompt.js
+|-- tmp_api_middleware.txt
 |-- tsconfig.json
 `-- tsconfig.tsbuildinfo
 ```

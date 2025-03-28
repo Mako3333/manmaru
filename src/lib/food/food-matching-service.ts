@@ -1,5 +1,5 @@
 import { Food, FoodMatchResult, ConfidenceLevel } from '@/types/food';
-
+//src\lib\food\food-matching-service.ts
 /**
  * 食品マッチングサービスのインターフェース
  */

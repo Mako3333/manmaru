@@ -1,6 +1,7 @@
 /**
  * 基本食品データ
  */
+//src\types\food.ts
 export interface BasicFood {
     id: string;           // 英語ベースの識別子 (例: "rice-white")
     name: string;         // 表示名 (例: "白米")

@@ -119,6 +119,11 @@ export async function POST(req: Request) {
             };
         }
 
+        // 拡張栄養素データがある場合は、レスポンスに含める
+        if (result.nutrition && 'extended_nutrients' in result.nutrition) {
+            console.log('API: 拡張栄養素データを含めて返信');
+        }
+
         // キャッシュに結果を保存
         addToCache(cacheKey, result);
 

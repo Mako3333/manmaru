@@ -1,6 +1,6 @@
 import { AppError } from '../errors/app-errors';
 import { ErrorCode, ErrorSeverity } from './error-codes';
-
+//src\lib\error\nutrition-errors.ts
 /**
  * 食品マッチングに関連するエラー
  */

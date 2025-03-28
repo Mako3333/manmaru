@@ -5,9 +5,14 @@ import {
     FoodItemNutrition,
     NutritionData,
     FoodItem,
-    NutrientUnit
+    NutrientUnit,
+    NutrientData
 } from '@/types/nutrition';
-
+import {
+    mapNutrientToNutritionData,
+    mapNutritionToNutrientData
+} from './nutrition-service-impl';
+//src\lib\nutrition\nutrition-utils.ts
 /**
  * 個別の食品アイテムの栄養データから食事全体の栄養データを計算
  */
@@ -78,7 +83,7 @@ export function convertToStandardizedNutrition(
     nutritionData: NutritionData,
     foodItems: FoodItem[]
 ): StandardizedMealNutrition {
-    // 栄養素の配列を作成
+    // 基本栄養素の配列を作成
     const nutrients: Nutrient[] = [
         {
             name: 'タンパク質',
@@ -106,6 +111,100 @@ export function convertToStandardizedNutrition(
             unit: 'mcg' as NutrientUnit
         }
     ];
+
+    // 拡張栄養素があれば追加
+    if (nutritionData.extended_nutrients) {
+        // 主要栄養素
+        if (typeof nutritionData.extended_nutrients.fat === 'number') {
+            nutrients.push({
+                name: '脂質',
+                value: nutritionData.extended_nutrients.fat,
+                unit: 'g' as NutrientUnit
+            });
+        }
+
+        if (typeof nutritionData.extended_nutrients.carbohydrate === 'number') {
+            nutrients.push({
+                name: '炭水化物',
+                value: nutritionData.extended_nutrients.carbohydrate,
+                unit: 'g' as NutrientUnit
+            });
+        }
+
+        if (typeof nutritionData.extended_nutrients.dietary_fiber === 'number') {
+            nutrients.push({
+                name: '食物繊維',
+                value: nutritionData.extended_nutrients.dietary_fiber,
+                unit: 'g' as NutrientUnit
+            });
+        }
+
+        // ミネラル類
+        if (nutritionData.extended_nutrients.minerals) {
+            const minerals = nutritionData.extended_nutrients.minerals;
+            const mineralUnits: Record<string, NutrientUnit> = {
+                sodium: 'mg',
+                potassium: 'mg',
+                magnesium: 'mg',
+                phosphorus: 'mg',
+                zinc: 'mg'
+            };
+
+            const mineralNames: Record<string, string> = {
+                sodium: 'ナトリウム',
+                potassium: 'カリウム',
+                magnesium: 'マグネシウム',
+                phosphorus: 'リン',
+                zinc: '亜鉛'
+            };
+
+            for (const [key, value] of Object.entries(minerals)) {
+                if (typeof value === 'number' && value > 0) {
+                    nutrients.push({
+                        name: mineralNames[key] || key,
+                        value: value,
+                        unit: mineralUnits[key] as NutrientUnit || 'mg' as NutrientUnit
+                    });
+                }
+            }
+        }
+
+        // ビタミン類
+        if (nutritionData.extended_nutrients.vitamins) {
+            const vitamins = nutritionData.extended_nutrients.vitamins;
+            const vitaminUnits: Record<string, NutrientUnit> = {
+                vitamin_a: 'mcg',
+                vitamin_b1: 'mg',
+                vitamin_b2: 'mg',
+                vitamin_b6: 'mg',
+                vitamin_b12: 'mcg',
+                vitamin_c: 'mg',
+                vitamin_e: 'mg',
+                vitamin_k: 'mcg'
+            };
+
+            const vitaminNames: Record<string, string> = {
+                vitamin_a: 'ビタミンA',
+                vitamin_b1: 'ビタミンB1',
+                vitamin_b2: 'ビタミンB2',
+                vitamin_b6: 'ビタミンB6',
+                vitamin_b12: 'ビタミンB12',
+                vitamin_c: 'ビタミンC',
+                vitamin_e: 'ビタミンE',
+                vitamin_k: 'ビタミンK'
+            };
+
+            for (const [key, value] of Object.entries(vitamins)) {
+                if (typeof value === 'number' && value > 0) {
+                    nutrients.push({
+                        name: vitaminNames[key] || key,
+                        value: value,
+                        unit: vitaminUnits[key] as NutrientUnit || 'mg' as NutrientUnit
+                    });
+                }
+            }
+        }
+    }
 
     // FoodItemNutrition形式に変換
     const standardizedFoodItems = foodItems.map((item, index) => {
@@ -198,7 +297,8 @@ export function convertToLegacyNutrition(standardized: StandardizedMealNutrition
         return nutrient?.value || 0;
     };
 
-    return {
+    // 基本栄養素を設定
+    const result: NutritionData = {
         calories: standardized.totalCalories,
         protein: findNutrientValue('タンパク質') || findNutrientValue('protein'),
         iron: findNutrientValue('鉄分') || findNutrientValue('iron'),
@@ -206,12 +306,38 @@ export function convertToLegacyNutrition(standardized: StandardizedMealNutrition
         calcium: findNutrientValue('カルシウム') || findNutrientValue('calcium'),
         vitamin_d: findNutrientValue('ビタミンD') || findNutrientValue('vitamin_d'),
         confidence_score: 0.9, // デフォルト値
-        // 追加フィールド
-        overall_score: 0,
-        deficient_nutrients: [],
-        sufficient_nutrients: [],
-        daily_records: []
+        extended_nutrients: {
+            // 追加の主要栄養素
+            fat: findNutrientValue('脂質') || findNutrientValue('fat'),
+            carbohydrate: findNutrientValue('炭水化物') || findNutrientValue('carbohydrate'),
+            dietary_fiber: findNutrientValue('食物繊維') || findNutrientValue('dietary_fiber'),
+            sugars: findNutrientValue('糖質') || findNutrientValue('sugars'),
+            salt: findNutrientValue('食塩相当量') || findNutrientValue('salt'),
+
+            // ビタミン類
+            vitamins: {
+                vitamin_a: findNutrientValue('ビタミンA') || findNutrientValue('vitamin_a'),
+                vitamin_c: findNutrientValue('ビタミンC') || findNutrientValue('vitamin_c'),
+                vitamin_e: findNutrientValue('ビタミンE') || findNutrientValue('vitamin_e'),
+                vitamin_k: findNutrientValue('ビタミンK') || findNutrientValue('vitamin_k'),
+                vitamin_b1: findNutrientValue('ビタミンB1') || findNutrientValue('vitamin_b1'),
+                vitamin_b2: findNutrientValue('ビタミンB2') || findNutrientValue('vitamin_b2'),
+                vitamin_b6: findNutrientValue('ビタミンB6') || findNutrientValue('vitamin_b6'),
+                vitamin_b12: findNutrientValue('ビタミンB12') || findNutrientValue('vitamin_b12')
+            },
+
+            // ミネラル類
+            minerals: {
+                sodium: findNutrientValue('ナトリウム') || findNutrientValue('sodium'),
+                potassium: findNutrientValue('カリウム') || findNutrientValue('potassium'),
+                magnesium: findNutrientValue('マグネシウム') || findNutrientValue('magnesium'),
+                phosphorus: findNutrientValue('リン') || findNutrientValue('phosphorus'),
+                zinc: findNutrientValue('亜鉛') || findNutrientValue('zinc')
+            }
+        }
     };
+
+    return result;
 }
 
 /**
@@ -282,5 +408,74 @@ export function prepareForApiRequest(standardizedData: StandardizedMealData) {
         },
         servings: 1,
         notes: standardizedData.notes
+    };
+}
+
+/**
+ * 安全な型変換ユーティリティ関数
+ * 型変換におけるエラー処理と回復メカニズムを実装
+ */
+export function safeConvertNutritionData(
+    sourceData: any,
+    sourceType: 'nutrient' | 'standard' | 'old' = 'nutrient'
+): NutritionData {
+    try {
+        if (!sourceData) {
+            throw new Error('変換元データがnullまたはundefined');
+        }
+
+        switch (sourceType) {
+            case 'nutrient':
+                return mapNutrientToNutritionData(sourceData);
+            case 'standard':
+                return convertToLegacyNutrition(sourceData);
+            case 'old':
+                return convertOldToNutritionData(sourceData);
+            default:
+                throw new Error(`未知の変換タイプ: ${sourceType}`);
+        }
+    } catch (error) {
+        console.error(`栄養データ変換エラー (${sourceType}):`, error, {
+            sourceData: JSON.stringify(sourceData).substring(0, 200) + '...'
+        });
+
+        // 型に準拠した最小限のデータを返却
+        return createEmptyNutritionData();
+    }
+}
+
+/**
+ * エラー時のフォールバック用の空の栄養データを作成
+ */
+export function createEmptyNutritionData(): NutritionData {
+    return {
+        calories: 0,
+        protein: 0,
+        iron: 0,
+        folic_acid: 0,
+        calcium: 0,
+        vitamin_d: 0,
+        confidence_score: 0.5,
+        not_found_foods: ['変換エラー']
+    };
+}
+
+/**
+ * 古い栄養データ型から新しい栄養データ型への変換
+ */
+export function convertOldToNutritionData(oldData: any): NutritionData {
+    if (!oldData) {
+        throw new Error('変換元の古い栄養データがnullまたはundefined');
+    }
+
+    return {
+        calories: oldData.calories || 0,
+        protein: oldData.protein || 0,
+        iron: oldData.iron || 0,
+        folic_acid: oldData.folic_acid || 0,
+        calcium: oldData.calcium || 0,
+        vitamin_d: oldData.vitamin_d || 0,
+        confidence_score: oldData.confidence_score || 0.5,
+        not_found_foods: oldData.notFoundFoods || []
     };
 } 

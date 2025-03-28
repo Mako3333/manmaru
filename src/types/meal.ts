@@ -1,5 +1,5 @@
 import { BasicNutritionData, NutritionData, FoodItem, MealType, FoodCategory } from './nutrition';
-
+//src\types\meal.ts
 /**
  * 食事データの基本インターフェース
  */

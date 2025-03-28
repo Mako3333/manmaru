@@ -492,7 +492,7 @@ export class SupabaseFoodDatabase {
                 calcium: 0,
                 vitamin_d: 0,
                 confidence_score: 0,
-                notFoundFoods: []
+                not_found_foods: []
             };
         }
 
@@ -607,8 +607,7 @@ export class SupabaseFoodDatabase {
             calcium: Math.max(0, Math.round(totalCalcium)),
             vitamin_d: Math.max(0, parseFloat(totalVitaminD.toFixed(1))),
             confidence_score: parseFloat(adjustedConfidence.toFixed(2)),
-            notFoundFoods,
-            matchedFoods: Object.values(foundMatches)
+            not_found_foods: notFoundFoods,
         };
     }
 

@@ -1,8 +1,87 @@
 import { Food, FoodQuantity, MealFoodItem, FoodMatchResult } from '@/types/food';
-import { NutritionCalculationResult, NutrientData } from '@/types/nutrition';
+import { NutritionCalculationResult, NutritionData, NutrientData } from '@/types/nutrition';
 import { FoodRepository } from '@/lib/food/food-repository';
 import { NutritionService } from './nutrition-service';
 import { QuantityParser } from './quantity-parser';
+//src\lib\nutrition\nutrition-service-impl.ts
+/**
+ * NutrientData型からNutritionData型への変換ヘルパー
+ * null/undefinedチェックを強化
+ */
+export function mapNutrientToNutritionData(nutrientData: NutrientData): NutritionData {
+    return {
+        calories: nutrientData.energy ?? 0,
+        protein: nutrientData.protein ?? 0,
+        iron: nutrientData.minerals?.iron ?? 0,
+        folic_acid: nutrientData.vitamins?.folicAcid ?? 0,
+        calcium: nutrientData.minerals?.calcium ?? 0,
+        vitamin_d: nutrientData.vitamins?.vitaminD ?? 0,
+        confidence_score: nutrientData.confidence_score ?? 0.8,
+        extended_nutrients: {
+            fat: nutrientData.fat ?? 0,
+            carbohydrate: nutrientData.carbohydrate ?? 0,
+            dietary_fiber: nutrientData.dietaryFiber ?? 0,
+            sugars: nutrientData.sugars ?? 0,
+            salt: nutrientData.salt ?? 0,
+            minerals: {
+                sodium: nutrientData.minerals?.sodium ?? 0,
+                potassium: nutrientData.minerals?.potassium ?? 0,
+                magnesium: nutrientData.minerals?.magnesium ?? 0,
+                phosphorus: nutrientData.minerals?.phosphorus ?? 0,
+                zinc: nutrientData.minerals?.zinc ?? 0
+            },
+            vitamins: {
+                vitamin_a: nutrientData.vitamins?.vitaminA ?? 0,
+                vitamin_b1: nutrientData.vitamins?.vitaminB1 ?? 0,
+                vitamin_b2: nutrientData.vitamins?.vitaminB2 ?? 0,
+                vitamin_b6: nutrientData.vitamins?.vitaminB6 ?? 0,
+                vitamin_b12: nutrientData.vitamins?.vitaminB12 ?? 0,
+                vitamin_c: nutrientData.vitamins?.vitaminC ?? 0,
+                vitamin_e: nutrientData.vitamins?.vitaminE ?? 0,
+                vitamin_k: nutrientData.vitamins?.vitaminK ?? 0
+            }
+        }
+    };
+}
+
+/**
+ * NutritionData型からNutrientData型への変換ヘルパー
+ * null/undefinedチェックを強化
+ */
+export function mapNutritionToNutrientData(nutritionData: NutritionData): NutrientData {
+    const result = {
+        ...nutritionData,
+        energy: nutritionData.calories,
+        fat: nutritionData.extended_nutrients?.fat ?? 0,
+        carbohydrate: nutritionData.extended_nutrients?.carbohydrate ?? 0,
+        dietaryFiber: nutritionData.extended_nutrients?.dietary_fiber ?? 0,
+        sugars: nutritionData.extended_nutrients?.sugars ?? 0,
+        salt: nutritionData.extended_nutrients?.salt ?? 0,
+        minerals: {
+            sodium: nutritionData.extended_nutrients?.minerals?.sodium ?? 0,
+            calcium: nutritionData.calcium,
+            iron: nutritionData.iron,
+            potassium: nutritionData.extended_nutrients?.minerals?.potassium ?? 0,
+            magnesium: nutritionData.extended_nutrients?.minerals?.magnesium ?? 0,
+            phosphorus: nutritionData.extended_nutrients?.minerals?.phosphorus ?? 0,
+            zinc: nutritionData.extended_nutrients?.minerals?.zinc ?? 0
+        },
+        vitamins: {
+            vitaminA: nutritionData.extended_nutrients?.vitamins?.vitamin_a ?? 0,
+            vitaminD: nutritionData.vitamin_d,
+            vitaminE: nutritionData.extended_nutrients?.vitamins?.vitamin_e ?? 0,
+            vitaminK: nutritionData.extended_nutrients?.vitamins?.vitamin_k ?? 0,
+            vitaminB1: nutritionData.extended_nutrients?.vitamins?.vitamin_b1 ?? 0,
+            vitaminB2: nutritionData.extended_nutrients?.vitamins?.vitamin_b2 ?? 0,
+            vitaminB6: nutritionData.extended_nutrients?.vitamins?.vitamin_b6 ?? 0,
+            vitaminB12: nutritionData.extended_nutrients?.vitamins?.vitamin_b12 ?? 0,
+            vitaminC: nutritionData.extended_nutrients?.vitamins?.vitamin_c ?? 0,
+            folicAcid: nutritionData.folic_acid
+        }
+    } as NutrientData;
+
+    return result;
+}
 
 /**
  * 栄養計算サービスの実装クラス
@@ -22,7 +101,7 @@ export class NutritionServiceImpl implements NutritionService {
     async calculateNutrition(foodItems: MealFoodItem[]): Promise<NutritionCalculationResult> {
         // 信頼度の合計と栄養素の累積を初期化
         let totalConfidence = 0;
-        const totalNutrients: NutrientData = this.initializeNutrientData();
+        const totalNutrients: NutritionData = this.initializeNutrientData();
         const matchResults: FoodMatchResult[] = [];
 
         // 各食品に対して栄養素を計算し累積する
@@ -59,8 +138,11 @@ export class NutritionServiceImpl implements NutritionService {
         // 栄養バランススコアの計算
         const balanceScore = this.evaluateNutritionBalance(totalNutrients);
 
+        // 下位互換性のための変換（NutrientData型との互換性を確保）
+        const compatibilityNutrients = mapNutritionToNutrientData(totalNutrients);
+
         return {
-            nutrients: totalNutrients,
+            nutrients: compatibilityNutrients,
             reliability: {
                 confidence: averageConfidence,
                 balanceScore,
@@ -120,7 +202,7 @@ export class NutritionServiceImpl implements NutritionService {
     async calculateSingleFoodNutrition(
         food: Food,
         quantity: FoodQuantity
-    ): Promise<{ nutrition: NutrientData; confidence: number }> {
+    ): Promise<{ nutrition: NutritionData; confidence: number }> {
         // 量をグラムに変換
         const { grams, confidence: quantityConfidence } = QuantityParser.convertToGrams(
             quantity,
@@ -137,18 +219,17 @@ export class NutritionServiceImpl implements NutritionService {
             const ratio = grams / 100; // 100gあたりの栄養素を指定グラムに換算
 
             // 各栄養素をスケーリング
-            const sourceNutrition = {
-                energy: food.calories,
-                protein: food.protein,
-                fat: 0, // デフォルト値
-                carbohydrate: 0, // デフォルト値
-                minerals: {
-                    calcium: food.calcium,
-                    iron: food.iron
-                },
-                vitamins: {
-                    vitaminD: food.vitamin_d,
-                    folicAcid: food.folic_acid
+            const sourceNutrition: NutritionData = {
+                calories: food.calories || 0,
+                protein: food.protein || 0,
+                iron: food.iron || 0,
+                folic_acid: food.folic_acid || 0,
+                calcium: food.calcium || 0,
+                vitamin_d: food.vitamin_d || 0,
+                confidence_score: food.confidence || 0.8,
+                extended_nutrients: {
+                    // 追加の栄養素があれば拡張フィールドに追加
+                    // fat, carbohydrateなどがあれば追加
                 }
             };
 
@@ -158,6 +239,9 @@ export class NutritionServiceImpl implements NutritionService {
         // 食品栄養データの信頼度と量変換の信頼度を掛け合わせる
         const foodConfidence = food.confidence || 0.8; // デフォルト値
         const overallConfidence = foodConfidence * quantityConfidence;
+
+        // 信頼度を結果に設定
+        scaledNutrition.confidence_score = overallConfidence;
 
         return {
             nutrition: scaledNutrition,
@@ -170,7 +254,7 @@ export class NutritionServiceImpl implements NutritionService {
      * @param nutrition 栄養素データ
      * @returns バランススコア（0-100）
      */
-    evaluateNutritionBalance(nutrition: NutrientData): number {
+    evaluateNutritionBalance(nutrition: NutritionData): number {
         // 主要栄養素の理想的な比率 (例: タンパク質:脂質:炭水化物 = 2:1:3)
         const idealRatio = {
             protein: 2,
@@ -181,7 +265,16 @@ export class NutritionServiceImpl implements NutritionService {
         const totalIdealRatio = idealRatio.protein + idealRatio.fat + idealRatio.carbohydrate;
 
         // 実際の栄養素比率の計算
-        const totalMacroNutrients = nutrition.protein + nutrition.fat + nutrition.carbohydrate;
+        // 拡張栄養素から脂質と炭水化物を取得、ない場合はデフォルト値を使用
+        const fat = nutrition.extended_nutrients && typeof nutrition.extended_nutrients.fat === 'number'
+            ? nutrition.extended_nutrients.fat
+            : 0;
+
+        const carbohydrate = nutrition.extended_nutrients && typeof nutrition.extended_nutrients.carbohydrate === 'number'
+            ? nutrition.extended_nutrients.carbohydrate
+            : 0;
+
+        const totalMacroNutrients = nutrition.protein + fat + carbohydrate;
 
         if (totalMacroNutrients === 0) {
             return 0; // 栄養素がゼロの場合はスコアも0
@@ -189,8 +282,8 @@ export class NutritionServiceImpl implements NutritionService {
 
         const actualRatio = {
             protein: nutrition.protein / totalMacroNutrients * totalIdealRatio,
-            fat: nutrition.fat / totalMacroNutrients * totalIdealRatio,
-            carbohydrate: nutrition.carbohydrate / totalMacroNutrients * totalIdealRatio
+            fat: fat / totalMacroNutrients * totalIdealRatio,
+            carbohydrate: carbohydrate / totalMacroNutrients * totalIdealRatio
         };
 
         // 理想比率と実際の比率の差異を計算
@@ -211,20 +304,47 @@ export class NutritionServiceImpl implements NutritionService {
      * @param targetValues 目標値
      * @returns 不足している栄養素のリスト
      */
-    identifyDeficientNutrients(nutrition: NutrientData, targetValues: Partial<NutrientData>): string[] {
+    identifyDeficientNutrients(nutrition: NutritionData, targetValues: Partial<NutritionData>): string[] {
         const deficientNutrients: string[] = [];
 
-        // 各栄養素を目標値と比較
-        for (const [nutrient, target] of Object.entries(targetValues)) {
-            if (nutrient in nutrition) {
-                // 現在の栄養素値
-                const currentValue = nutrition[nutrient as keyof NutrientData];
+        // 基本栄養素をチェック
+        const basicNutrients = ['calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'];
+        for (const nutrient of basicNutrients) {
+            const key = nutrient as keyof NutritionData;
+            const target = targetValues[key];
+            if (typeof target === 'number' && typeof nutrition[key] === 'number') {
+                if (nutrition[key] < target * 0.8) {
+                    deficientNutrients.push(nutrient);
+                }
+            }
+        }
 
-                // nullや undefined でない場合
-                if (currentValue !== null && currentValue !== undefined && target !== null && target !== undefined) {
-                    // 目標値の80%未満なら不足していると判断
-                    if (currentValue < target * 0.8) {
+        // 拡張栄養素をチェック（もし存在する場合）
+        if (nutrition.extended_nutrients && targetValues.extended_nutrients) {
+            // トップレベルの拡張栄養素
+            for (const [nutrient, value] of Object.entries(nutrition.extended_nutrients)) {
+                if (typeof value === 'number') {
+                    const target = (targetValues.extended_nutrients as any)[nutrient];
+                    if (typeof target === 'number' && value < target * 0.8) {
                         deficientNutrients.push(nutrient);
+                    }
+                }
+            }
+
+            // ネストされたカテゴリ（例：minerals, vitamins）
+            for (const [category, nutrients] of Object.entries(nutrition.extended_nutrients)) {
+                if (typeof nutrients === 'object' && nutrients !== null &&
+                    targetValues.extended_nutrients[category] &&
+                    typeof targetValues.extended_nutrients[category] === 'object') {
+
+                    for (const [key, value] of Object.entries(nutrients as object)) {
+                        if (typeof value === 'number') {
+                            const targetCategory = targetValues.extended_nutrients[category] as Record<string, number>;
+                            const target = targetCategory[key];
+                            if (typeof target === 'number' && value < target * 0.8) {
+                                deficientNutrients.push(`${category}.${key}`);
+                            }
+                        }
                     }
                 }
             }
@@ -237,126 +357,182 @@ export class NutritionServiceImpl implements NutritionService {
      * 栄養素データの完全性を計算する（どれだけ多くの栄養素データが有効か）
      * @private
      */
-    private calculateCompleteness(nutrition: NutrientData): number {
+    private calculateCompleteness(nutrition: NutritionData): number {
         // 重要な栄養素リスト
         const keyNutrients = [
-            'energy', 'protein', 'fat', 'carbohydrate',
-            'dietaryFiber', 'vitamins.vitaminA', 'vitamins.vitaminD',
-            'vitamins.vitaminB1', 'vitamins.vitaminC', 'minerals.calcium',
-            'minerals.iron'
+            'calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'
+        ];
+
+        // 拡張栄養素
+        const extendedNutrients = [
+            'extended_nutrients.dietary_fiber',
+            'extended_nutrients.fat',
+            'extended_nutrients.carbohydrate',
+            'extended_nutrients.vitamins.vitamin_a',
+            'extended_nutrients.vitamins.vitamin_c',
+            'extended_nutrients.minerals.sodium'
         ];
 
         // 有効な栄養素をカウント
         let validCount = 0;
+        let totalCheck = keyNutrients.length;
 
+        // 基本栄養素のチェック
         for (const nutrient of keyNutrients) {
-            // ネストされた栄養素（例：vitamins.vitaminA）の処理
-            if (nutrient.includes('.')) {
-                const [category, specific] = nutrient.split('.');
-                if (
-                    nutrition[category as keyof NutrientData] &&
-                    typeof nutrition[category as keyof NutrientData] === 'object' &&
-                    (nutrition[category as keyof NutrientData] as any)[specific] > 0
-                ) {
-                    validCount++;
-                }
-            }
-            // 通常の栄養素
-            else if (
-                nutrition[nutrient as keyof NutrientData] !== undefined &&
-                nutrition[nutrient as keyof NutrientData] !== null &&
-                (nutrition[nutrient as keyof NutrientData] as number) > 0
-            ) {
+            const value = nutrition[nutrient as keyof NutritionData];
+            if (typeof value === 'number' && value > 0) {
                 validCount++;
             }
         }
 
-        // 完全性のスコアを計算 (0-1)
-        return validCount / keyNutrients.length;
+        // 拡張栄養素のチェック（もし存在する場合）
+        if (nutrition.extended_nutrients) {
+            totalCheck += extendedNutrients.length;
+
+            for (const path of extendedNutrients) {
+                const parts = path.split('.');
+                let current: any = nutrition;
+
+                // ドット表記でネストされたオブジェクトにアクセス
+                for (const part of parts) {
+                    if (current && typeof current === 'object' && part in current) {
+                        current = current[part];
+                    } else {
+                        current = undefined;
+                        break;
+                    }
+                }
+
+                if (typeof current === 'number' && current > 0) {
+                    validCount++;
+                }
+            }
+        }
+
+        return totalCheck > 0 ? validCount / totalCheck : 0;
     }
 
     /**
      * 栄養素データを初期化する
      * @private
      */
-    private initializeNutrientData(): NutrientData {
+    private initializeNutrientData(): NutritionData {
         return {
-            energy: 0,
+            calories: 0,
             protein: 0,
-            fat: 0,
-            carbohydrate: 0,
-            dietaryFiber: 0,
-            sugars: 0,
-            salt: 0,
-            minerals: {
-                sodium: 0,
-                calcium: 0,
-                iron: 0,
-                potassium: 0,
-                magnesium: 0,
-                phosphorus: 0,
-                zinc: 0
-            },
-            vitamins: {
-                vitaminA: 0,
-                vitaminD: 0,
-                vitaminE: 0,
-                vitaminK: 0,
-                vitaminB1: 0,
-                vitaminB2: 0,
-                vitaminB6: 0,
-                vitaminB12: 0,
-                vitaminC: 0,
-                folicAcid: 0
+            iron: 0,
+            folic_acid: 0,
+            calcium: 0,
+            vitamin_d: 0,
+            confidence_score: 0,
+            extended_nutrients: {
+                dietary_fiber: 0,
+                fat: 0,
+                carbohydrate: 0,
+                sugars: 0,
+                salt: 0,
+                minerals: {
+                    sodium: 0,
+                    potassium: 0,
+                    magnesium: 0,
+                    phosphorus: 0,
+                    zinc: 0
+                },
+                vitamins: {
+                    vitamin_a: 0,
+                    vitamin_b1: 0,
+                    vitamin_b2: 0,
+                    vitamin_b6: 0,
+                    vitamin_b12: 0,
+                    vitamin_c: 0,
+                    vitamin_e: 0,
+                    vitamin_k: 0
+                }
             }
         };
     }
 
     /**
-     * 栄養素を蓄積する
+     * 栄養素データを累積する
      * @param target 対象の栄養素データ
-     * @param source 追加する栄養素データ
+     * @param source 加算元の栄養素データ
      * @private
      */
-    private accumulateNutrients(target: NutrientData, source: NutrientData): void {
-        // 基本栄養素の加算
-        for (const [key, value] of Object.entries(source)) {
-            // ネストされたオブジェクトの場合は再帰的に処理
-            if (typeof value === 'object' && value !== null) {
-                for (const [nestedKey, nestedValue] of Object.entries(value)) {
-                    if (typeof nestedValue === 'number') {
-                        (target[key as keyof NutrientData] as any)[nestedKey] += nestedValue;
+    private accumulateNutrients(target: NutritionData, source: NutritionData): void {
+        // 基本栄養素の累積
+        target.calories += source.calories || 0;
+        target.protein += source.protein || 0;
+        target.iron += source.iron || 0;
+        target.folic_acid += source.folic_acid || 0;
+        target.calcium += source.calcium || 0;
+        target.vitamin_d += source.vitamin_d || 0;
+
+        // 拡張栄養素の累積
+        if (source.extended_nutrients) {
+            if (!target.extended_nutrients) {
+                target.extended_nutrients = {};
+            }
+
+            // トップレベルの栄養素
+            for (const [key, value] of Object.entries(source.extended_nutrients)) {
+                if (typeof value === 'number') {
+                    (target.extended_nutrients as any)[key] = ((target.extended_nutrients as any)[key] || 0) + value;
+                } else if (typeof value === 'object' && value !== null) {
+                    // ネストされたカテゴリ（minerals, vitaminsなど）
+                    if (!(target.extended_nutrients as any)[key]) {
+                        (target.extended_nutrients as any)[key] = {};
+                    }
+
+                    for (const [subKey, subValue] of Object.entries(value)) {
+                        if (typeof subValue === 'number') {
+                            (target.extended_nutrients as any)[key][subKey] =
+                                ((target.extended_nutrients as any)[key][subKey] || 0) + subValue;
+                        }
                     }
                 }
-            }
-            // 数値の場合は単純に加算
-            else if (typeof value === 'number') {
-                (target[key as keyof NutrientData] as number) += value;
             }
         }
     }
 
     /**
-     * 栄養素を指定の比率でスケーリングする
+     * 栄養素データをスケーリングする
      * @param target 対象の栄養素データ
      * @param source 元の栄養素データ
      * @param ratio スケーリング比率
      * @private
      */
-    private scaleNutrients(target: NutrientData, source: any, ratio: number): void {
+    private scaleNutrients(target: NutritionData, source: NutritionData, ratio: number): void {
         // 基本栄養素のスケーリング
-        for (const [key, value] of Object.entries(source)) {
-            // ネストされたオブジェクトの場合は再帰的に処理
-            if (typeof value === 'object' && value !== null) {
-                for (const [nestedKey, nestedValue] of Object.entries(value)) {
-                    if (typeof nestedValue === 'number') {
-                        (target[key as keyof NutrientData] as any)[nestedKey] = nestedValue * ratio;
+        target.calories += (source.calories || 0) * ratio;
+        target.protein += (source.protein || 0) * ratio;
+        target.iron += (source.iron || 0) * ratio;
+        target.folic_acid += (source.folic_acid || 0) * ratio;
+        target.calcium += (source.calcium || 0) * ratio;
+        target.vitamin_d += (source.vitamin_d || 0) * ratio;
+
+        // 拡張栄養素のスケーリング
+        if (source.extended_nutrients) {
+            if (!target.extended_nutrients) {
+                target.extended_nutrients = {};
+            }
+
+            // トップレベルの栄養素
+            for (const [key, value] of Object.entries(source.extended_nutrients)) {
+                if (typeof value === 'number') {
+                    (target.extended_nutrients as any)[key] = ((target.extended_nutrients as any)[key] || 0) + value * ratio;
+                } else if (typeof value === 'object' && value !== null) {
+                    // ネストされたカテゴリ（minerals, vitaminsなど）
+                    if (!(target.extended_nutrients as any)[key]) {
+                        (target.extended_nutrients as any)[key] = {};
+                    }
+
+                    for (const [subKey, subValue] of Object.entries(value)) {
+                        if (typeof subValue === 'number') {
+                            (target.extended_nutrients as any)[key][subKey] =
+                                ((target.extended_nutrients as any)[key][subKey] || 0) + subValue * ratio;
+                        }
                     }
                 }
-            }
-            // 数値の場合は単純にスケーリング
-            else if (typeof value === 'number') {
-                (target[key as keyof NutrientData] as number) = value * ratio;
             }
         }
     }

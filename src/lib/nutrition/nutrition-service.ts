@@ -1,6 +1,6 @@
 import { Food, FoodQuantity, MealFoodItem } from '@/types/food';
-import { NutritionCalculationResult, NutrientData } from '@/types/nutrition';
-
+import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
+//src\lib\nutrition\nutrition-service.ts
 /**
  * 栄養計算サービスのインターフェース
  * 食品から栄養素を計算し、栄養バランスを評価する機能を提供
@@ -31,14 +31,14 @@ export interface NutritionService {
     calculateSingleFoodNutrition(
         food: Food,
         quantity: FoodQuantity
-    ): Promise<{ nutrition: NutrientData; confidence: number }>;
+    ): Promise<{ nutrition: NutritionData; confidence: number }>;
 
     /**
      * 栄養バランスを評価する
      * @param nutrition 栄養素データ
      * @returns バランススコア（0-100）
      */
-    evaluateNutritionBalance(nutrition: NutrientData): number;
+    evaluateNutritionBalance(nutrition: NutritionData): number;
 
     /**
      * 不足している栄養素を特定する
@@ -46,5 +46,5 @@ export interface NutritionService {
      * @param targetValues 目標値
      * @returns 不足している栄養素のリスト
      */
-    identifyDeficientNutrients(nutrition: NutrientData, targetValues: Partial<NutrientData>): string[];
+    identifyDeficientNutrients(nutrition: NutritionData, targetValues: Partial<NutritionData>): string[];
 } 
