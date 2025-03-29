@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { validateRequestData, validateFoodTextInput } from '@/lib/util/request-validation';
+import { validateRequestData, validateFoodTextInput } from '@/lib/utils/request-validation';
 import { FoodInputParser } from '@/lib/food/food-input-parser';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';

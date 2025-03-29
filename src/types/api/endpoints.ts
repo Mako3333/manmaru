@@ -1,6 +1,6 @@
 import { Food, FoodMatchResult } from '@/types/food';
 import { NutritionData, NutritionCalculationResult } from '@/types/nutrition';
-import { MealType } from '@/types/meal';
+import { MealType } from '@/types/nutrition';
 
 /**
  * 食品テキスト解析 API

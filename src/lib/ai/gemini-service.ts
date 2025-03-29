@@ -1,7 +1,6 @@
 //src\lib\ai\gemini-service.ts
 import { AIServiceV2, AIProcessResult } from './ai-service';
 import { GeminiResponseParser } from './gemini-response-parser';
-import { AIParseResult } from './ai-response-parser';
 import { PromptService, PromptType } from './prompts/prompt-service';
 
 /**

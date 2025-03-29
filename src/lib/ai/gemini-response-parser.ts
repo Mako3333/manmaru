@@ -5,7 +5,7 @@ import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 /**
  * Gemini APIの応答を解析するパーサー
  */
-export class GeminiResponseParser implements AIResponseParser {
+export class GeminiResponseParser {
     /**
      * AI応答テキストから食品リストを解析
      */

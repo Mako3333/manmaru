@@ -1,6 +1,8 @@
 import { FoodRepository } from '@/lib/food/food-repository';
 import { NutritionService } from './nutrition-service';
 import { NutritionServiceImpl } from './nutrition-service-impl';
+import { FoodMatchingService } from '@/lib/food/food-matching-service';
+import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 
 /**
  * 栄養計算サービスファクトリ
@@ -35,7 +37,10 @@ export class NutritionServiceFactory {
     public createService(foodRepository: FoodRepository): NutritionService {
         // サービスがまだ作成されていない場合のみ作成
         if (!this.currentService) {
-            this.currentService = new NutritionServiceImpl(foodRepository);
+            // FoodMatchingService を取得
+            const foodMatchingService = FoodMatchingServiceFactory.getService();
+            // NutritionServiceImpl に FoodMatchingService も渡す
+            this.currentService = new NutritionServiceImpl(foodRepository, foodMatchingService);
         }
         return this.currentService;
     }

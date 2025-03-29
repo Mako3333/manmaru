@@ -1,6 +1,6 @@
 import { Food, FoodMatchResult } from '@/types/food';
 import { FoodRepository } from './food-repository';
-import { normalizeText, calculateSimilarity } from '@/lib/util/string-utils';
+import { normalizeText, calculateSimilarity } from '@/lib/utils/string-utils';
 
 /**
  * 基本食品リストを使用したリポジトリ実装
@@ -218,7 +218,7 @@ export class BasicFoodRepository implements FoodRepository {
                     // すでに同じ食品が結果にある場合は、より高い類似度の方を採用
                     const existingIndex = results.findIndex(r => r.food.id === foodId);
                     if (existingIndex >= 0) {
-                        if (results[existingIndex].similarity < similarity) {
+                        if (results[existingIndex] && results[existingIndex].similarity < similarity) {
                             results[existingIndex].similarity = similarity;
                         }
                     } else {

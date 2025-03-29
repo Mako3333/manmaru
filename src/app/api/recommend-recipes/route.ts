@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 import { AIService } from '@/lib/ai/ai-service';
-import { AIModelFactory } from '@/lib/ai/model-factory';
+import { AIModelFactory } from '@/lib/ai/core/ai-model-factory';
 import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
 import { getCurrentSeason } from '@/lib/date-utils';
 

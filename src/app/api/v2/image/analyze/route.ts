@@ -4,7 +4,7 @@ import { FoodInputParser } from '@/lib/food/food-input-parser';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { validateRequestData, validateImageData } from '@/lib/util/request-validation';
+import { validateRequestData, validateImageData } from '@/lib/utils/request-validation';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';

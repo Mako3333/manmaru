@@ -1,5 +1,7 @@
 import { Food, FoodQuantity, MealFoodItem } from '@/types/food';
 import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
+import { FoodAnalysisResult } from '@/types/ai';
 //src\lib\nutrition\nutrition-service.ts
 /**
  * 栄養計算サービスのインターフェース
@@ -47,4 +49,11 @@ export interface NutritionService {
      * @returns 不足している栄養素のリスト
      */
     identifyDeficientNutrients(nutrition: NutritionData, targetValues: Partial<NutritionData>): string[];
+
+    /**
+     * AIレスポンスパーサーからの解析結果を処理し、栄養計算と結果強化を行う
+     * @param parsedFoods AIによって解析された食品リスト (名前、量、確信度などを含む)
+     * @returns 食品のマッチング、栄養計算、メタデータを含む最終的な分析結果
+     */
+    processParsedFoods(parsedFoods: FoodInputParseResult[]): Promise<FoodAnalysisResult>;
 } 

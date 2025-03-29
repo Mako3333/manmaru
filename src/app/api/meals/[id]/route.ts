@@ -1,7 +1,8 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { MealService } from '@/lib/services/meal-service';
 
 /**
@@ -22,7 +23,7 @@ export async function DELETE(
             return NextResponse.json(
                 {
                     error: 'ログインしていないか、セッションが無効です。',
-                    code: ErrorCode.AUTH_REQUIRED
+                    code: ErrorCode.Base.AUTH_ERROR
                 },
                 { status: 401 }
             );
@@ -35,7 +36,7 @@ export async function DELETE(
             return NextResponse.json(
                 {
                     error: '食事IDが指定されていません。',
-                    code: ErrorCode.DATA_VALIDATION_ERROR
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR
                 },
                 { status: 400 }
             );
@@ -55,14 +56,23 @@ export async function DELETE(
         console.error('食事削除エラー:', error);
 
         // ApiErrorの場合はそのメッセージとコードを使用
-        if (error instanceof ApiError) {
+        if (error instanceof AppError) {
+            // エラーコードに応じたステータスコードを設定
+            let statusCode = 500;
+            if (error.code === ErrorCode.Base.AUTH_ERROR) {
+                statusCode = 401;
+            } else if (error.code === ErrorCode.Base.DATA_VALIDATION_ERROR || error.code === ErrorCode.Base.DATA_NOT_FOUND) {
+                statusCode = 400;
+            }
+            // 他のエラーコードに対するステータスコードのマッピングを追加可能
+
             return NextResponse.json(
                 {
                     error: error.userMessage || '食事データの削除中にエラーが発生しました。',
                     code: error.code,
                     details: error.details
                 },
-                { status: error.statusCode || 500 }
+                { status: statusCode } // error.statusCode の代わりに算出されたstatusCodeを使用
             );
         }
 
@@ -70,7 +80,7 @@ export async function DELETE(
         return NextResponse.json(
             {
                 error: '食事データの削除中に予期しないエラーが発生しました。',
-                code: ErrorCode.UNKNOWN_ERROR
+                code: ErrorCode.Base.UNKNOWN_ERROR
             },
             { status: 500 }
         );

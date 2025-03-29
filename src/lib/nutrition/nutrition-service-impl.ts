@@ -1,8 +1,13 @@
 import { Food, FoodQuantity, MealFoodItem, FoodMatchResult } from '@/types/food';
 import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
 import { FoodRepository } from '@/lib/food/food-repository';
+import { FoodMatchingService } from '@/lib/food/food-matching-service';
 import { NutritionService } from './nutrition-service';
 import { QuantityParser } from './quantity-parser';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
+import { FoodAnalysisResult } from '@/types/ai';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
 //src\lib\nutrition\nutrition-service-impl.ts
 
 /**
@@ -91,11 +96,16 @@ export function createStandardNutritionData(data: Partial<NutritionData> = {}): 
  * 栄養計算サービスの実装クラス
  */
 export class NutritionServiceImpl implements NutritionService {
-    /**
-     * コンストラクタ
-     * @param foodRepository 食品リポジトリ
-     */
-    constructor(private readonly foodRepository: FoodRepository) { }
+    private foodRepository: FoodRepository;
+    private foodMatchingService: FoodMatchingService;
+
+    constructor(
+        foodRepository: FoodRepository,
+        foodMatchingService: FoodMatchingService
+    ) {
+        this.foodRepository = foodRepository;
+        this.foodMatchingService = foodMatchingService;
+    }
 
     /**
      * 食品リストから栄養素を計算する
@@ -509,5 +519,169 @@ export class NutritionServiceImpl implements NutritionService {
                 }
             }
         }
+    }
+
+    /**
+     * AIによって解析された食品情報から、食品マッチング、量の解析、栄養価計算を行い
+     * 最終的な分析結果を生成する
+     * @param parsedFoods AIによって解析された食品情報の配列
+     * @returns 食品分析結果
+     */
+    async processParsedFoods(parsedFoods: FoodInputParseResult[]): Promise<FoodAnalysisResult> {
+        // 結果格納用の変数を初期化
+        const matchedItems: MealFoodItem[] = [];
+        const meta = {
+            unmatchedFoods: [] as string[],
+            lowConfidenceMatches: [] as string[],
+            errors: [] as string[]
+        };
+
+        // 処理時間の計測開始
+        const startTime = Date.now();
+
+        // 食品名の抽出
+        const foodNames = parsedFoods.map(food => food.foodName);
+
+        // 食品マッチング
+        let matchResults: FoodMatchResult[] = [];
+        try {
+            // foodMatchingServiceの戻り値の型を確認し、必要に応じて型変換
+            const results = await this.foodMatchingService.matchFoods(foodNames);
+            // 配列として扱えるようにする
+            if (Array.isArray(results)) {
+                matchResults = results;
+            } else if (results instanceof Map) {
+                // Mapの場合は配列に変換
+                matchResults = Array.from(foodNames.map((name) => {
+                    return results.get(name) || null;
+                })).filter((result): result is FoodMatchResult => result !== null);
+            }
+        } catch (error) {
+            throw new AppError({
+                code: ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR, // 適切なエラーコードに修正
+                message: '食品マッチング処理中にエラーが発生しました',
+                userMessage: '食品データベースの検索中に問題が発生しました',
+                details: { foodNames },
+                originalError: error instanceof Error ? error : undefined
+            });
+        }
+
+        // マッチング結果の類似度閾値
+        const SIMILARITY_THRESHOLD = 0.7;
+
+        // 結果の処理ループ
+        for (let i = 0; i < parsedFoods.length; i++) {
+            try {
+                const parsedFood = parsedFoods[i];
+                if (!parsedFood) continue; // parsedFoodがundefinedの場合はスキップ
+
+                // matchResultsのインデックスがparsedFoodsと一致することを確認
+                const matchResult = i < matchResults.length ? matchResults[i] : null;
+
+                // マッチング結果の検証
+                if (!matchResult || !matchResult.food) {
+                    meta.unmatchedFoods.push(parsedFood.foodName);
+                    continue;
+                }
+
+                // 類似度の確認
+                if (matchResult.similarity < SIMILARITY_THRESHOLD) {
+                    meta.lowConfidenceMatches.push(parsedFood.foodName);
+                    // 低類似度でも処理は続行
+                }
+
+                // 量の解析と変換
+                // quantityStrプロパティの存在を確認
+                const quantityString = 'quantityStr' in parsedFood ?
+                    String(parsedFood.quantityStr || '') : '';
+                // categoryプロパティの存在を確認
+                const category = 'category' in parsedFood ?
+                    String(parsedFood.category || '') : '';
+
+                const { quantity: parsedQuantity, confidence: quantityParseConfidence } = QuantityParser.parseQuantity(
+                    quantityString,
+                    matchResult.food.name,
+                    category || matchResult.food.category || ''
+                );
+
+                const { grams, confidence: conversionConfidence } = QuantityParser.convertToGrams(
+                    parsedQuantity,
+                    matchResult.food.name,
+                    category || matchResult.food.category || ''
+                );
+
+                // 総合的な確信度の計算（類似度、量解析確信度、グラム変換確信度の組み合わせ）
+                const combinedConfidence = Math.min(
+                    matchResult.similarity,
+                    quantityParseConfidence,
+                    conversionConfidence
+                );
+
+                // MealFoodItemの作成
+                // MealFoodItemの型定義に従って必要なプロパティを設定
+                const mealFoodItem: MealFoodItem = {
+                    foodId: matchResult.food.id,
+                    food: matchResult.food,
+                    quantity: parsedQuantity,
+                    originalInput: parsedFood.foodName,
+                    confidence: combinedConfidence
+                };
+
+                matchedItems.push(mealFoodItem);
+            } catch (error) {
+                // 個別の食品処理エラーはスキップして次の食品の処理を続行
+                const foodName = parsedFoods[i]?.foodName ?? '不明な食品'; // null合体演算子でundefinedチェック
+                const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+                meta.errors.push(`${foodName}の処理中にエラー: ${errorMessage}`);
+            }
+        }
+
+        // 一つもマッチングできなかった場合はエラー
+        if (matchedItems.length === 0) {
+            throw new AppError({
+                code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
+                message: '有効な食品が見つかりませんでした',
+                userMessage: '入力された食品をデータベースで見つけることができませんでした',
+                details: { unmatchedFoods: meta.unmatchedFoods }
+            });
+        }
+
+        // 栄養計算
+        let nutritionResult: NutritionCalculationResult;
+        try {
+            nutritionResult = await this.calculateNutrition(matchedItems);
+        } catch (error) {
+            throw new AppError({
+                code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                message: '栄養価計算中にエラーが発生しました',
+                userMessage: '栄養価の計算中に問題が発生しました',
+                details: { matchedItems: matchedItems.map(item => item.food.name) },
+                originalError: error instanceof Error ? error : undefined
+            });
+        }
+
+        // 処理時間の計測終了
+        const calculationTime = Date.now() - startTime;
+
+        // FoodAnalysisResultの構築
+        const result: FoodAnalysisResult = {
+            foods: matchedItems.map(item => ({
+                name: item.food.name,
+                quantity: `${item.quantity.value} ${item.quantity.unit}`,
+                confidence: item.confidence
+            })),
+            nutrition: {
+                ...nutritionResult.nutrition,
+                confidence_score: nutritionResult.reliability.confidence
+            },
+            meta: {
+                ...meta,
+                calculationTime: calculationTime.toString(), // number型をstring型に変換
+                totalItemsFound: matchedItems.length,
+                totalInputItems: parsedFoods.length
+            }
+        };
+
+        return result;
     }
 } 
