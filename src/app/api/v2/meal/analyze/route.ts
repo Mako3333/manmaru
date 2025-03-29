@@ -3,19 +3,21 @@ import { withAuthAndErrorHandling } from '@/lib/util/api-middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
+import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 import { StandardApiResponse } from '@/types/api';
 import { z } from 'zod';
-import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
-    url: z.string().url("有効なURLを指定してください"),
+    image: z.string().min(1, "画像データは必須です"),
+    mealType: z.string().optional(),
+    trimester: z.number().int().min(1).max(3).optional()
 });
 
 /**
- * レシピ解析API v2
- * レシピURLからレシピデータを解析し、栄養素を計算する
+ * 食事画像解析API v2
+ * 画像から食品を認識し、栄養素を計算する
  */
 export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<StandardApiResponse<any>> => {
     // リクエストデータを取得して検証
@@ -24,7 +26,18 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
     try {
         // スキーマ検証
         const validatedData = requestSchema.parse(requestData);
-        const url = validatedData.url.trim();
+        const imageData = validatedData.image;
+        const mealType = validatedData.mealType || '食事';
+        const trimester = validatedData.trimester;
+
+        if (!imageData.startsWith('data:image/')) {
+            throw new ApiError(
+                '無効な画像形式です',
+                ErrorCode.DATA_VALIDATION_ERROR,
+                '画像データはbase64エンコードされたものである必要があります',
+                400
+            );
+        }
 
         // 処理時間計測開始
         const startTime = Date.now();
@@ -32,30 +45,28 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
         // AIサービス初期化
         const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
-        // レシピ解析の実行
-        const analysisResult = await aiService.analyzeRecipeText(url);
+        // 画像解析の実行
+        const analysisResult = await aiService.analyzeMealImage(imageData);
 
         if (analysisResult.error) {
             throw new ApiError(
-                'レシピ解析に失敗しました',
+                '画像解析に失敗しました',
                 ErrorCode.AI_ANALYSIS_ERROR,
-                analysisResult.error || 'レシピ解析中にエラーが発生しました',
+                analysisResult.error || '画像解析中にエラーが発生しました',
                 500,
                 { originalError: analysisResult.error }
             );
         }
 
         // 解析結果から食品リストを取得
-        const ingredients = analysisResult.parseResult.foods || [];
-        const recipeTitle = 'レシピ'; // デフォルトタイトル
-        const servings = 1; // デフォルトの人数
+        const foods = analysisResult.parseResult.foods || [];
 
-        // 材料リストの検証
-        if (ingredients.length === 0) {
+        // 食品リストの検証
+        if (foods.length === 0) {
             throw new ApiError(
-                '材料が検出されませんでした',
+                '食品が検出されませんでした',
                 ErrorCode.FOOD_RECOGNITION_ERROR,
-                'レシピから材料を検出できませんでした。別のレシピをお試しください。',
+                '画像から食品を検出できませんでした。別の画像をお試しください。',
                 400
             );
         }
@@ -65,31 +76,13 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
         const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
 
         // 食品名と量の配列に変換
-        const nameQuantityPairs = ingredients.map((item: FoodInputParseResult) => ({
+        const nameQuantityPairs = foods.map((item: FoodInputParseResult) => ({
             name: item.foodName,
             quantity: item.quantityText || undefined
         })) as Array<{ name: string; quantity?: string }>;
 
-        // 材料から栄養計算を実行
+        // 栄養計算を実行
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
-
-        // 1人前の栄養素量を計算
-        const perServing = {
-            calories: nutritionResult.nutrition.calories / servings,
-            protein: nutritionResult.nutrition.protein / servings,
-            iron: nutritionResult.nutrition.iron / servings,
-            folic_acid: nutritionResult.nutrition.folic_acid / servings,
-            calcium: nutritionResult.nutrition.calcium / servings,
-            vitamin_d: nutritionResult.nutrition.vitamin_d / servings,
-            ...(nutritionResult.nutrition.extended_nutrients
-                ? {
-                    extended_nutrients: Object.entries(nutritionResult.nutrition.extended_nutrients).reduce(
-                        (acc, [key, value]) => ({ ...acc, [key]: (value as number) / servings }),
-                        {}
-                    )
-                }
-                : {})
-        };
 
         // 結果を返却
         let warningMessage;
@@ -100,16 +93,11 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
         return {
             success: true,
             data: {
-                recipe: {
-                    title: recipeTitle,
-                    servings: servings,
-                    ingredients: ingredients,
-                    sourceUrl: url
-                },
-                nutritionResult: {
-                    ...nutritionResult,
-                    perServing
-                }
+                foods: nameQuantityPairs,
+                mealType,
+                ...(trimester ? { trimester } : {}),
+                nutritionResult,
+                recognitionConfidence: analysisResult.parseResult.confidence
             },
             meta: {
                 processingTimeMs: Date.now() - startTime,

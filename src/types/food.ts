@@ -51,12 +51,18 @@ export interface MealFoodItem {
  * マッチング結果データ
  */
 export interface FoodMatchResult {
+    // 主要プロパティ
     food: Food;           // マッチした食品
-    matchedFood: Food;    // マッチした食品（互換性維持用）
     similarity: number;   // 類似度スコア (0.0-1.0)
-    confidence: number;   // 確信度スコア (0.0-1.0)
     originalInput: string; // 元の入力文字列
-    inputName: string;    // 入力された食品名
+
+    // 旧APIとの互換性のためのプロパティ
+    /** @deprecated food を使用してください */
+    matchedFood?: Food;
+    /** @deprecated similarity を使用してください */
+    confidence?: number;
+    /** @deprecated originalInput を使用してください */
+    inputName?: string;
 }
 
 /**

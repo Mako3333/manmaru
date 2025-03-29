@@ -7,139 +7,116 @@ import {
 } from './food-matching-service';
 import { FoodRepository } from './food-repository';
 import { FoodRepositoryFactory, FoodRepositoryType } from './food-repository-factory';
+import { AppError, ErrorCode } from '@/lib/errors/app-errors';
+import { FoodMatchingErrorHandler } from './food-matching-error-handler';
 
 /**
  * 食品マッチングサービスの実装
  */
 export class FoodMatchingServiceImpl implements FoodMatchingService {
-    private foodRepository: FoodRepository;
+    private readonly foodRepository: FoodRepository;
+    private readonly defaultConfidenceThreshold: number;
 
     /**
      * コンストラクタ
      * @param repositoryType 使用する食品リポジトリのタイプ
+     * @param confidenceThreshold デフォルトの信頼度閾値
      */
-    constructor(repositoryType: FoodRepositoryType = FoodRepositoryType.BASIC) {
+    constructor(repositoryType: FoodRepositoryType = FoodRepositoryType.BASIC, confidenceThreshold: number = 0.5) {
         this.foodRepository = FoodRepositoryFactory.getRepository(repositoryType);
+        this.defaultConfidenceThreshold = confidenceThreshold;
     }
 
     /**
      * 食品名から最適な食品データをマッチング
      */
-    async matchFood(
-        name: string,
-        options?: MatchingOptions
-    ): Promise<FoodMatchResult | null> {
-        if (!name || name.trim() === '') return null;
+    async matchFood(name: string, options?: MatchingOptions): Promise<FoodMatchResult | null> {
+        try {
+            const minSimilarity = options?.minSimilarity || this.defaultConfidenceThreshold;
 
-        const normalizedName = name.trim();
+            // 部分一致検索を実行
+            const matchResults = await this.foodRepository.searchFoodsByFuzzyMatch(name, options?.limit || 1);
 
-        // オプションのデフォルト値
-        const minSimilarity = options?.minSimilarity ?? 0.35;
-        const strictMode = options?.strictMode ?? false;
-
-        // 1. 厳密モードまたは完全一致を優先
-        if (strictMode) {
-            const exactMatch = await this.foodRepository.getFoodByExactName(normalizedName);
-            if (exactMatch) {
-                return {
-                    food: exactMatch,
-                    matchedFood: exactMatch,
-                    similarity: 1.0,
-                    confidence: 1.0,
-                    originalInput: normalizedName,
-                    inputName: normalizedName
-                };
+            if (!matchResults || matchResults.length === 0) {
+                return null;
             }
+
+            const bestMatch = matchResults[0];
+            if (!bestMatch || !bestMatch.food) {
+                return null;
+            }
+
+            // 信頼度が低すぎる場合はnullを返す
+            if (bestMatch.similarity < minSimilarity) {
+                console.warn(`低確信度マッチング: "${name}" -> "${bestMatch.food.name}" (${Math.round(bestMatch.similarity * 100)}%)`);
+
+                // 最低閾値未満の場合は null を返す（呼び出し側で処理）
+                if (bestMatch.similarity < CONFIDENCE_THRESHOLDS.VERY_LOW) {
+                    return null;
+                }
+            }
+
+            // 互換性プロパティを追加
+            return {
+                food: bestMatch.food,
+                similarity: bestMatch.similarity,
+                originalInput: name,
+                // 互換性のためのプロパティ
+                matchedFood: bestMatch.food,
+                confidence: bestMatch.similarity,
+                inputName: name
+            };
+
+        } catch (error) {
+            console.error(`食品マッチング中にエラーが発生しました (${name}):`, error);
             return null;
         }
-
-        // 2. 通常の完全一致チェック
-        const exactMatch = await this.foodRepository.getFoodByExactName(normalizedName);
-        if (exactMatch) {
-            return {
-                food: exactMatch,
-                matchedFood: exactMatch,
-                similarity: 1.0,
-                confidence: 1.0,
-                originalInput: normalizedName,
-                inputName: normalizedName
-            };
-        }
-
-        // 3. カテゴリ制限がある場合、部分一致検索で事前フィルタリング
-        let candidateFoods: Food[] = [];
-        if (options?.category) {
-            const categoryFoods = await this.foodRepository.searchFoodsByCategory(options.category);
-            // カテゴリ内で部分一致するものを検索
-            candidateFoods = categoryFoods.filter(food =>
-                food.name.includes(normalizedName) ||
-                normalizedName.includes(food.name) ||
-                food.aliases.some(alias =>
-                    alias.includes(normalizedName) || normalizedName.includes(alias)
-                )
-            );
-        }
-
-        // 4. ファジー検索でマッチング
-        const limit = options?.limit ?? 1;
-        const fuzzyResults = await this.foodRepository.searchFoodsByFuzzyMatch(
-            normalizedName,
-            candidateFoods.length > 0 ? Math.max(limit, candidateFoods.length) : limit
-        );
-
-        // 5. カテゴリフィルタリングと結果の結合
-        let results = fuzzyResults;
-        if (candidateFoods.length > 0) {
-            // カテゴリでフィルタリングされた結果を優先
-            const categoryMatchIds = new Set(candidateFoods.map(food => food.id));
-            const categoryMatches = fuzzyResults.filter(result =>
-                categoryMatchIds.has(result.food.id)
-            );
-
-            if (categoryMatches.length > 0) {
-                results = categoryMatches;
-            }
-        }
-
-        // 6. 結果の評価と返却
-        if (results.length > 0 && results[0].similarity >= minSimilarity) {
-            // confidence = similarity として設定（互換性のため）
-            const result = results[0];
-            return {
-                ...result,
-                matchedFood: result.food,
-                confidence: result.similarity,
-                inputName: normalizedName
-            };
-        }
-
-        return null;
     }
 
     /**
      * 複数の食品名を一括でマッチング
      */
-    async matchFoods(
-        names: string[],
-        options?: MatchingOptions
-    ): Promise<Map<string, FoodMatchResult | null>> {
+    async matchFoods(names: string[], options?: MatchingOptions): Promise<Map<string, FoodMatchResult | null>> {
         const results = new Map<string, FoodMatchResult | null>();
 
-        // 各食品名について並行処理
-        const matchPromises = names.map(async (name) => {
-            const result = await this.matchFood(name, options);
-            return { name, result };
-        });
-
-        // 全ての処理を待機
-        const matchResults = await Promise.all(matchPromises);
-
-        // 結果をマップに格納
-        for (const { name, result } of matchResults) {
-            results.set(name, result);
+        // 一括検索の場合、パフォーマンス向上のため並列処理も検討
+        for (const name of names) {
+            results.set(name, await this.matchFood(name, options));
         }
 
         return results;
+    }
+
+    /**
+     * 名前と量のペアを持つ入力配列からマッチングを行う (拡張メソッド)
+     * 栄養計算サービスなどで使用される
+     */
+    async matchNameQuantityPairs(
+        nameQuantityPairs: Array<{ name: string; quantity?: string }>
+    ): Promise<{ matchResults: FoodMatchResult[]; notFoundFoods: string[] }> {
+        const matchResults: FoodMatchResult[] = [];
+        const notFoundFoods: string[] = [];
+
+        // 名前のみの配列に変換
+        const names = nameQuantityPairs.map(pair => pair.name);
+
+        // 一括マッチング実行
+        const matchMap = await this.matchFoods(names);
+
+        // 結果の処理
+        for (const pair of nameQuantityPairs) {
+            const match = matchMap.get(pair.name);
+
+            if (match) {
+                // マッチング成功
+                matchResults.push(match);
+            } else {
+                // マッチング失敗
+                notFoundFoods.push(pair.name);
+            }
+        }
+
+        return { matchResults, notFoundFoods };
     }
 
     /**
@@ -154,9 +131,8 @@ export class FoodMatchingServiceImpl implements FoodMatchingService {
             return ConfidenceLevel.LOW;
         } else if (confidence >= CONFIDENCE_THRESHOLDS.VERY_LOW) {
             return ConfidenceLevel.VERY_LOW;
-        } else {
-            return null; // 最低閾値未満
         }
+        return null;
     }
 
     /**
@@ -165,46 +141,33 @@ export class FoodMatchingServiceImpl implements FoodMatchingService {
     getConfidenceDisplay(confidence: number): ConfidenceDisplay {
         const level = this.getConfidenceLevel(confidence);
 
+        let colorClass = 'text-gray-400';
+        let icon = 'question-circle';
+        let message = '確信度なし';
+
         switch (level) {
             case ConfidenceLevel.HIGH:
-                return {
-                    level,
-                    colorClass: 'text-green-600',
-                    icon: 'check-circle',
-                    message: '高確信度'
-                };
-
+                colorClass = 'text-green-600';
+                icon = 'check-circle';
+                message = '高確信度マッチング';
+                break;
             case ConfidenceLevel.MEDIUM:
-                return {
-                    level,
-                    colorClass: 'text-blue-600',
-                    icon: 'info-circle',
-                    message: '中確信度'
-                };
-
+                colorClass = 'text-blue-500';
+                icon = 'info-circle';
+                message = '中確信度マッチング';
+                break;
             case ConfidenceLevel.LOW:
-                return {
-                    level,
-                    colorClass: 'text-yellow-600',
-                    icon: 'exclamation-triangle',
-                    message: '低確信度 - 確認をお勧めします'
-                };
-
+                colorClass = 'text-yellow-500';
+                icon = 'exclamation-circle';
+                message = '低確信度マッチング';
+                break;
             case ConfidenceLevel.VERY_LOW:
-                return {
-                    level,
-                    colorClass: 'text-orange-600',
-                    icon: 'exclamation-circle',
-                    message: '非常に低い確信度 - 手動確認が必要です'
-                };
-
-            default:
-                return {
-                    level: null,
-                    colorClass: 'text-red-600',
-                    icon: 'times-circle',
-                    message: 'マッチング不可 - 手動入力が必要です'
-                };
+                colorClass = 'text-red-500';
+                icon = 'times-circle';
+                message = '非常に低い確信度';
+                break;
         }
+
+        return { level, colorClass, icon, message };
     }
 } 

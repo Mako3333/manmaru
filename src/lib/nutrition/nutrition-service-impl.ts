@@ -1,84 +1,88 @@
 import { Food, FoodQuantity, MealFoodItem, FoodMatchResult } from '@/types/food';
-import { NutritionCalculationResult, NutritionData, NutrientData } from '@/types/nutrition';
+import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
 import { FoodRepository } from '@/lib/food/food-repository';
 import { NutritionService } from './nutrition-service';
 import { QuantityParser } from './quantity-parser';
 //src\lib\nutrition\nutrition-service-impl.ts
-/**
- * NutrientData型からNutritionData型への変換ヘルパー
- * null/undefinedチェックを強化
- */
-export function mapNutrientToNutritionData(nutrientData: NutrientData): NutritionData {
-    return {
-        calories: nutrientData.energy ?? 0,
-        protein: nutrientData.protein ?? 0,
-        iron: nutrientData.minerals?.iron ?? 0,
-        folic_acid: nutrientData.vitamins?.folicAcid ?? 0,
-        calcium: nutrientData.minerals?.calcium ?? 0,
-        vitamin_d: nutrientData.vitamins?.vitaminD ?? 0,
-        confidence_score: nutrientData.confidence_score ?? 0.8,
-        extended_nutrients: {
-            fat: nutrientData.fat ?? 0,
-            carbohydrate: nutrientData.carbohydrate ?? 0,
-            dietary_fiber: nutrientData.dietaryFiber ?? 0,
-            sugars: nutrientData.sugars ?? 0,
-            salt: nutrientData.salt ?? 0,
-            minerals: {
-                sodium: nutrientData.minerals?.sodium ?? 0,
-                potassium: nutrientData.minerals?.potassium ?? 0,
-                magnesium: nutrientData.minerals?.magnesium ?? 0,
-                phosphorus: nutrientData.minerals?.phosphorus ?? 0,
-                zinc: nutrientData.minerals?.zinc ?? 0
-            },
-            vitamins: {
-                vitamin_a: nutrientData.vitamins?.vitaminA ?? 0,
-                vitamin_b1: nutrientData.vitamins?.vitaminB1 ?? 0,
-                vitamin_b2: nutrientData.vitamins?.vitaminB2 ?? 0,
-                vitamin_b6: nutrientData.vitamins?.vitaminB6 ?? 0,
-                vitamin_b12: nutrientData.vitamins?.vitaminB12 ?? 0,
-                vitamin_c: nutrientData.vitamins?.vitaminC ?? 0,
-                vitamin_e: nutrientData.vitamins?.vitaminE ?? 0,
-                vitamin_k: nutrientData.vitamins?.vitaminK ?? 0
-            }
-        }
-    };
-}
 
 /**
- * NutritionData型からNutrientData型への変換ヘルパー
- * null/undefinedチェックを強化
+ * NutritionData型の標準形式を作成（互換性のためのプロパティも同時に設定）
  */
-export function mapNutritionToNutrientData(nutritionData: NutritionData): NutrientData {
-    const result = {
-        ...nutritionData,
-        energy: nutritionData.calories,
-        fat: nutritionData.extended_nutrients?.fat ?? 0,
-        carbohydrate: nutritionData.extended_nutrients?.carbohydrate ?? 0,
-        dietaryFiber: nutritionData.extended_nutrients?.dietary_fiber ?? 0,
-        sugars: nutritionData.extended_nutrients?.sugars ?? 0,
-        salt: nutritionData.extended_nutrients?.salt ?? 0,
-        minerals: {
-            sodium: nutritionData.extended_nutrients?.minerals?.sodium ?? 0,
-            calcium: nutritionData.calcium,
-            iron: nutritionData.iron,
-            potassium: nutritionData.extended_nutrients?.minerals?.potassium ?? 0,
-            magnesium: nutritionData.extended_nutrients?.minerals?.magnesium ?? 0,
-            phosphorus: nutritionData.extended_nutrients?.minerals?.phosphorus ?? 0,
-            zinc: nutritionData.extended_nutrients?.minerals?.zinc ?? 0
+export function createStandardNutritionData(data: Partial<NutritionData> = {}): NutritionData {
+    const result: NutritionData = {
+        // 基本栄養素
+        calories: data.calories ?? 0,
+        protein: data.protein ?? 0,
+        iron: data.iron ?? 0,
+        folic_acid: data.folic_acid ?? 0,
+        calcium: data.calcium ?? 0,
+        vitamin_d: data.vitamin_d ?? 0,
+        confidence_score: data.confidence_score ?? 0.8,
+
+        // 拡張栄養素
+        extended_nutrients: {
+            fat: data.extended_nutrients?.fat ?? data.fat ?? 0,
+            carbohydrate: data.extended_nutrients?.carbohydrate ?? data.carbohydrate ?? 0,
+            dietary_fiber: data.extended_nutrients?.dietary_fiber ?? data.dietaryFiber ?? 0,
+            sugars: data.extended_nutrients?.sugars ?? data.sugars ?? 0,
+            salt: data.extended_nutrients?.salt ?? data.salt ?? 0,
+
+            // ミネラル
+            minerals: {
+                sodium: data.extended_nutrients?.minerals?.sodium ?? data.minerals?.sodium ?? 0,
+                potassium: data.extended_nutrients?.minerals?.potassium ?? data.minerals?.potassium ?? 0,
+                magnesium: data.extended_nutrients?.minerals?.magnesium ?? data.minerals?.magnesium ?? 0,
+                phosphorus: data.extended_nutrients?.minerals?.phosphorus ?? data.minerals?.phosphorus ?? 0,
+                zinc: data.extended_nutrients?.minerals?.zinc ?? data.minerals?.zinc ?? 0,
+            },
+
+            // ビタミン
+            vitamins: {
+                vitamin_a: data.extended_nutrients?.vitamins?.vitamin_a ?? data.vitamins?.vitaminA ?? 0,
+                vitamin_b1: data.extended_nutrients?.vitamins?.vitamin_b1 ?? data.vitamins?.vitaminB1 ?? 0,
+                vitamin_b2: data.extended_nutrients?.vitamins?.vitamin_b2 ?? data.vitamins?.vitaminB2 ?? 0,
+                vitamin_b6: data.extended_nutrients?.vitamins?.vitamin_b6 ?? data.vitamins?.vitaminB6 ?? 0,
+                vitamin_b12: data.extended_nutrients?.vitamins?.vitamin_b12 ?? data.vitamins?.vitaminB12 ?? 0,
+                vitamin_c: data.extended_nutrients?.vitamins?.vitamin_c ?? data.vitamins?.vitaminC ?? 0,
+                vitamin_e: data.extended_nutrients?.vitamins?.vitamin_e ?? data.vitamins?.vitaminE ?? 0,
+                vitamin_k: data.extended_nutrients?.vitamins?.vitamin_k ?? data.vitamins?.vitaminK ?? 0,
+            }
         },
+
+        // 互換性のためのプロパティ
+        energy: data.calories ?? data.energy ?? 0,
+        fat: data.extended_nutrients?.fat ?? data.fat ?? 0,
+        carbohydrate: data.extended_nutrients?.carbohydrate ?? data.carbohydrate ?? 0,
+        dietaryFiber: data.extended_nutrients?.dietary_fiber ?? data.dietaryFiber ?? 0,
+        sugars: data.extended_nutrients?.sugars ?? data.sugars ?? 0,
+        salt: data.extended_nutrients?.salt ?? data.salt ?? 0,
+
+        // 互換性のための構造化オブジェクト
+        minerals: {
+            sodium: data.extended_nutrients?.minerals?.sodium ?? data.minerals?.sodium ?? 0,
+            calcium: data.calcium ?? data.minerals?.calcium ?? 0,
+            iron: data.iron ?? data.minerals?.iron ?? 0,
+            potassium: data.extended_nutrients?.minerals?.potassium ?? data.minerals?.potassium ?? 0,
+            magnesium: data.extended_nutrients?.minerals?.magnesium ?? data.minerals?.magnesium ?? 0,
+            phosphorus: data.extended_nutrients?.minerals?.phosphorus ?? data.minerals?.phosphorus ?? 0,
+            zinc: data.extended_nutrients?.minerals?.zinc ?? data.minerals?.zinc ?? 0,
+        },
+
         vitamins: {
-            vitaminA: nutritionData.extended_nutrients?.vitamins?.vitamin_a ?? 0,
-            vitaminD: nutritionData.vitamin_d,
-            vitaminE: nutritionData.extended_nutrients?.vitamins?.vitamin_e ?? 0,
-            vitaminK: nutritionData.extended_nutrients?.vitamins?.vitamin_k ?? 0,
-            vitaminB1: nutritionData.extended_nutrients?.vitamins?.vitamin_b1 ?? 0,
-            vitaminB2: nutritionData.extended_nutrients?.vitamins?.vitamin_b2 ?? 0,
-            vitaminB6: nutritionData.extended_nutrients?.vitamins?.vitamin_b6 ?? 0,
-            vitaminB12: nutritionData.extended_nutrients?.vitamins?.vitamin_b12 ?? 0,
-            vitaminC: nutritionData.extended_nutrients?.vitamins?.vitamin_c ?? 0,
-            folicAcid: nutritionData.folic_acid
-        }
-    } as NutrientData;
+            vitaminA: data.extended_nutrients?.vitamins?.vitamin_a ?? data.vitamins?.vitaminA ?? 0,
+            vitaminD: data.vitamin_d ?? data.vitamins?.vitaminD ?? 0,
+            vitaminE: data.extended_nutrients?.vitamins?.vitamin_e ?? data.vitamins?.vitaminE ?? 0,
+            vitaminK: data.extended_nutrients?.vitamins?.vitamin_k ?? data.vitamins?.vitaminK ?? 0,
+            vitaminB1: data.extended_nutrients?.vitamins?.vitamin_b1 ?? data.vitamins?.vitaminB1 ?? 0,
+            vitaminB2: data.extended_nutrients?.vitamins?.vitamin_b2 ?? data.vitamins?.vitaminB2 ?? 0,
+            vitaminB6: data.extended_nutrients?.vitamins?.vitamin_b6 ?? data.vitamins?.vitaminB6 ?? 0,
+            vitaminB12: data.extended_nutrients?.vitamins?.vitamin_b12 ?? data.vitamins?.vitaminB12 ?? 0,
+            vitaminC: data.extended_nutrients?.vitamins?.vitamin_c ?? data.vitamins?.vitaminC ?? 0,
+            folicAcid: data.folic_acid ?? data.vitamins?.folicAcid ?? 0,
+        },
+
+        not_found_foods: data.not_found_foods ?? []
+    };
 
     return result;
 }
@@ -138,11 +142,8 @@ export class NutritionServiceImpl implements NutritionService {
         // 栄養バランススコアの計算
         const balanceScore = this.evaluateNutritionBalance(totalNutrients);
 
-        // 下位互換性のための変換（NutrientData型との互換性を確保）
-        const compatibilityNutrients = mapNutritionToNutrientData(totalNutrients);
-
         return {
-            nutrients: compatibilityNutrients,
+            nutrients: totalNutrients,
             reliability: {
                 confidence: averageConfidence,
                 balanceScore,
@@ -417,39 +418,7 @@ export class NutritionServiceImpl implements NutritionService {
      * @private
      */
     private initializeNutrientData(): NutritionData {
-        return {
-            calories: 0,
-            protein: 0,
-            iron: 0,
-            folic_acid: 0,
-            calcium: 0,
-            vitamin_d: 0,
-            confidence_score: 0,
-            extended_nutrients: {
-                dietary_fiber: 0,
-                fat: 0,
-                carbohydrate: 0,
-                sugars: 0,
-                salt: 0,
-                minerals: {
-                    sodium: 0,
-                    potassium: 0,
-                    magnesium: 0,
-                    phosphorus: 0,
-                    zinc: 0
-                },
-                vitamins: {
-                    vitamin_a: 0,
-                    vitamin_b1: 0,
-                    vitamin_b2: 0,
-                    vitamin_b6: 0,
-                    vitamin_b12: 0,
-                    vitamin_c: 0,
-                    vitamin_e: 0,
-                    vitamin_k: 0
-                }
-            }
-        };
+        return createStandardNutritionData();
     }
 
     /**

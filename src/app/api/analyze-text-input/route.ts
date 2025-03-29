@@ -1,88 +1,86 @@
 //src\app\api\analyze-text-input\route.ts
-import { NextRequest } from 'next/server';
-import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
-import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
-import { withAuthAndErrorHandling, createSuccessResponse } from '@/lib/util/api-middleware';
-import { validateRequestData, validateFoodTextInput } from '@/lib/util/request-validation';
-import { AIErrorHandler } from '@/lib/ai/ai-error-handler';
-import { NutritionErrorHandler } from '@/lib/nutrition/nutrition-error-handler';
-import { FoodInputParser } from '@/lib/food/food-input-parser';
+import { NextRequest, NextResponse } from 'next/server';
+import { ApiAdapter } from '@/lib/api/api-adapter';
+import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 
 /**
- * 食品テキスト入力解析API
- * 
- * テキストから食品リストを解析し、栄養素を計算します
+ * 食事テキスト入力解析APIエンドポイント（レガシー互換ラッパー）
+ * テキスト入力を受け取り、新APIにリダイレクトします
  */
-export const POST = withAuthAndErrorHandling(async (req: NextRequest) => {
-    // リクエストデータを取得
-    const requestData = await req.json();
-
-    // リクエストデータを検証
-    const validationResult = validateRequestData(
-        requestData,
-        [validateFoodTextInput]
-    );
-
-    if (!validationResult.valid || !validationResult.data) {
-        throw validationResult.error;
-    }
-
-    const { text } = validationResult.data;
+export async function POST(request: NextRequest) {
+    console.log('API: テキスト入力解析リクエスト受信（レガシーエンドポイント）');
 
     try {
-        // AIサービスを取得
-        const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
-
-        // テキスト解析を実行
-        const analysisResult = await aiService.analyzeMealText(text);
-
-        // エラーチェック
-        if (analysisResult.error) {
-            throw AIErrorHandler.handleAnalysisError(analysisResult.error, 'text');
-        }
-
-        // 栄養計算サービスを取得
-        const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
-        const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
-
-        // 解析結果から栄養素を計算
-        const foods = analysisResult.parseResult.foods;
-        if (foods.length === 0) {
-            throw AIErrorHandler.responseParseError(
-                new Error('食品が検出されませんでした'),
-                `入力: "${text}", AI応答: "${analysisResult.rawResponse || '応答なし'}"`
+        // リクエストボディの解析
+        let body: any;
+        try {
+            body = await request.json();
+        } catch (error) {
+            throw new ApiError(
+                'リクエストボディのJSONパースに失敗しました',
+                ErrorCode.DATA_VALIDATION_ERROR,
+                '無効なリクエスト形式です',
+                400,
+                { originalError: error }
             );
         }
 
-        const nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(foods);
-        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
-
-        // 警告メッセージの設定
-        let warningMessage;
-        if (nutritionResult.reliability.confidence < 0.7) {
-            warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
+        // 必須フィールドの確認
+        const { text } = body;
+        if (!text) {
+            throw new ApiError(
+                'テキスト入力が必要です',
+                ErrorCode.DATA_VALIDATION_ERROR,
+                'テキスト入力を指定してください',
+                400
+            );
         }
 
-        // 結果を返却
-        return createSuccessResponse({
-            foods: foods,
-            nutritionResult: nutritionResult,
-            processingTimeMs: analysisResult.processingTimeMs
-        }, warningMessage);
+        // 新APIへリクエストを転送
+        const response = await fetch(new URL('/api/v2/food/parse', request.url), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // 認証トークンを引き継ぐ
+                ...Object.fromEntries(request.headers)
+            },
+            body: JSON.stringify({ text })
+        });
+
+        // レスポンスの変換処理
+        const result = await response.json();
+
+        // 新APIレスポンスを旧形式に変換
+        const legacyResponse = ApiAdapter.convertStandardToLegacy(result);
+
+        console.log('API: テキスト入力解析完了（旧形式に変換）');
+        return NextResponse.json(legacyResponse);
 
     } catch (error) {
-        // エラーを栄養計算エラーとして処理
-        throw NutritionErrorHandler.handleCalculationError(
-            error,
-            [{ name: text }]
+        console.error('API: テキスト入力解析エラー', error);
+
+        // エラーレスポンス
+        return NextResponse.json(
+            {
+                success: false,
+                error: error instanceof ApiError
+                    ? error.userMessage
+                    : 'エラーが発生しました。しばらく経ってから再度お試しください。',
+                errorCode: error instanceof ApiError
+                    ? error.code
+                    : ErrorCode.UNKNOWN_ERROR,
+                details: process.env.NODE_ENV === 'development'
+                    ? error instanceof Error ? error.message : String(error)
+                    : undefined
+            },
+            { status: error instanceof ApiError ? error.statusCode : 500 }
         );
     }
-});
+}
 
 /**
  * プリフライトリクエスト対応
  */
-export const OPTIONS = withAuthAndErrorHandling(async () => {
-    return createSuccessResponse({ message: 'OK' });
-}, false);
+export async function OPTIONS() {
+    return NextResponse.json({ message: 'OK' });
+}

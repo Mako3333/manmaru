@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AppError, ErrorCode, ApiError } from '../errors/app-errors';
-
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-
-/**
- * 標準API応答フォーマット
- */
-export interface StandardApiResponse<T> {
-    success: boolean;
-    data?: T;
-    error?: {
-        code: string;
-        message: string;
-        details?: any;
-        suggestions?: string[];
-    };
-    meta?: {
-        processingTimeMs?: number;
-        warning?: string;
-    };
-}
+import { StandardApiResponse, SuccessResponse, ErrorResponse } from '@/types/api';
 
 // 下位互換性のための型エイリアス
 export type ApiResponse<T> = StandardApiResponse<T>;
@@ -149,6 +131,41 @@ export function withAuthAndErrorHandling<T>(
 }
 
 /**
+ * 型安全なAPI処理ラッパー
+ * エラーハンドリングを組み込んだ簡易版
+ */
+export function withStandardApiResponse<T>(
+    handler: (req: NextRequest, context: { params: any }) => Promise<T>
+): (req: NextRequest, context: { params: any }) => Promise<NextResponse> {
+    return async (req: NextRequest, context: { params: any }) => {
+        const startTime = performance.now();
+        try {
+            const result = await handler(req, context);
+            const processingTimeMs = Math.round(performance.now() - startTime);
+
+            return createSuccessResponse(result, undefined, processingTimeMs);
+        } catch (error) {
+            console.error('API Error:', error);
+
+            if (error instanceof AppError) {
+                return createErrorResponse(error);
+            }
+
+            // 未知のエラーをラップ
+            const appError = new AppError(
+                String(error),
+                ErrorCode.UNKNOWN_ERROR,
+                'エラーが発生しました。しばらく経ってから再度お試しください。',
+                { originalError: error },
+                'error'
+            );
+
+            return createErrorResponse(appError);
+        }
+    };
+}
+
+/**
  * 成功応答を生成
  */
 export function createSuccessResponse<T>(
@@ -156,7 +173,7 @@ export function createSuccessResponse<T>(
     warning?: string,
     processingTimeMs?: number
 ): NextResponse {
-    const response: StandardApiResponse<T> = {
+    const response: SuccessResponse<T> = {
         success: true,
         data
     };
@@ -174,17 +191,20 @@ export function createSuccessResponse<T>(
  * エラー応答を生成
  */
 export function createErrorResponse(error: AppError): NextResponse {
-    const response: StandardApiResponse<never> = {
+    const response: ErrorResponse = {
         success: false,
         error: {
             code: error.code,
             message: error.userMessage,
             suggestions: error.suggestions
+        },
+        meta: {
+            processingTimeMs: 0
         }
     };
 
     if (process.env.NODE_ENV === 'development') {
-        response.error!.details = error.details;
+        response.error.details = error.details as Record<string, unknown>;
     }
 
     const statusCode = getStatusCodeFromErrorCode(error.code);

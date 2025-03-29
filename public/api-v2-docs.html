@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>manmaru API v2 ドキュメント</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #2e7d32;
+            border-bottom: 2px solid #2e7d32;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #388e3c;
+            margin-top: 40px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+
+        h3 {
+            color: #43a047;
+            margin-top: 25px;
+        }
+
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: Consolas, Monaco, 'Andale Mono', monospace;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        .endpoint {
+            background-color: #e8f5e9;
+            padding: 10px 15px;
+            border-left: 4px solid #2e7d32;
+            margin: 15px 0;
+        }
+
+        .method {
+            font-weight: bold;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .method.post {
+            color: #ff9800;
+        }
+
+        .method.get {
+            color: #2196f3;
+        }
+
+        .required {
+            color: #f44336;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        th,
+        td {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f5f5f5;
+        }
+
+        .url {
+            word-break: break-all;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>manmaru API v2 ドキュメント</h1>
+    <p>
+        このドキュメントではmanmaruアプリケーションのAPI v2の使用方法について説明します。
+        APIはREST形式で提供され、すべてのエンドポイントは標準化されたJSON形式のレスポンスを返します。
+    </p>
+
+    <h2>認証</h2>
+    <p>
+        ほとんどのAPIエンドポイントでは認証が必要です。認証はJWTトークンを使用して行われます。
+        リクエストヘッダーに<code>Authorization</code>ヘッダーとしてトークンを含める必要があります。
+    </p>
+    <pre><code>Authorization: Bearer {your_jwt_token}</code></pre>
+
+    <h2>レスポンス形式</h2>
+    <p>
+        すべてのAPIレスポンスは次の標準形式で返されます:
+    </p>
+    <pre><code>{
+  "success": boolean,  // リクエストの成功/失敗
+  "data": any,         // 成功時のレスポンスデータ（オプション）
+  "error": {           // エラー時の情報（オプション）
+    "code": string,    // エラーコード
+    "message": string, // エラーメッセージ
+    "details": any,    // 詳細情報（開発モードのみ）
+    "suggestions": string[] // 解決策の提案（オプション）
+  },
+  "meta": {            // メタ情報（オプション）
+    "processingTimeMs": number, // 処理時間（ミリ秒）
+    "warning": string  // 警告メッセージ（オプション）
+  }
+}</code></pre>
+
+    <h2>エンドポイント</h2>
+
+    <h3>食事解析</h3>
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="url">/api/v2/meal/analyze</span>
+    </div>
+    <p>
+        テキスト入力または画像から食事内容を解析し、栄養計算を行います。
+    </p>
+    <h4>リクエスト</h4>
+    <table>
+        <tr>
+            <th>パラメータ</th>
+            <th>型</th>
+            <th>説明</th>
+        </tr>
+        <tr>
+            <td>text</td>
+            <td>string</td>
+            <td>解析するテキスト入力（例: "ご飯 味噌汁 鮭の塩焼き"）</td>
+        </tr>
+        <tr>
+            <td>image</td>
+            <td>string</td>
+            <td>解析する画像（Base64エンコード文字列）</td>
+        </tr>
+        <tr>
+            <td>meal_type</td>
+            <td>string</td>
+            <td>食事タイプ（例: "朝食", "昼食", "夕食", "間食"）</td>
+        </tr>
+    </table>
+    <p>※ textとimageのどちらかを指定する必要があります</p>
+
+    <h4>レスポンス例</h4>
+    <pre><code>{
+  "success": true,
+  "data": {
+    "foods": [
+      {
+        "name": "ご飯",
+        "quantity": "茶碗1杯",
+        "confidence": 0.95
+      },
+      {
+        "name": "味噌汁",
+        "quantity": "1杯",
+        "confidence": 0.93
+      },
+      {
+        "name": "鮭の塩焼き",
+        "quantity": "1切れ",
+        "confidence": 0.89
+      }
+    ],
+    "nutritionResult": {
+      "nutrition": {
+        "calories": 450,
+        "protein": 22.5,
+        "iron": 1.8,
+        "folic_acid": 58.2,
+        "calcium": 85.3,
+        "vitamin_d": 8.4,
+        "extended_nutrients": {
+          "fat": 12.3,
+          "carbohydrate": 65.7
+        }
+      },
+      "reliability": {
+        "confidence": 0.92,
+        "balanceScore": 78,
+        "completeness": 0.85
+      },
+      "matchResults": [...]
+    },
+    "processingTimeMs": 1248
+  },
+  "meta": {
+    "processingTimeMs": 1352
+  }
+}</code></pre>
+
+    <h3>食品テキスト解析</h3>
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="url">/api/v2/food/parse</span>
+    </div>
+    <p>
+        テキスト入力から食品情報を解析し、栄養計算を行います。
+    </p>
+    <h4>リクエスト</h4>
+    <table>
+        <tr>
+            <th>パラメータ</th>
+            <th>型</th>
+            <th>説明</th>
+        </tr>
+        <tr>
+            <td>text<span class="required">*</span></td>
+            <td>string</td>
+            <td>解析するテキスト（例: "ご飯 200g、納豆 1パック、目玉焼き 1個"）</td>
+        </tr>
+    </table>
+
+    <h3>レシピ解析</h3>
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <span class="url">/api/v2/recipe/parse</span>
+    </div>
+    <p>
+        レシピURLまたはレシピテキストを解析し、栄養計算を行います。
+    </p>
+    <h4>リクエスト</h4>
+    <table>
+        <tr>
+            <th>パラメータ</th>
+            <th>型</th>
+            <th>説明</th>
+        </tr>
+        <tr>
+            <td>url<span class="required">*</span></td>
+            <td>string</td>
+            <td>解析するレシピのURL</td>
+        </tr>
+    </table>
+
+    <h3>栄養アドバイス取得</h3>
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <span class="url">/api/v2/nutrition/advice</span>
+    </div>
+    <p>
+        妊娠週数や栄養摂取状況に基づいた栄養アドバイスを取得します。
+    </p>
+    <h4>クエリパラメータ</h4>
+    <table>
+        <tr>
+            <th>パラメータ</th>
+            <th>型</th>
+            <th>説明</th>
+        </tr>
+        <tr>
+            <td>date</td>
+            <td>string</td>
+            <td>アドバイスを取得する日付 (YYYY-MM-DD形式)</td>
+        </tr>
+        <tr>
+            <td>force</td>
+            <td>boolean</td>
+            <td>既存のアドバイスがあっても強制的に再生成する場合は true</td>
+        </tr>
+        <tr>
+            <td>detail</td>
+            <td>boolean</td>
+            <td>詳細なアドバイスを取得する場合は true</td>
+        </tr>
+    </table>
+
+    <h2>エラーコード</h2>
+    <p>
+        APIがエラーを返す場合、以下のようなエラーコードが含まれます:
+    </p>
+    <table>
+        <tr>
+            <th>コード</th>
+            <th>説明</th>
+        </tr>
+        <tr>
+            <td>AUTH_REQUIRED</td>
+            <td>認証が必要です</td>
+        </tr>
+        <tr>
+            <td>AUTH_INVALID</td>
+            <td>認証情報が無効です</td>
+        </tr>
+        <tr>
+            <td>DATA_VALIDATION_ERROR</td>
+            <td>入力データが無効です</td>
+        </tr>
+        <tr>
+            <td>DATA_NOT_FOUND</td>
+            <td>要求されたデータが見つかりません</td>
+        </tr>
+        <tr>
+            <td>AI_ANALYSIS_ERROR</td>
+            <td>AI解析中にエラーが発生しました</td>
+        </tr>
+        <tr>
+            <td>FOOD_NOT_FOUND</td>
+            <td>食品データが見つかりません</td>
+        </tr>
+        <tr>
+            <td>NUTRITION_CALCULATION_ERROR</td>
+            <td>栄養計算中にエラーが発生しました</td>
+        </tr>
+        <tr>
+            <td>FOOD_RECOGNITION_ERROR</td>
+            <td>食品認識中にエラーが発生しました</td>
+        </tr>
+    </table>
+
+    <h2>関連リソース</h2>
+    <ul>
+        <li><a href="/docs/nutrition-types">栄養素データ型リファレンス</a></li>
+        <li><a href="/docs/food-database">食品データベースリファレンス</a></li>
+    </ul>
+
+    <footer>
+        <p>© 2023-2024 manmaru. All rights reserved.</p>
+        <p>API バージョン: v2.0.0</p>
+    </footer>
+</body>
+
+</html>

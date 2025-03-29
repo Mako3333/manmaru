@@ -2,7 +2,7 @@
  * 基本的な栄養素データ（集計や保存に使用）
  */
 //src\types\nutrition.ts
-import { Food } from './food';
+import { Food, FoodMatchResult } from './food';
 
 export interface BasicNutritionData {
     calories: number;
@@ -427,31 +427,26 @@ export interface StandardizedMealData {
 import { FoodQuantity } from './food';
 
 /**
- * 栄養計算の結果を表す型
+ * 栄養計算結果の型定義
  */
 export interface NutritionCalculationResult {
-    // 栄養素データ
-    nutrients: NutritionData;
-
-    // 計算の信頼性情報
+    nutrition: NutritionData;
+    matchResults: any[]; // 食品マッチング結果
     reliability: {
-        confidence: number;       // 全体の確信度 (0.0-1.0)
-        balanceScore: number;     // 栄養バランススコア (0-100)
-        completeness: number;     // データの完全性 (0.0-1.0)
+        confidence: number;      // 全体の確信度 (0.0-1.0)
+        balanceScore: number;    // 栄養バランススコア (0-100)
+        completeness: number;    // データの完全性 (0.0-1.0)
     };
-
-    // 食品ごとのマッチング詳細
-    matchResults: Array<FoodMatchResult>;
 }
 
 /**
- * 栄養素表示用のコンポーネントデータ
+ * 表示用の栄養素データ
  */
 export interface NutrientDisplayData {
-    name: string;          // 表示名（例: エネルギー、タンパク質）
-    amount: number;        // 量
-    unit: string;          // 単位（例: kcal, g, mg, μg）
-    percentOfDaily?: number; // 1日の推奨摂取量に対する割合
+    name: string;            // 栄養素名（日本語表示用）
+    amount: number;          // 量
+    unit: string;            // 単位 (g, mg, μg など)
+    percentOfDaily?: number; // 1日の推奨摂取量に対する割合 (%)
 }
 
 /**
