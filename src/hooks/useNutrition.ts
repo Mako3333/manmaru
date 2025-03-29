@@ -6,7 +6,7 @@ import {
     getNutritionTargetByTrimester
 } from '@/lib/supabase/client';
 import { NutritionProgress, NutritionTarget, BasicNutritionData } from '@/types/nutrition';
-import { formatDate, getDateRange, addDays } from '@/lib/utils/date';
+import { formatDate, getDateRange } from '@/lib/date-utils';
 
 /**
  * 栄養データを管理するためのカスタムフック
@@ -26,7 +26,7 @@ export const useNutrition = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const formattedDate = formatDate(date);
+            const formattedDate = formatDate(new Date(date));
             const progress = await getNutritionProgress(formattedDate);
             setDailyProgress(progress);
 
@@ -51,8 +51,8 @@ export const useNutrition = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const formattedStartDate = formatDate(startDate);
-            const formattedEndDate = formatDate(endDate);
+            const formattedStartDate = formatDate(new Date(startDate));
+            const formattedEndDate = formatDate(new Date(endDate));
             const progress = await getNutritionProgressByDateRange(formattedStartDate, formattedEndDate);
             setWeeklyProgress(progress);
         } catch (err) {

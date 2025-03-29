@@ -143,7 +143,7 @@ export class NutritionServiceImpl implements NutritionService {
         const balanceScore = this.evaluateNutritionBalance(totalNutrients);
 
         return {
-            nutrients: totalNutrients,
+            nutrition: totalNutrients,
             reliability: {
                 confidence: averageConfidence,
                 balanceScore,
@@ -168,7 +168,7 @@ export class NutritionServiceImpl implements NutritionService {
             // 名前から食品を検索
             const foodMatches = await this.foodRepository.searchFoodsByFuzzyMatch(item.name);
 
-            if (foodMatches.length > 0) {
+            if (foodMatches.length > 0 && foodMatches[0] && foodMatches[0].food) {
                 // 最もマッチする食品を使用
                 const bestMatch = foodMatches[0].food;
 

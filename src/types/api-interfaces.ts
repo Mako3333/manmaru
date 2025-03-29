@@ -1,34 +1,7 @@
-import { ErrorCode as AppErrorCode } from '@/lib/errors/app-errors';
+import { ErrorCode, AnyErrorCode } from '@/lib/error';
+import type { ApiResponse, ApiState, SuccessResponse, ErrorResponse } from './api';
 
-/**
- * 標準APIレスポンス形式
- */
-export interface StandardApiResponse<T = any> {
-    /** 成功フラグ */
-    success: boolean;
-    /** レスポンスデータ */
-    data?: T;
-    /** エラー情報 */
-    error?: {
-        /** エラーコード */
-        code: AppErrorCode | string;
-        /** エラーメッセージ */
-        message: string;
-        /** 詳細情報 */
-        details?: any;
-        /** ユーザーへの提案 */
-        suggestions?: string[];
-    };
-    /** メタデータ */
-    meta?: {
-        /** 処理時間（ミリ秒） */
-        processingTimeMs?: number;
-        /** 警告メッセージ */
-        warning?: string;
-        /** その他のメタデータ */
-        [key: string]: any;
-    };
-}
+export type { ApiResponse, ApiState, SuccessResponse, ErrorResponse };
 
 /**
  * APIエンドポイント情報
@@ -58,20 +31,6 @@ export interface ApiEndpoint {
     deprecated?: boolean;
     /** バージョン情報 */
     version?: string;
-}
-
-/**
- * API通信の状態
- */
-export interface ApiState<T> {
-    /** データ */
-    data?: T;
-    /** ローディング状態 */
-    loading: boolean;
-    /** エラーメッセージ */
-    error?: string;
-    /** エラー詳細 */
-    errorDetails?: any;
 }
 
 /**
@@ -110,20 +69,6 @@ export interface PaginationMeta {
     totalPages: number;
     /** 総アイテム数 */
     totalItems: number;
-}
-
-// エラーコード列挙型
-export enum ErrorCode {
-    AUTH_REQUIRED = 'AUTH_REQUIRED',
-    AUTH_INVALID = 'AUTH_INVALID',
-    DATA_VALIDATION_ERROR = 'DATA_VALIDATION_ERROR',
-    DATA_NOT_FOUND = 'DATA_NOT_FOUND',
-    AI_ANALYSIS_ERROR = 'AI_ANALYSIS_ERROR',
-    FOOD_NOT_FOUND = 'FOOD_NOT_FOUND',
-    NUTRITION_CALCULATION_ERROR = 'NUTRITION_CALCULATION_ERROR',
-    FOOD_RECOGNITION_ERROR = 'FOOD_RECOGNITION_ERROR',
-    SERVER_ERROR = 'SERVER_ERROR',
-    NETWORK_ERROR = 'NETWORK_ERROR'
 }
 
 // 栄養素の信頼性情報インターフェース

@@ -12,69 +12,6 @@ import {
 } from './nutrition-service-impl';
 //src\lib\nutrition\nutrition-utils.ts
 /**
- * 個別の食品アイテムの栄養データから食事全体の栄養データを計算
- */
-export function calculateMealNutrition(foodItems: Array<{
-    id: string;
-    name: string;
-    nutrition: FoodItemNutrition;
-    amount: number;
-    unit: string;
-}>): StandardizedMealNutrition {
-    // 総カロリーの初期化
-    let totalCalories = 0;
-
-    // 総栄養素のマップを初期化
-    const nutrientMap = new Map<string, Nutrient>();
-
-    // 各食品アイテムの栄養素を集計
-    for (const item of foodItems) {
-        // カロリーを加算
-        totalCalories += item.nutrition.calories * (item.amount / item.nutrition.servingSize.value);
-
-        // 栄養素を集計
-        for (const nutrient of item.nutrition.nutrients) {
-            const normalizedAmount = nutrient.value * (item.amount / item.nutrition.servingSize.value);
-
-            if (nutrientMap.has(nutrient.name)) {
-                const existing = nutrientMap.get(nutrient.name)!;
-                existing.value += normalizedAmount;
-                if (existing.percentDailyValue !== undefined && nutrient.percentDailyValue !== undefined) {
-                    existing.percentDailyValue += nutrient.percentDailyValue * (item.amount / item.nutrition.servingSize.value);
-                }
-            } else {
-                nutrientMap.set(nutrient.name, {
-                    name: nutrient.name,
-                    value: normalizedAmount,
-                    unit: nutrient.unit,
-                    percentDailyValue: nutrient.percentDailyValue !== undefined
-                        ? nutrient.percentDailyValue * (item.amount / item.nutrition.servingSize.value)
-                        : undefined
-                });
-            }
-        }
-    }
-
-    // 妊婦向け特別データを計算
-    const folateNutrient = nutrientMap.get('葉酸') || nutrientMap.get('Folate');
-    const ironNutrient = nutrientMap.get('鉄') || nutrientMap.get('Iron');
-    const calciumNutrient = nutrientMap.get('カルシウム') || nutrientMap.get('Calcium');
-
-    const pregnancySpecific = {
-        folatePercentage: folateNutrient?.percentDailyValue || 0,
-        ironPercentage: ironNutrient?.percentDailyValue || 0,
-        calciumPercentage: calciumNutrient?.percentDailyValue || 0
-    };
-
-    return {
-        totalCalories,
-        totalNutrients: Array.from(nutrientMap.values()),
-        foodItems,
-        pregnancySpecific
-    };
-}
-
-/**
  * 既存のNutritionData型からStandardizedMealNutritionへの変換
  */
 export function convertToStandardizedNutrition(

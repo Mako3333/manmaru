@@ -1,32 +1,25 @@
-import { ErrorCode } from '@/lib/errors/app-errors';
-
-/**
- * 標準APIレスポンス形式の型定義
- */
-export interface StandardApiResponse<T> {
-    success: boolean;
-    data?: T;
-    error?: {
-        code: ErrorCode;
-        message: string;
-        details?: unknown;
-        suggestions?: string[];
-    };
-    meta?: {
-        processingTimeMs?: number;
-        warning?: string;
-        [key: string]: unknown;
-    };
-}
+import { ErrorCode, AnyErrorCode } from '@/lib/error';
+import { ApiResponse as BaseApiResponse } from '@/lib/api/response';
 
 /**
  * ページネーション用のメタデータ
  */
 export interface PaginationMeta {
-    page: number;
-    perPage: number;
-    total: number;
+    currentPage: number;
     totalPages: number;
+    totalItems: number;
+    itemsPerPage: number;
+}
+
+/**
+ * 拡張APIレスポンス型
+ */
+export interface ApiResponse<T = unknown> extends BaseApiResponse<T> {
+    meta?: {
+        processingTimeMs?: number;
+        warning?: string;
+        pagination?: PaginationMeta;
+    };
 }
 
 /**
@@ -35,11 +28,7 @@ export interface PaginationMeta {
 export type SuccessResponse<T> = {
     success: true;
     data: T;
-    meta?: {
-        processingTimeMs?: number;
-        warning?: string;
-        pagination?: PaginationMeta;
-    };
+    meta?: ApiResponse<T>['meta'];
 };
 
 /**
@@ -48,7 +37,7 @@ export type SuccessResponse<T> = {
 export type ErrorResponse = {
     success: false;
     error: {
-        code: ErrorCode;
+        code: AnyErrorCode;
         message: string;
         details?: Record<string, unknown>;
         suggestions?: string[];
@@ -72,40 +61,6 @@ export interface LegacyApiResponse<T> {
 }
 
 /**
- * ヘルパー関数: 成功レスポンスの型安全な作成
- */
-export function createTypedSuccessResponse<T>(
-    data: T,
-    meta?: Omit<SuccessResponse<T>['meta'], 'processingTimeMs'>
-): SuccessResponse<T> {
-    return {
-        success: true,
-        data,
-        ...(meta ? { meta } : {})
-    };
-}
-
-/**
- * ヘルパー関数: エラーレスポンスの型安全な作成
- */
-export function createTypedErrorResponse(
-    code: ErrorCode,
-    message: string,
-    details?: Record<string, unknown>,
-    suggestions?: string[]
-): ErrorResponse {
-    return {
-        success: false,
-        error: {
-            code,
-            message,
-            ...(details ? { details } : {}),
-            ...(suggestions ? { suggestions } : {})
-        }
-    };
-}
-
-/**
  * API通信の状態を表す型
  */
 export interface ApiState<T> {
@@ -118,7 +73,7 @@ export interface ApiState<T> {
 /**
  * APIハンドラー型
  */
-export type ApiHandler<T> = (req: Request) => Promise<StandardApiResponse<T>>;
+export type ApiHandler<T> = (req: Request) => Promise<ApiResponse<T>>;
 
 /**
  * APIミドルウェア型

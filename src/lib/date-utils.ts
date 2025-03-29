@@ -1,4 +1,4 @@
-import { format, differenceInYears, differenceInWeeks, addWeeks, differenceInDays } from 'date-fns';
+import { format, differenceInYears, differenceInWeeks, addWeeks, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
 /**
@@ -100,4 +100,67 @@ export function addDaysToDate(days: number): Date {
 export function daysBetween(date1: Date, date2: Date): number {
     const diffTime = Math.abs(date2.getTime() - date1.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * 現在の季節を取得する
+ * @returns 現在の季節（春、夏、秋、冬）
+ */
+export function getCurrentSeason(): string {
+    const now = new Date();
+    const month = now.getMonth() + 1; // 0-indexed -> 1-indexed
+
+    // 日本の季節区分に基づいて季節を判定
+    if (3 <= month && month <= 5) {
+        return '春';
+    } else if (6 <= month && month <= 8) {
+        return '夏';
+    } else if (9 <= month && month <= 11) {
+        return '秋';
+    } else {
+        return '冬';
+    }
+}
+
+/**
+ * 日本時間の現在日付を取得する（YYYY-MM-DD形式）
+ */
+export function getJapanDate(): string {
+    const now = new Date();
+    // 日本時間を考慮してフォーマット (date-fns を利用)
+    // 注意: タイムゾーンはサーバー/クライアント環境に依存する可能性があるため、
+    // 一貫性を保つためには、専用のライブラリ (e.g., date-fns-tz) の導入も検討する。
+    // ここでは単純に `format` を使用する。
+    return format(now, 'yyyy-MM-dd');
+}
+
+/**
+ * 指定された日付を含む週または月の開始日と終了日を取得する
+ * @param date 基準となる日付
+ * @param type 期間のタイプ ('week' または 'month')
+ * @returns 開始日と終了日のオブジェクト { startDate: string, endDate: string }
+ */
+export function getDateRange(date: Date, type: 'week' | 'month'): { startDate: string, endDate: string } {
+    let startDate: Date;
+    let endDate: Date;
+
+    if (type === 'week') {
+        // 週の開始を月曜日とする場合 (date-fns のデフォルトは日曜日)
+        // locale: ja を指定すると月曜日始まりになる
+        startDate = startOfWeek(date, { locale: ja });
+        endDate = endOfWeek(date, { locale: ja });
+    } else if (type === 'month') {
+        startDate = startOfMonth(date);
+        endDate = endOfMonth(date);
+    } else {
+        // サポートされていないタイプの場合は、当日を開始日・終了日とする
+        console.warn(`getDateRange: Unsupported type "${type}". Returning current date.`);
+        startDate = date;
+        endDate = date;
+    }
+
+    return {
+        startDate: formatDate(startDate), // 既存の formatDate を使用
+        endDate: formatDate(endDate)     // 既存の formatDate を使用
+    };
 } 

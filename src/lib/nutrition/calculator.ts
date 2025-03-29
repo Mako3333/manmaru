@@ -136,43 +136,6 @@ export class NutritionCalculator {
     }
 
     /**
-     * バランススコア計算ロジック（妊娠期に特化）
-     * @param nutrition 栄養データ
-     * @returns 栄養バランススコア（0-100）
-     */
-    static calculateBalanceScore(nutrition: BasicNutritionData): number {
-        // 妊娠期に重要な栄養素に重み付け
-        const weights = {
-            protein: 0.25,
-            iron: 0.2,
-            folic_acid: 0.25,
-            calcium: 0.2,
-            vitamin_d: 0.1
-        };
-
-        // 1日の推奨摂取量に対する割合を計算
-        const dailyValues = {
-            protein: 60, // g
-            iron: 27,    // mg
-            folic_acid: 400, // μg
-            calcium: 1000, // mg
-            vitamin_d: 10  // μg
-        };
-
-        // スコア計算（各栄養素の充足率 × 重み）
-        let score = 0;
-        for (const [nutrient, weight] of Object.entries(weights)) {
-            const value = nutrition[nutrient as keyof typeof nutrition] as number;
-            const daily = dailyValues[nutrient as keyof typeof dailyValues];
-            // 充足率（最大100%）
-            const fulfillment = Math.min(value / daily, 1);
-            score += fulfillment * weight * 100;
-        }
-
-        return Math.round(score);
-    }
-
-    /**
      * 栄養進捗データから総合スコアを計算
      * @param progress 栄養進捗データ
      * @returns 栄養バランススコア（0-100）
@@ -198,25 +161,5 @@ export class NutritionCalculator {
         weightedScore += Math.min(progress.vitamin_d_percent, 100) * weights.vitamin_d;
 
         return Math.round(weightedScore);
-    }
-
-    /**
-     * 栄養素の不足を判定する
-     * @param progress 栄養進捗データ
-     * @returns 不足している栄養素の配列
-     */
-    static getDeficientNutrients(progress: NutritionProgress): string[] {
-        if (!progress) return [];
-
-        const deficientNutrients: string[] = [];
-
-        // 70%未満を不足と判定
-        if (progress.iron_percent < 70) deficientNutrients.push('iron');
-        if (progress.folic_acid_percent < 70) deficientNutrients.push('folic_acid');
-        if (progress.calcium_percent < 70) deficientNutrients.push('calcium');
-        if (progress.vitamin_d_percent < 70) deficientNutrients.push('vitamin_d');
-        if (progress.protein_percent < 70) deficientNutrients.push('protein');
-
-        return deficientNutrients;
     }
 } 

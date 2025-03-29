@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
-import { withAuthAndErrorHandling } from '@/lib/util/api-middleware';
+import { withErrorHandling } from '@/lib/api/middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
-import { StandardApiResponse } from '@/types/api';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
@@ -17,7 +18,7 @@ const requestSchema = z.object({
  * レシピ解析API v2
  * レシピURLからレシピデータを解析し、栄養素を計算する
  */
-export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<StandardApiResponse<any>> => {
+export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
     // リクエストデータを取得して検証
     const requestData = await req.json();
 
@@ -36,13 +37,14 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
         const analysisResult = await aiService.analyzeRecipeText(url);
 
         if (analysisResult.error) {
-            throw new ApiError(
-                'レシピ解析に失敗しました',
-                ErrorCode.AI_ANALYSIS_ERROR,
-                analysisResult.error || 'レシピ解析中にエラーが発生しました',
-                500,
-                { originalError: analysisResult.error }
-            );
+            throw new AppError({
+                code: ErrorCode.AI.ANALYSIS_ERROR,
+                message: 'レシピ解析に失敗しました',
+                details: {
+                    reason: analysisResult.error || 'レシピ解析中にエラーが発生しました',
+                    originalError: analysisResult.error
+                }
+            });
         }
 
         // 解析結果から食品リストを取得
@@ -52,12 +54,11 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
 
         // 材料リストの検証
         if (ingredients.length === 0) {
-            throw new ApiError(
-                '材料が検出されませんでした',
-                ErrorCode.FOOD_RECOGNITION_ERROR,
-                'レシピから材料を検出できませんでした。別のレシピをお試しください。',
-                400
-            );
+            throw new AppError({
+                code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
+                message: '材料が検出されませんでした',
+                details: { reason: 'レシピから材料を検出できませんでした。別のレシピをお試しください。' }
+            });
         }
 
         // 栄養計算の実行
@@ -120,14 +121,14 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
     } catch (error) {
         // Zodバリデーションエラーの処理
         if (error instanceof z.ZodError) {
-            const errorMessage = error.errors.map(err => `${err.path}: ${err.message}`).join(', ');
-            throw new ApiError(
-                '入力データが無効です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                errorMessage,
-                400,
-                { originalError: error }
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '入力データが無効です',
+                details: {
+                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    originalError: error
+                }
+            });
         }
 
         // その他のエラーは上位ハンドラーに委譲
@@ -138,6 +139,6 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
 /**
  * プリフライトリクエスト対応
  */
-export const OPTIONS = withAuthAndErrorHandling(async () => {
+export const OPTIONS = withErrorHandling(async () => {
     return { success: true, data: { message: 'OK' } };
-}, false); 
+}); 

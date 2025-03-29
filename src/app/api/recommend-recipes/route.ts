@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AIService } from '@/lib/ai/ai-service';
 import { AIModelFactory } from '@/lib/ai/model-factory';
 import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
+import { getCurrentSeason } from '@/lib/date-utils';
 
 export async function POST(req: Request) {
     try {
@@ -143,14 +144,4 @@ export async function POST(req: Request) {
             { status: 500 }
         );
     }
-}
-
-// 現在の季節を取得する関数
-function getCurrentSeason(): string {
-    const month = new Date().getMonth() + 1; // 0-indexed to 1-indexed
-
-    if (month >= 3 && month <= 5) return '春';
-    if (month >= 6 && month <= 8) return '夏';
-    if (month >= 9 && month <= 11) return '秋';
-    return '冬';
 } 

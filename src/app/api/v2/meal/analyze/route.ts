@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
-import { withAuthAndErrorHandling } from '@/lib/util/api-middleware';
+import { withErrorHandling } from '@/lib/api/middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-parser';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
-import { StandardApiResponse } from '@/types/api';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
 
 // リクエストの検証スキーマ
@@ -19,7 +20,7 @@ const requestSchema = z.object({
  * 食事画像解析API v2
  * 画像から食品を認識し、栄養素を計算する
  */
-export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<StandardApiResponse<any>> => {
+export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
     // リクエストデータを取得して検証
     const requestData = await req.json();
 
@@ -31,12 +32,11 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
         const trimester = validatedData.trimester;
 
         if (!imageData.startsWith('data:image/')) {
-            throw new ApiError(
-                '無効な画像形式です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                '画像データはbase64エンコードされたものである必要があります',
-                400
-            );
+            throw new AppError({
+                code: ErrorCode.File.INVALID_IMAGE, // 画像関連のエラーコードに変更
+                message: '無効な画像形式です',
+                details: { reason: '画像データはbase64エンコードされたものである必要があります' }
+            });
         }
 
         // 処理時間計測開始
@@ -49,13 +49,14 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
         const analysisResult = await aiService.analyzeMealImage(imageData);
 
         if (analysisResult.error) {
-            throw new ApiError(
-                '画像解析に失敗しました',
-                ErrorCode.AI_ANALYSIS_ERROR,
-                analysisResult.error || '画像解析中にエラーが発生しました',
-                500,
-                { originalError: analysisResult.error }
-            );
+            throw new AppError({
+                code: ErrorCode.AI.IMAGE_PROCESSING_ERROR, // 画像処理エラーコードに変更
+                message: '画像解析に失敗しました',
+                details: {
+                    reason: analysisResult.error || '画像解析中にエラーが発生しました',
+                    originalError: analysisResult.error
+                }
+            });
         }
 
         // 解析結果から食品リストを取得
@@ -63,12 +64,11 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
 
         // 食品リストの検証
         if (foods.length === 0) {
-            throw new ApiError(
-                '食品が検出されませんでした',
-                ErrorCode.FOOD_RECOGNITION_ERROR,
-                '画像から食品を検出できませんでした。別の画像をお試しください。',
-                400
-            );
+            throw new AppError({
+                code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
+                message: '食品が検出されませんでした',
+                details: { reason: '画像から食品を検出できませんでした。別の画像をお試しください。' }
+            });
         }
 
         // 栄養計算の実行
@@ -108,14 +108,14 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
     } catch (error) {
         // Zodバリデーションエラーの処理
         if (error instanceof z.ZodError) {
-            const errorMessage = error.errors.map(err => `${err.path}: ${err.message}`).join(', ');
-            throw new ApiError(
-                '入力データが無効です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                errorMessage,
-                400,
-                { originalError: error }
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '入力データが無効です',
+                details: {
+                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    originalError: error
+                }
+            });
         }
 
         // その他のエラーは上位ハンドラーに委譲
@@ -126,6 +126,6 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest): Promise<S
 /**
  * プリフライトリクエスト対応
  */
-export const OPTIONS = withAuthAndErrorHandling(async () => {
+export const OPTIONS = withErrorHandling(async () => {
     return { success: true, data: { message: 'OK' } };
-}, false); 
+}); 

@@ -3,36 +3,49 @@ import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodInputParser } from '@/lib/food/food-input-parser';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
-import { withAuthAndErrorHandling, createSuccessResponse } from '@/lib/util/api-middleware';
+import { withErrorHandling } from '@/lib/api/middleware';
 import { validateRequestData, validateImageData } from '@/lib/util/request-validation';
-import { AIErrorHandler } from '@/lib/ai/ai-error-handler';
-import { NutritionErrorHandler } from '@/lib/nutrition/nutrition-error-handler';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import type { ApiResponse } from '@/types/api';
+import { z } from 'zod';
 
 /**
  * 画像解析API v2
  * 
  * 食事画像を解析し、新しい栄養計算システムで栄養素を計算します
  */
-export const POST = withAuthAndErrorHandling(async (req: NextRequest) => {
+const requestSchema = z.object({
+    imageData: z.string().min(1, "画像データは必須です"),
+});
+
+export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
     // リクエストデータを取得
     const requestData = await req.json();
 
-    // リクエストデータを検証
-    const validationResult = validateRequestData(
-        requestData,
-        [validateImageData]
-    );
-
-    if (!validationResult.valid || !validationResult.data) {
-        throw validationResult.error;
-    }
-
-    const { imageData } = validationResult.data;
-    const startTime = Date.now();
-
     try {
+        // リクエストデータを検証
+        const validatedData = requestSchema.parse(requestData);
+        const imageData = validatedData.imageData;
+        const startTime = Date.now();
+
+        if (!imageData || !imageData.startsWith('data:image/')) {
+            throw new AppError({
+                code: ErrorCode.File.INVALID_IMAGE,
+                message: '無効な画像形式です',
+                details: { reason: '画像データはbase64エンコードされた文字列である必要があります' }
+            });
+        }
+
         // Base64画像データからバイナリに変換
-        const base64Data = imageData.split(',')[1]; // data:image/jpeg;base64, の部分を削除
+        const base64Data = imageData.split(',')[1];
+        if (!base64Data) {
+            throw new AppError({
+                code: ErrorCode.File.INVALID_IMAGE,
+                message: 'Base64データの解析に失敗しました',
+                details: { reason: '画像データからBase64部分を抽出できませんでした' }
+            });
+        }
         const imageBuffer = Buffer.from(base64Data, 'base64');
 
         // AIサービスを取得
@@ -43,15 +56,23 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest) => {
 
         // エラーチェック
         if (analysisResult.error) {
-            throw AIErrorHandler.handleAnalysisError(analysisResult.error, 'image');
+            throw new AppError({
+                code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
+                message: '画像解析に失敗しました',
+                details: {
+                    reason: analysisResult.error || '画像解析中にエラーが発生しました',
+                    originalError: analysisResult.error
+                }
+            });
         }
 
         const foods = analysisResult.parseResult.foods;
-        if (foods.length === 0) {
-            throw AIErrorHandler.responseParseError(
-                new Error('食品が検出されませんでした'),
-                `AI応答: "${analysisResult.rawResponse || '応答なし'}"`
-            );
+        if (!foods || foods.length === 0) {
+            throw new AppError({
+                code: ErrorCode.AI.PARSING_ERROR,
+                message: 'AI応答から食品を検出できませんでした',
+                details: { reason: `AI応答: "${analysisResult.rawResponse || '応答なし'}"` }
+            });
         }
 
         // 栄養計算サービスを取得
@@ -71,24 +92,48 @@ export const POST = withAuthAndErrorHandling(async (req: NextRequest) => {
         }
 
         // 結果を返却
-        return createSuccessResponse({
-            foods: foods,
-            nutritionResult: nutritionResult,
-            processingTimeMs: analysisResult.processingTimeMs
-        }, warningMessage);
+        return {
+            success: true,
+            data: {
+                foods: foods,
+                nutritionResult: nutritionResult,
+                processingTimeMs: analysisResult.processingTimeMs
+            },
+            meta: {
+                processingTimeMs: Date.now() - startTime,
+                ...(warningMessage ? { warning: warningMessage } : {})
+            }
+        };
 
     } catch (error) {
-        // エラーを栄養計算エラーとして処理
-        throw NutritionErrorHandler.handleCalculationError(
-            error,
-            []
-        );
+        // Zodバリデーションエラーの処理
+        if (error instanceof z.ZodError) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '入力データが無効です',
+                details: {
+                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    originalError: error
+                }
+            });
+        }
+        // AppErrorはそのままスロー
+        if (error instanceof AppError) {
+            throw error;
+        }
+        // その他の予期せぬエラー
+        throw new AppError({
+            code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR, // 栄養計算中のエラーとみなす
+            message: '栄養計算中に予期せぬエラーが発生しました',
+            details: { originalError: error instanceof Error ? error.message : String(error) },
+            originalError: error instanceof Error ? error : undefined
+        });
     }
 });
 
 /**
  * プリフライトリクエスト対応
  */
-export const OPTIONS = withAuthAndErrorHandling(async () => {
-    return createSuccessResponse({ message: 'OK' });
-}, false); 
+export const OPTIONS = withErrorHandling(async () => {
+    return { success: true, data: { message: 'OK' } };
+}); 
