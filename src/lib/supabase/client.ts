@@ -109,7 +109,7 @@ export const saveMealWithNutrients = async (mealData: MealCreateData): Promise<M
         });
 
         // 栄養データの値が正しいことを確認（NaNや無効な値を修正）
-        const sanitizedNutrition = {
+        const sanitizedNutrition: NutritionData = {
             calories: isNaN(mealData.nutrition.calories) ? 0 : Math.max(0, mealData.nutrition.calories),
             protein: isNaN(mealData.nutrition.protein) ? 0 : Math.max(0, mealData.nutrition.protein),
             iron: isNaN(mealData.nutrition.iron) ? 0 : Math.max(0, mealData.nutrition.iron),
@@ -117,10 +117,7 @@ export const saveMealWithNutrients = async (mealData: MealCreateData): Promise<M
             calcium: isNaN(mealData.nutrition.calcium) ? 0 : Math.max(0, mealData.nutrition.calcium),
             vitamin_d: isNaN(mealData.nutrition.vitamin_d || 0) ? 0 : Math.max(0, mealData.nutrition.vitamin_d || 0),
             confidence_score: isNaN(mealData.nutrition.confidence_score || 0.8) ? 0.8 : Math.max(0, Math.min(1, mealData.nutrition.confidence_score || 0.8)),
-            overall_score: mealData.nutrition.overall_score || 0,
-            deficient_nutrients: mealData.nutrition.deficient_nutrients || [],
-            sufficient_nutrients: mealData.nutrition.sufficient_nutrients || [],
-            daily_records: mealData.nutrition.daily_records || []
+            not_found_foods: []
         };
 
         // 1. meals テーブルに挿入
@@ -253,47 +250,59 @@ export const getMealSummaryByDateRange = async (
             .select('*')
             .eq('user_id', session.user.id)
             .gte('meal_date', startDate)
-            .lte('meal_date', endDate)
-            .order('meal_date', { ascending: true });
+            .lte('meal_date', endDate);
 
-        if (error) throw error;
+        if (error) {
+            throw new Error('Failed to fetch meals');
+        }
+
+        if (!data) {
+            return [];
+        }
+
+        // データを明示的に型付け
+        const meals = data as Meal[];
 
         // 日付ごとにグループ化
         const mealsByDate: Record<string, Meal[]> = {};
-        data.forEach(meal => {
+        meals.forEach(meal => {
             if (!mealsByDate[meal.meal_date]) {
                 mealsByDate[meal.meal_date] = [];
             }
-            mealsByDate[meal.meal_date].push(meal);
+            (mealsByDate[meal.meal_date] as Meal[]).push(meal);
         });
 
-        // 日付ごとの栄養素合計を計算
-        const summaries: DailyMealSummary[] = Object.keys(mealsByDate).map(date => {
-            const meals = mealsByDate[date];
-            const total_nutrition: BasicNutritionData = {
+        // 日付ごとの食事データを集計
+        const summaries = Object.entries(mealsByDate).map(([date, meals]) => {
+            // nutrition_dataのデフォルト値を設定
+            const defaultNutrition = {
                 calories: 0,
                 protein: 0,
                 iron: 0,
                 folic_acid: 0,
                 calcium: 0,
                 vitamin_d: 0,
-                confidence_score: 1.0 // 集計データなので信頼度は1.0
+                confidence_score: 0
             };
 
-            meals.forEach(meal => {
-                total_nutrition.calories += meal.nutrition_data.calories;
-                total_nutrition.protein += meal.nutrition_data.protein;
-                total_nutrition.iron += meal.nutrition_data.iron || 0;
-                total_nutrition.folic_acid += meal.nutrition_data.folic_acid || 0;
-                total_nutrition.calcium += meal.nutrition_data.calcium || 0;
-                total_nutrition.vitamin_d += meal.nutrition_data.vitamin_d || 0;
-            });
+            // meals は必ず配列として存在する（空の配列の可能性はある）
+            const total_nutrition: BasicNutritionData = {
+                calories: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).calories || 0), 0),
+                protein: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).protein || 0), 0),
+                iron: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).iron || 0), 0),
+                folic_acid: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).folic_acid || 0), 0),
+                calcium: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).calcium || 0), 0),
+                vitamin_d: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).vitamin_d || 0), 0),
+                confidence_score: meals.length > 0
+                    ? meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).confidence_score || 0), 0) / meals.length
+                    : 0
+            };
 
             return {
                 date,
                 meals,
                 total_nutrition
-            };
+            } as DailyMealSummary;
         });
 
         return summaries;

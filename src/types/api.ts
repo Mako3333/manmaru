@@ -3,19 +3,19 @@ import { ErrorCode } from '@/lib/errors/app-errors';
 /**
  * 標準APIレスポンス形式の型定義
  */
-export interface StandardApiResponse<T = any> {
+export interface StandardApiResponse<T> {
     success: boolean;
     data?: T;
     error?: {
         code: ErrorCode;
         message: string;
-        details?: any;
+        details?: unknown;
         suggestions?: string[];
     };
     meta?: {
         processingTimeMs?: number;
         warning?: string;
-        [key: string]: any;
+        [key: string]: unknown;
     };
 }
 
@@ -66,7 +66,7 @@ export interface LegacyApiResponse<T> {
     data?: T;
     error?: string;
     errorCode?: string;
-    details?: any;
+    details?: unknown;
     suggestions?: string[];
     warning?: string;
 }
@@ -112,13 +112,13 @@ export interface ApiState<T> {
     data?: T;
     loading: boolean;
     error?: string;
-    errorDetails?: any;
+    errorDetails?: unknown;
 }
 
 /**
  * APIハンドラー型
  */
-export type ApiHandler<T = any> = (req: Request) => Promise<StandardApiResponse<T>>;
+export type ApiHandler<T> = (req: Request) => Promise<StandardApiResponse<T>>;
 
 /**
  * APIミドルウェア型

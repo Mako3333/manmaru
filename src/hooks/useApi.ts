@@ -9,13 +9,13 @@ export interface ApiState<T> {
     data?: T;
     loading: boolean;
     error?: string;
-    errorDetails?: any;
+    errorDetails?: unknown;
 }
 
 /**
  * API通信用のカスタムフック
  */
-export function useApi<T = any>() {
+export function useApi<T>() {
     const [state, setState] = useState<ApiState<T>>({
         loading: false
     });
@@ -137,10 +137,10 @@ export function useApi<T = any>() {
     /**
      * 新API v2向けの便利メソッド（型安全）
      */
-    const requestV2 = useCallback(<R = any>(
+    const requestV2 = useCallback(<R>(
         endpoint: string,
         method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-        body?: any
+        body?: unknown
     ): Promise<R | null> => {
         const options: RequestInit = {
             method,
@@ -158,10 +158,10 @@ export function useApi<T = any>() {
     /**
      * 旧API向けの便利メソッド
      */
-    const requestLegacy = useCallback(<R = any>(
+    const requestLegacy = useCallback(<R>(
         endpoint: string,
         method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-        body?: any
+        body?: unknown
     ): Promise<R | null> => {
         const options: RequestInit = {
             method,
@@ -179,7 +179,7 @@ export function useApi<T = any>() {
     /**
      * 食事解析API（v2）
      */
-    const analyzeMeal = useCallback(<R = any>(data: {
+    const analyzeMeal = useCallback(<R>(data: {
         text?: string;
         image?: string;
         meal_type?: string;
@@ -190,14 +190,14 @@ export function useApi<T = any>() {
     /**
      * 食品テキスト解析API（v2）
      */
-    const analyzeFoodText = useCallback(<R = any>(text: string): Promise<R | null> => {
+    const analyzeFoodText = useCallback(<R>(text: string): Promise<R | null> => {
         return requestV2<R>('food/parse', 'POST', { text });
     }, [requestV2]);
 
     /**
      * レシピ解析API（v2）
      */
-    const analyzeRecipe = useCallback(<R = any>(url: string): Promise<R | null> => {
+    const analyzeRecipe = useCallback(<R>(url: string): Promise<R | null> => {
         return requestV2<R>('recipe/parse', 'POST', { url });
     }, [requestV2]);
 

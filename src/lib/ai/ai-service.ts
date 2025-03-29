@@ -41,7 +41,7 @@ export interface FoodAnalysisResult {
             suggestion: string;
             similarity: number;
         }>;
-        [key: string]: any;
+        [key: string]: unknown;
     };
 }
 
@@ -67,7 +67,7 @@ interface FoodAnalysisInput {
         confidence_score: number;
     };
     meta?: {
-        [key: string]: any;
+        [key: string]: unknown;
     };
 }
 
@@ -129,7 +129,7 @@ export interface AIServiceV2 {
      * @param imageData 画像データ
      * @returns 解析結果
      */
-    analyzeMealImage(imageData: any): Promise<AIProcessResult>;
+    analyzeMealImage(imageData: unknown): Promise<AIProcessResult>;
 
     /**
      * テキスト入力から食品を解析
@@ -405,7 +405,7 @@ export class AIService {
                     console.warn('AIService: foods配列が空または存在しないため、入力データから自動生成します');
                     result.foods = validFoods.map(food => ({
                         name: food.name.trim(),
-                        quantity: food.quantity?.trim() || '', // undefinedの場合は空文字列に変換
+                        quantity: food.quantity?.trim() ?? '', // undefined の場合は空文字列 '' を設定
                         confidence: 0.7
                     }));
                 }
@@ -440,7 +440,7 @@ export class AIService {
         // 食品データを標準形式に変換
         const foodItems: FoodItem[] = foods.map(food => ({
             name: food.name.trim(),
-            quantity: food.quantity?.trim(),
+            quantity: food.quantity?.trim() ?? '', // undefined の場合は空文字列 '' を設定
             confidence: 0.7
         }));
 
@@ -465,9 +465,9 @@ export class AIService {
                     confidence_score: nutritionData.confidence_score || 0.7
                 },
                 meta: {
-                    notFoundFoods: nutritionData.notFoundFoods || [],
+                    not_found_foods: nutritionData.not_found_foods || [], // 修正
                     source: 'supabase_database',
-                    searchDetail: (nutritionData.notFoundFoods || []).length > 0
+                    searchDetail: (nutritionData.not_found_foods || []).length > 0 // 修正
                         ? '一部の食品がデータベースに見つかりませんでした'
                         : 'すべての食品がデータベースで見つかりました',
                     calculationTime: new Date().toISOString()
@@ -509,9 +509,9 @@ export class AIService {
                     confidence_score: nutritionData.confidence_score || 0.5
                 },
                 meta: {
-                    notFoundFoods: nutritionData.notFoundFoods || [],
+                    not_found_foods: nutritionData.not_found_foods || [], // 修正
                     source: 'local_database',
-                    searchDetail: (nutritionData.notFoundFoods || []).length > 0
+                    searchDetail: (nutritionData.not_found_foods || []).length > 0 // 修正
                         ? '一部の食品がデータベースに見つかりませんでした'
                         : 'すべての食品がデータベースで見つかりました',
                     calculationTime: new Date().toISOString()
@@ -578,25 +578,36 @@ export class AIService {
         // 結果の食品名を使用して、データベースから正確な栄養情報を検索
         for (let i = 0; i < result.foods.length; i++) {
             const food = result.foods[i];
+            if (!food) continue; // Add null check for food
 
             try {
                 // まずSupabaseデータベースで検索
                 const fuzzyResults = await this.supabaseDatabase.getFoodsByFuzzyMatch(food.name, 1);
 
                 if (fuzzyResults.length > 0) {
-                    const dbFood = fuzzyResults[0].food;
-                    const similarity = fuzzyResults[0].similarity;
+                    const firstResult = fuzzyResults[0];
+                    if (!firstResult) continue;
+
+                    const { food: dbFood, similarity } = firstResult;
+                    if (!dbFood || !similarity) continue;
 
                     // 類似度が十分高い場合のみ採用
                     if (similarity >= 0.7) {
+                        const currentFood = result.foods[i];
+                        if (!currentFood) continue;
+
                         // 食品名を標準化
-                        result.foods[i].name = dbFood.name;
+                        currentFood.name = dbFood.name;
                         // データベースの情報を優先して信頼度を更新
-                        result.foods[i].confidence = Math.max(food.confidence, 0.8);
-                        // メタデータがなければ初期化
-                        result.meta = result.meta || {};
-                        result.meta.matchedFoods = result.meta.matchedFoods || [];
-                        // マッチした食品の情報を記録
+                        currentFood.confidence = Math.max(food.confidence ?? 0, 0.8);
+
+                        // メタデータ処理: meta を確実に初期化してからアクセス
+                        if (!result.meta) {
+                            result.meta = {};
+                        }
+                        if (!result.meta.matchedFoods) {
+                            result.meta.matchedFoods = [];
+                        }
                         result.meta.matchedFoods.push({
                             original: food.name,
                             matched: dbFood.name,
@@ -604,9 +615,13 @@ export class AIService {
                         });
                     } else if (similarity >= 0.5) {
                         // 中程度の類似度の場合は候補として記録
-                        result.meta = result.meta || {};
-                        result.meta.possibleMatches = result.meta.possibleMatches || [];
-                        result.meta.possibleMatches.push({
+                        // メタデータ処理: meta を確実に初期化してからアクセス
+                        if (!result.meta) {
+                            result.meta = {};
+                        }
+                        result.meta.possibleMatches = result.meta?.possibleMatches || [];
+                        // possibleMatches の存在を確認しつつ push
+                        result.meta?.possibleMatches?.push({
                             original: food.name,
                             suggestion: dbFood.name,
                             similarity
@@ -614,26 +629,34 @@ export class AIService {
                     }
                 } else {
                     // Supabaseに見つからない場合は従来のDBを使用
-                    // 完全一致検索
-                    let dbFood = this.nutritionDatabase.getFoodByExactName(food.name);
+                    // dbFood 変数を明確に分離
+                    let exactMatchDbFood: DatabaseFoodItem | null = this.nutritionDatabase.getFoodByExactName(food.name);
+                    let finalDbFood: DatabaseFoodItem | null = exactMatchDbFood; // 初期値は完全一致の結果
 
                     // 完全一致がない場合は部分一致検索
-                    if (!dbFood) {
+                    if (!exactMatchDbFood) {
                         const similarFoods = this.nutritionDatabase.getFoodsByPartialName(food.name, 1);
                         if (similarFoods.length > 0) {
-                            dbFood = similarFoods[0];
-                            // 類似食品が見つかった場合は情報を更新
-                            result.foods[i].name = dbFood.name;
-                            food.confidence = Math.min(food.confidence, 0.7); // 信頼度を調整
+                            const firstMatch = similarFoods[0];
+                            if (firstMatch) {
+                                finalDbFood = firstMatch; // 部分一致の結果を採用
+                                const currentFood = result.foods[i];
+                                if (!currentFood) continue;
+                                currentFood.name = finalDbFood.name;
+                                food.confidence = Math.min(food.confidence ?? 0, 0.7);
+                            }
                         }
                     }
 
-                    // データベースに食品が見つかった場合、信頼度を設定
-                    if (dbFood) {
-                        result.foods[i].confidence = Math.max(food.confidence, 0.7);
+                    // データベースに食品が見つかった場合、信頼度を設定 (finalDbFood を使用)
+                    if (finalDbFood) {
+                        const currentFood = result.foods[i];
+                        if (!currentFood) continue;
+                        currentFood.confidence = Math.max(food.confidence ?? 0, 0.7);
                     }
                 }
             } catch (error) {
+                // food.name が undefined の可能性は冒頭のチェックでカバー
                 console.error(`食品[${food.name}]の検索中にエラー:`, error);
                 // エラーが発生しても次の食品の処理を継続
             }
@@ -642,12 +665,15 @@ export class AIService {
         // 栄養計算の再実行（データベースの情報を使用）
         if (result.foods.length > 0) {
             try {
-                // 食品データを標準形式に変換
-                const foodItems: FoodItem[] = result.foods.map(food => ({
-                    name: food.name,
-                    quantity: food.quantity,
-                    confidence: food.confidence
-                }));
+                // 食品データを標準形式に変換 (null/undefined チェックとデフォルト値設定を追加)
+                const foodItems: FoodItem[] = result.foods.map(f => {
+                    if (!f) return { name: '', quantity: '', confidence: 0 }; // Handle potential null/undefined items
+                    return {
+                        name: f.name,
+                        quantity: f.quantity ?? '', // Handle undefined quantity
+                        confidence: f.confidence ?? 0 // Handle undefined confidence
+                    };
+                });
 
                 // Supabaseデータベースを使用して再計算
                 const nutritionData = await this.supabaseDatabase.calculateNutrition(foodItems);
@@ -666,10 +692,12 @@ export class AIService {
                 // 値の妥当性チェック
                 result.nutrition = this.validateNutritionValues(result.nutrition, foodItems.length);
 
-                // メタデータ更新
-                result.meta = result.meta || {};
+                // メタデータ更新 (常に ?. を使用)
+                if (!result.meta) {
+                    result.meta = {};
+                }
                 result.meta.source = 'supabase_enhanced';
-                result.meta.notFoundFoods = nutritionData.notFoundFoods;
+                result.meta.not_found_foods = nutritionData.not_found_foods;
 
             } catch (error) {
                 console.warn('AIService: Supabaseでの再計算に失敗、ローカルDBにフォールバック:', error);
@@ -706,10 +734,12 @@ export class AIService {
                         // 値の妥当性チェック
                         result.nutrition = this.validateNutritionValues(result.nutrition, foodItems.length);
 
-                        // メタデータ更新
-                        result.meta = result.meta || {};
+                        // メタデータ更新 (常に ?. を使用)
+                        if (!result.meta) {
+                            result.meta = {};
+                        }
                         result.meta.source = 'local_enhanced';
-                        result.meta.notFoundFoods = nutritionData.notFoundFoods;
+                        result.meta.not_found_foods = nutritionData.not_found_foods;
                     }
                 } catch (fallbackError) {
                     console.error('AIService: ローカルDBでの再計算にも失敗:', fallbackError);
@@ -844,13 +874,13 @@ export class AIService {
 
             // JSONコードブロック抽出を改善
             const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-            if (!jsonMatch) {
+            if (!jsonMatch || !jsonMatch[1]) {
                 console.warn('AIService: JSONブロックが見つかりません', {
                     responsePreview: responseText.substring(0, 100) + '...'
                 });
                 // JSON形式全体を探す
                 const possibleJson = responseText.match(/(\{[\s\S]*\})/);
-                if (!possibleJson) {
+                if (!possibleJson || !possibleJson[1]) {
                     console.error('AIService: 有効なJSONが見つかりません');
                     return null;
                 }
@@ -957,12 +987,12 @@ export class AIService {
         // 最初の段落を要約として抽出（最大150文字まで）
         let summary = '';
         if (paragraphs.length > 0) {
-            const firstParagraph = this.cleanupText(paragraphs[0]);
+            const firstParagraph = this.cleanupText(paragraphs[0] || '');
             summary = firstParagraph.length > 150
                 ? firstParagraph.substring(0, 147) + '...'
                 : firstParagraph;
         } else {
-            summary = this.cleanupText(responseText.substring(0, 150) + '...');
+            summary = this.cleanupText(responseText || '');
         }
 
         // 推奨食品セクションを探す
@@ -992,7 +1022,43 @@ export class AIService {
         let recommendedFoods: Array<{ name: string, benefits: string }> = [];
         if (foodSectionIndex !== -1) {
             const foodSectionText = responseText.substring(foodSectionIndex);
-            recommendedFoods = this.extractRecommendedFoods(foodSectionText);
+            const lines = foodSectionText.split('\n');
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line) continue;
+
+                const trimmedLine = line.trim();
+                if (!trimmedLine) continue;
+
+                // 箇条書きの行を検出
+                if (trimmedLine.startsWith('-') || trimmedLine.startsWith('*') || trimmedLine.startsWith('•')) {
+                    const content = trimmedLine.substring(1).trim();
+                    console.log('extractRecommendedFoods: 箇条書き検出', { content });
+
+                    // 食品名と利点を分離
+                    const colonIndex = content.indexOf('：');
+                    const colonIndex2 = content.indexOf(':');
+                    const separatorIndex = colonIndex !== -1 ? colonIndex : colonIndex2;
+
+                    if (separatorIndex !== -1) {
+                        recommendedFoods.push({
+                            name: content.substring(0, separatorIndex).trim(),
+                            benefits: content.substring(separatorIndex + 1).trim()
+                        });
+                    } else if (content) {
+                        // 区切りがない場合は食品名のみとして扱う
+                        recommendedFoods.push({
+                            name: content,
+                            benefits: '栄養バランスの向上に役立ちます'
+                        });
+                    }
+                }
+
+                // 次のセクションが始まったら終了
+                if (i > 1 && line.startsWith('###') && !line.includes('推奨食品')) {
+                    break;
+                }
+            }
         }
 
         // 推奨食品が見つからない場合は、デフォルトの推奨食品を設定
@@ -1015,74 +1081,6 @@ export class AIService {
             detailedAdvice,
             recommendedFoods
         };
-    }
-
-    /**
-     * 推奨食品リストを抽出
-     */
-    private extractRecommendedFoods(text: string): Array<{ name: string, benefits: string }> {
-        const foods: Array<{ name: string, benefits: string }> = [];
-        console.log('extractRecommendedFoods: 開始', { textLength: text.length }); // デバッグ用ログ
-
-        try {
-            // 推奨食品セクションを探す
-            if (!text.includes('### 推奨食品')) {
-                console.log('extractRecommendedFoods: 推奨食品セクションが見つかりませんでした'); // デバッグ用ログ
-                return foods;
-            }
-
-            // 推奨食品セクション以降のテキストを取得
-            const foodSectionText = text.substring(text.indexOf('### 推奨食品'));
-            console.log('extractRecommendedFoods: セクションテキスト', {
-                length: foodSectionText.length,
-                preview: foodSectionText.substring(0, 100) + '...'
-            }); // デバッグ用ログ
-
-            // 箇条書きアイテムを抽出
-            const lines = foodSectionText.split('\n');
-            for (let i = 1; i < lines.length; i++) { // 1から開始して「### 推奨食品」の行をスキップ
-                const line = lines[i].trim();
-
-                // 空行はスキップ
-                if (!line) continue;
-
-                // 箇条書きの行を検出
-                if (line.startsWith('-') || line.startsWith('*') || line.startsWith('•')) {
-                    const content = line.substring(1).trim();
-                    console.log('extractRecommendedFoods: 箇条書き検出', { content }); // デバッグ用ログ
-
-                    // 食品名と利点を分離
-                    const colonIndex = content.indexOf('：');
-                    const colonIndex2 = content.indexOf(':');
-                    const separatorIndex = colonIndex !== -1 ? colonIndex : colonIndex2;
-
-                    if (separatorIndex !== -1) {
-                        foods.push({
-                            name: content.substring(0, separatorIndex).trim(),
-                            benefits: content.substring(separatorIndex + 1).trim()
-                        });
-                    } else if (content) {
-                        // 区切りがない場合は食品名のみとして扱う
-                        foods.push({
-                            name: content,
-                            benefits: '栄養バランスの向上に役立ちます'
-                        });
-                    }
-                }
-
-                // 次のセクションが始まったら終了
-                if (i > 1 && line.startsWith('###') && !line.includes('推奨食品')) {
-                    break;
-                }
-            }
-
-            console.log('extractRecommendedFoods: 抽出結果', { count: foods.length }); // デバッグ用ログ
-        } catch (error) {
-            console.error('extractRecommendedFoods: エラー発生', error);
-            // エラーが発生した場合でも空の配列を返す
-        }
-
-        return foods;
     }
 
     /**

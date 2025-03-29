@@ -12,8 +12,8 @@ export type ApiResponse<T> = StandardApiResponse<T>;
  */
 export type ApiHandler<T = any> = (
     req: NextRequest,
-    context: { params: any },
-    session: any
+    context: { params: unknown },
+    session: unknown
 ) => Promise<StandardApiResponse<T>>;
 
 /**

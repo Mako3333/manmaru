@@ -325,22 +325,25 @@ export class NutritionServiceImpl implements NutritionService {
             // トップレベルの拡張栄養素
             for (const [nutrient, value] of Object.entries(nutrition.extended_nutrients)) {
                 if (typeof value === 'number') {
-                    const target = (targetValues.extended_nutrients as any)[nutrient];
-                    if (typeof target === 'number' && value < target * 0.8) {
-                        deficientNutrients.push(nutrient);
+                    const extendedTargets = targetValues.extended_nutrients as Record<string, number | Record<string, number> | undefined>;
+                    if (extendedTargets && typeof extendedTargets[nutrient] === 'number') {
+                        const target = extendedTargets[nutrient] as number;
+                        if (value < target * 0.8) {
+                            deficientNutrients.push(nutrient);
+                        }
                     }
                 }
             }
 
             // ネストされたカテゴリ（例：minerals, vitamins）
             for (const [category, nutrients] of Object.entries(nutrition.extended_nutrients)) {
+                const targetExtended = targetValues.extended_nutrients;
                 if (typeof nutrients === 'object' && nutrients !== null &&
-                    targetValues.extended_nutrients[category] &&
-                    typeof targetValues.extended_nutrients[category] === 'object') {
+                    targetExtended && typeof targetExtended[category] === 'object' && targetExtended[category] !== null) {
 
+                    const targetCategory = targetExtended[category] as Record<string, number | undefined>;
                     for (const [key, value] of Object.entries(nutrients as object)) {
                         if (typeof value === 'number') {
-                            const targetCategory = targetValues.extended_nutrients[category] as Record<string, number>;
                             const target = targetCategory[key];
                             if (typeof target === 'number' && value < target * 0.8) {
                                 deficientNutrients.push(`${category}.${key}`);
@@ -392,12 +395,12 @@ export class NutritionServiceImpl implements NutritionService {
 
             for (const path of extendedNutrients) {
                 const parts = path.split('.');
-                let current: any = nutrition;
+                let current: unknown = nutrition;
 
                 // ドット表記でネストされたオブジェクトにアクセス
                 for (const part of parts) {
                     if (current && typeof current === 'object' && part in current) {
-                        current = current[part];
+                        current = (current as Record<string, unknown>)[part];
                     } else {
                         current = undefined;
                         break;
@@ -429,33 +432,34 @@ export class NutritionServiceImpl implements NutritionService {
      */
     private accumulateNutrients(target: NutritionData, source: NutritionData): void {
         // 基本栄養素の累積
-        target.calories += source.calories || 0;
-        target.protein += source.protein || 0;
-        target.iron += source.iron || 0;
-        target.folic_acid += source.folic_acid || 0;
-        target.calcium += source.calcium || 0;
-        target.vitamin_d += source.vitamin_d || 0;
+        target.calories += source.calories ?? 0;
+        target.protein += source.protein ?? 0;
+        target.iron += source.iron ?? 0;
+        target.folic_acid += source.folic_acid ?? 0;
+        target.calcium += source.calcium ?? 0;
+        target.vitamin_d += source.vitamin_d ?? 0;
 
         // 拡張栄養素の累積
         if (source.extended_nutrients) {
             if (!target.extended_nutrients) {
                 target.extended_nutrients = {};
             }
+            const targetExtended = target.extended_nutrients as Record<string, number | Record<string, number | undefined> | undefined>;
 
             // トップレベルの栄養素
             for (const [key, value] of Object.entries(source.extended_nutrients)) {
                 if (typeof value === 'number') {
-                    (target.extended_nutrients as any)[key] = ((target.extended_nutrients as any)[key] || 0) + value;
+                    targetExtended[key] = (typeof targetExtended[key] === 'number' ? targetExtended[key] as number : 0) + value;
                 } else if (typeof value === 'object' && value !== null) {
                     // ネストされたカテゴリ（minerals, vitaminsなど）
-                    if (!(target.extended_nutrients as any)[key]) {
-                        (target.extended_nutrients as any)[key] = {};
+                    if (!targetExtended[key] || typeof targetExtended[key] !== 'object') {
+                        targetExtended[key] = {};
                     }
+                    const targetCategory = targetExtended[key] as Record<string, number | undefined>;
 
                     for (const [subKey, subValue] of Object.entries(value)) {
                         if (typeof subValue === 'number') {
-                            (target.extended_nutrients as any)[key][subKey] =
-                                ((target.extended_nutrients as any)[key][subKey] || 0) + subValue;
+                            targetCategory[subKey] = (typeof targetCategory[subKey] === 'number' ? targetCategory[subKey] as number : 0) + subValue;
                         }
                     }
                 }
@@ -472,33 +476,34 @@ export class NutritionServiceImpl implements NutritionService {
      */
     private scaleNutrients(target: NutritionData, source: NutritionData, ratio: number): void {
         // 基本栄養素のスケーリング
-        target.calories += (source.calories || 0) * ratio;
-        target.protein += (source.protein || 0) * ratio;
-        target.iron += (source.iron || 0) * ratio;
-        target.folic_acid += (source.folic_acid || 0) * ratio;
-        target.calcium += (source.calcium || 0) * ratio;
-        target.vitamin_d += (source.vitamin_d || 0) * ratio;
+        target.calories += (source.calories ?? 0) * ratio;
+        target.protein += (source.protein ?? 0) * ratio;
+        target.iron += (source.iron ?? 0) * ratio;
+        target.folic_acid += (source.folic_acid ?? 0) * ratio;
+        target.calcium += (source.calcium ?? 0) * ratio;
+        target.vitamin_d += (source.vitamin_d ?? 0) * ratio;
 
         // 拡張栄養素のスケーリング
         if (source.extended_nutrients) {
             if (!target.extended_nutrients) {
                 target.extended_nutrients = {};
             }
+            const targetExtended = target.extended_nutrients as Record<string, number | Record<string, number | undefined> | undefined>;
 
             // トップレベルの栄養素
             for (const [key, value] of Object.entries(source.extended_nutrients)) {
                 if (typeof value === 'number') {
-                    (target.extended_nutrients as any)[key] = ((target.extended_nutrients as any)[key] || 0) + value * ratio;
+                    targetExtended[key] = (typeof targetExtended[key] === 'number' ? targetExtended[key] as number : 0) + value * ratio;
                 } else if (typeof value === 'object' && value !== null) {
                     // ネストされたカテゴリ（minerals, vitaminsなど）
-                    if (!(target.extended_nutrients as any)[key]) {
-                        (target.extended_nutrients as any)[key] = {};
+                    if (!targetExtended[key] || typeof targetExtended[key] !== 'object') {
+                        targetExtended[key] = {};
                     }
+                    const targetCategory = targetExtended[key] as Record<string, number | undefined>;
 
                     for (const [subKey, subValue] of Object.entries(value)) {
                         if (typeof subValue === 'number') {
-                            (target.extended_nutrients as any)[key][subKey] =
-                                ((target.extended_nutrients as any)[key][subKey] || 0) + subValue * ratio;
+                            targetCategory[subKey] = (typeof targetCategory[subKey] === 'number' ? targetCategory[subKey] as number : 0) + subValue * ratio;
                         }
                     }
                 }

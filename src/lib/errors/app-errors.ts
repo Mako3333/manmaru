@@ -73,7 +73,7 @@ export class AppError extends Error {
     /**
      * エラーの詳細情報
      */
-    public readonly details?: any;
+    public readonly details?: unknown;
 
     /**
      * エラーの深刻度
@@ -88,7 +88,7 @@ export class AppError extends Error {
     /**
      * 元のエラー（存在する場合）
      */
-    public readonly originalError?: Error;
+    public readonly originalError?: Error | undefined;
 
     /**
      * コンストラクタ
@@ -97,10 +97,10 @@ export class AppError extends Error {
         message: string,
         code: ErrorCode = ErrorCode.UNKNOWN_ERROR,
         userMessage?: string,
-        details?: any,
+        details?: unknown,
         severity: ErrorSeverity = 'error',
         suggestions: string[] = [],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(message);
         this.name = this.constructor.name;
@@ -224,10 +224,10 @@ export class ApiError extends AppError {
         code: ErrorCode = ErrorCode.API_ERROR,
         userMessage?: string,
         statusCode: number = 500,
-        details?: any,
+        details?: unknown,
         severity: ErrorSeverity = 'error',
         suggestions: string[] = [],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(message, code, userMessage, details, severity, suggestions, originalError);
         this.name = 'ApiError';
@@ -246,9 +246,9 @@ export class AuthError extends AppError {
         message: string = 'ログインが必要です',
         code: ErrorCode = ErrorCode.AUTH_REQUIRED,
         userMessage: string = 'この操作を行うにはログインが必要です',
-        details?: any,
+        details?: unknown,
         suggestions: string[] = ['ログインページからログインしてください'],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(message, code, userMessage, details, 'warning', suggestions, originalError);
         this.name = 'AuthError';
@@ -266,9 +266,9 @@ export class DataProcessingError extends AppError {
         message: string,
         entity: string,
         code: ErrorCode = ErrorCode.DATA_PROCESSING_ERROR,
-        details?: any,
+        details?: unknown,
         suggestions: string[] = [],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(
             message,
@@ -294,9 +294,9 @@ export class AiAnalysisError extends AppError {
         message: string,
         detail?: string,
         code: ErrorCode = ErrorCode.AI_ANALYSIS_FAILED,
-        details?: any,
+        details?: unknown,
         suggestions: string[] = ['別の入力方法をお試しください'],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(
             `AI分析エラー: ${message}`,
@@ -322,9 +322,9 @@ export class FileProcessingError extends AppError {
         message: string,
         fileType: string,
         code: ErrorCode = ErrorCode.FILE_PROCESSING_ERROR,
-        details?: any,
+        details?: unknown,
         suggestions: string[] = [],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(
             message,
@@ -350,9 +350,9 @@ export class ValidationError extends AppError {
         message: string,
         fieldName: string,
         code: ErrorCode = ErrorCode.DATA_VALIDATION_ERROR,
-        details?: any,
+        details?: unknown,
         suggestions: string[] = [],
-        originalError?: Error
+        originalError?: Error | undefined
     ) {
         super(
             message,

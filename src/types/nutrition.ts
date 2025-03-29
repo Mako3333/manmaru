@@ -2,7 +2,7 @@
  * 基本的な栄養素データ（集計や保存に使用）
  */
 //src\types\nutrition.ts
-import { Food, FoodMatchResult } from './food';
+import { Food, FoodMatchResult, FoodQuantity } from './food';
 
 export interface BasicNutritionData {
     calories: number;
@@ -101,28 +101,6 @@ export interface NutritionData {
         vitaminC?: number;
         folicAcid?: number;
     };
-}
-
-/**
- * 栄養素データの詳細インターフェース
- * 妊婦に重要な栄養素を含む
- * @deprecated 新しいNutritionData型を使用してください。
- */
-export interface OldNutritionData {
-    calories: number;
-    protein: number;
-    iron: number;
-    folic_acid: number;
-    calcium: number;
-    vitamin_d: number;
-    confidence_score: number;
-    notFoundFoods?: string[];
-    // オプショナルプロパティ
-    overall_score?: number;
-    deficient_nutrients?: string[];
-    sufficient_nutrients?: string[];
-    daily_records?: any; // 日々の記録データ
-    matchedFoods?: Array<{ original: string, matched: string, similarity: number }>;
 }
 
 /**
@@ -424,8 +402,6 @@ export interface StandardizedMealData {
     notes?: string;               // メモ（任意）
 }
 
-import { FoodQuantity } from './food';
-
 /**
  * 栄養計算結果の型定義
  */
@@ -443,10 +419,10 @@ export interface NutritionCalculationResult {
  * 表示用の栄養素データ
  */
 export interface NutrientDisplayData {
-    name: string;            // 栄養素名（日本語表示用）
-    amount: number;          // 量
-    unit: string;            // 単位 (g, mg, μg など)
-    percentOfDaily?: number; // 1日の推奨摂取量に対する割合 (%)
+    name: string;                        // 栄養素名（日本語表示用）
+    amount: number;                      // 量
+    unit: string;                        // 単位 (g, mg, μg など)
+    percentOfDaily: number | undefined;   // 1日の推奨摂取量に対する割合 (%)
 }
 
 /**
