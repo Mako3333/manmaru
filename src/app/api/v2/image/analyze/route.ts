@@ -9,6 +9,7 @@ import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 /**
  * 画像解析API v2
@@ -85,6 +86,9 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         // 栄養素を計算
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
 
+        // レガシー形式からStandardizedMealNutrition形式に変換
+        const standardizedNutrition = convertToStandardizedNutrition(nutritionResult.nutrition);
+
         // 警告メッセージの設定
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
@@ -96,7 +100,12 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             success: true,
             data: {
                 foods: foods,
-                nutritionResult: nutritionResult,
+                nutritionResult: {
+                    nutrition: standardizedNutrition,
+                    reliability: nutritionResult.reliability,
+                    matchResults: nutritionResult.matchResults,
+                    legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
+                },
                 processingTimeMs: analysisResult.processingTimeMs
             },
             meta: {

@@ -1,6 +1,7 @@
 import { StandardApiResponse } from '@/types/api-interfaces';
-import { ErrorCode } from '@/lib/errors/app-errors';
-import { NutritionData } from '@/types/nutrition';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { NutritionData, StandardizedMealNutrition } from '@/types/nutrition';
+import { convertToLegacyNutrition, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 /**
  * APIアダプターユーティリティクラス
@@ -23,7 +24,7 @@ export class ApiAdapter {
             return {
                 success: false,
                 error: {
-                    code: legacyResponse.errorCode || ErrorCode.UNKNOWN_ERROR,
+                    code: legacyResponse.errorCode || ErrorCode.Base.UNKNOWN_ERROR,
                     message: legacyResponse.error || '不明なエラーが発生しました',
                     details: legacyResponse.details || {},
                     suggestions: legacyResponse.suggestions || []
@@ -70,62 +71,66 @@ export class ApiAdapter {
      * @returns 標準化された栄養データ
      */
     static convertToStandardNutrition(nutritionData: any): NutritionData {
-        // null/undefined の場合は空のオブジェクトを使用
         const data = nutritionData || {};
 
+        // 拡張栄養素を先に展開しておく
+        const extended = data.extended_nutrients || {};
+        const minerals = extended.minerals || data.minerals || {};
+        const vitamins = extended.vitamins || data.vitamins || {};
+
         return {
-            // 基本栄養素
             calories: data.calories ?? data.energy ?? 0,
             protein: data.protein ?? 0,
-            iron: data.iron ?? data.minerals?.iron ?? 0,
-            folic_acid: data.folic_acid ?? data.vitamins?.folicAcid ?? 0,
-            calcium: data.calcium ?? data.minerals?.calcium ?? 0,
-            vitamin_d: data.vitamin_d ?? data.vitamins?.vitaminD ?? 0,
-
-            // 拡張栄養素
-            extended_nutrients: {
-                fat: data.fat ?? data.extended_nutrients?.fat ?? 0,
-                carbohydrate: data.carbohydrate ?? data.extended_nutrients?.carbohydrate ?? 0,
-                dietary_fiber: data.dietary_fiber ?? data.dietaryFiber ??
-                    data.extended_nutrients?.dietary_fiber ?? 0,
-                sugars: data.sugars ?? data.extended_nutrients?.sugars ?? 0,
-                salt: data.salt ?? data.extended_nutrients?.salt ?? 0,
-
-                minerals: {
-                    sodium: data.minerals?.sodium ?? data.extended_nutrients?.minerals?.sodium ?? 0,
-                    potassium: data.minerals?.potassium ??
-                        data.extended_nutrients?.minerals?.potassium ?? 0,
-                    magnesium: data.minerals?.magnesium ??
-                        data.extended_nutrients?.minerals?.magnesium ?? 0,
-                    phosphorus: data.minerals?.phosphorus ??
-                        data.extended_nutrients?.minerals?.phosphorus ?? 0,
-                    zinc: data.minerals?.zinc ?? data.extended_nutrients?.minerals?.zinc ?? 0
-                },
-
-                vitamins: {
-                    vitamin_a: data.vitamins?.vitaminA ??
-                        data.extended_nutrients?.vitamins?.vitamin_a ?? 0,
-                    vitamin_b1: data.vitamins?.vitaminB1 ??
-                        data.extended_nutrients?.vitamins?.vitamin_b1 ?? 0,
-                    vitamin_b2: data.vitamins?.vitaminB2 ??
-                        data.extended_nutrients?.vitamins?.vitamin_b2 ?? 0,
-                    vitamin_b6: data.vitamins?.vitaminB6 ??
-                        data.extended_nutrients?.vitamins?.vitamin_b6 ?? 0,
-                    vitamin_b12: data.vitamins?.vitaminB12 ??
-                        data.extended_nutrients?.vitamins?.vitamin_b12 ?? 0,
-                    vitamin_c: data.vitamins?.vitaminC ??
-                        data.extended_nutrients?.vitamins?.vitamin_c ?? 0,
-                    vitamin_e: data.vitamins?.vitaminE ??
-                        data.extended_nutrients?.vitamins?.vitamin_e ?? 0,
-                    vitamin_k: data.vitamins?.vitaminK ??
-                        data.extended_nutrients?.vitamins?.vitamin_k ?? 0
-                }
-            },
-
-            // メタデータ
+            fat: data.fat ?? extended.fat ?? 0,
+            carbohydrate: data.carbohydrate ?? extended.carbohydrate ?? 0,
+            iron: data.iron ?? minerals.iron ?? 0,
+            folic_acid: data.folic_acid ?? vitamins.folic_acid ?? vitamins.folate ?? 0,
+            calcium: data.calcium ?? minerals.calcium ?? 0,
+            vitamin_d: data.vitamin_d ?? data.vitaminD ?? vitamins.vitamin_d ?? vitamins.vitaminD ?? 0,
+            dietaryFiber: data.dietaryFiber ?? data.dietary_fiber ?? extended.dietary_fiber ?? 0,
+            sugars: data.sugars ?? extended.sugars ?? 0,
+            salt: data.salt ?? extended.salt ?? 0,
             confidence_score: data.confidence_score ?? data.confidence ?? 0.8,
-            not_found_foods: data.not_found_foods ?? data.notFoundFoods ?? []
+            not_found_foods: data.not_found_foods ?? data.notFoundFoods ?? [],
+
+            extended_nutrients: {
+                minerals: {
+                    sodium: minerals.sodium ?? 0,
+                    potassium: minerals.potassium ?? 0,
+                    magnesium: minerals.magnesium ?? 0,
+                    phosphorus: minerals.phosphorus ?? 0,
+                    zinc: minerals.zinc ?? 0,
+                },
+                vitamins: {
+                    vitamin_a: vitamins.vitamin_a ?? vitamins.vitaminA ?? 0,
+                    vitamin_b1: vitamins.vitamin_b1 ?? vitamins.vitaminB1 ?? 0,
+                    vitamin_b2: vitamins.vitamin_b2 ?? vitamins.vitaminB2 ?? 0,
+                    vitamin_b6: vitamins.vitamin_b6 ?? vitamins.vitaminB6 ?? 0,
+                    vitamin_b12: vitamins.vitamin_b12 ?? vitamins.vitaminB12 ?? 0,
+                    vitamin_c: vitamins.vitamin_c ?? vitamins.vitaminC ?? 0,
+                    vitamin_e: vitamins.vitamin_e ?? vitamins.vitaminE ?? 0,
+                    vitamin_k: vitamins.vitamin_k ?? vitamins.vitaminK ?? 0,
+                },
+            },
         };
+    }
+
+    /**
+     * 栄養データを標準化フォーマットに変換するV2ヘルパー
+     * @param nutritionData NutritionData形式の栄養データ
+     * @returns StandardizedMealNutrition形式の栄養データ
+     */
+    static convertToStandardizedNutritionFormat(nutritionData: NutritionData): StandardizedMealNutrition {
+        return convertToStandardizedNutrition(nutritionData);
+    }
+
+    /**
+     * 標準化された栄養データをレガシーフォーマットに変換するV2ヘルパー
+     * @param standardizedData StandardizedMealNutrition形式の栄養データ
+     * @returns NutritionData形式の栄養データ
+     */
+    static convertToLegacyNutritionFormat(standardizedData: StandardizedMealNutrition): NutritionData {
+        return convertToLegacyNutrition(standardizedData);
     }
 
     /**
@@ -139,7 +144,7 @@ export class ApiAdapter {
             return {
                 success: false,
                 error: {
-                    code: legacyAnalysisResponse.errorCode || 'ANALYSIS_ERROR',
+                    code: legacyAnalysisResponse.errorCode || ErrorCode.AI.ANALYSIS_ERROR,
                     message: legacyAnalysisResponse.error,
                     details: legacyAnalysisResponse.details
                 }
@@ -159,12 +164,30 @@ export class ApiAdapter {
             legacyAnalysisResponse.duration ||
             legacyAnalysisResponse.processingTime;
 
+        // 栄養データをStandardizedMealNutrition形式に変換
+        const nutritionData = legacyAnalysisResponse.nutritionResult?.nutrition ||
+            legacyAnalysisResponse.nutrition;
+
+        let standardizedNutrition = null;
+        if (nutritionData) {
+            const legacyNutrition = ApiAdapter.convertToStandardNutrition(nutritionData);
+            standardizedNutrition = ApiAdapter.convertToStandardizedNutritionFormat(legacyNutrition);
+        }
+
         // 標準形式への変換
         return {
             success: true,
             data: {
                 foods: legacyAnalysisResponse.foods || legacyAnalysisResponse.recognizedFoods,
-                nutritionResult: legacyAnalysisResponse.nutritionResult || legacyAnalysisResponse.nutrition,
+                nutritionResult: {
+                    nutrition: standardizedNutrition,
+                    reliability: legacyAnalysisResponse.nutritionResult?.reliability || {
+                        confidence: legacyAnalysisResponse.confidence || 0.8,
+                        balanceScore: legacyAnalysisResponse.balanceScore || 50,
+                        completeness: legacyAnalysisResponse.completeness || 0.7
+                    },
+                    legacyNutrition: nutritionData
+                },
                 processingTimeMs
             },
             meta: {
@@ -184,7 +207,7 @@ export class ApiAdapter {
             return {
                 success: false,
                 error: {
-                    code: legacyFoodParseResponse.errorCode || 'FOOD_PARSE_ERROR',
+                    code: legacyFoodParseResponse.errorCode || ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR,
                     message: legacyFoodParseResponse.error,
                     details: legacyFoodParseResponse.details
                 }
@@ -216,7 +239,7 @@ export class ApiAdapter {
      */
     static createErrorResponse(
         message: string,
-        code: string = 'UNKNOWN_ERROR',
+        code: string = ErrorCode.Base.UNKNOWN_ERROR,
         details?: any
     ): StandardApiResponse<null> {
         return {

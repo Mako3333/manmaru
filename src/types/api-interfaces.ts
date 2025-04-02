@@ -102,10 +102,10 @@ export interface RecognizedFood {
 
 // 栄養計算結果インターフェース
 export interface NutritionResult {
-    nutrition: NutritionData;
+    nutrition: import('@/types/nutrition').StandardizedMealNutrition;
     reliability: NutritionReliability;
     matchResults?: any[];
-    perServing?: NutritionData;
+    legacyNutrition?: NutritionData; // 後方互換性のために残す
 }
 
 // 食事解析結果インターフェース
@@ -163,4 +163,20 @@ export interface NutritionAdviceRequest {
     date?: string;
     force?: boolean;
     detail?: boolean;
-} 
+}
+
+export interface StandardApiResponse<T> {
+    success: boolean;
+    data?: T;
+    error?: {
+        code: string;
+        message: string;
+        details?: any;
+        suggestions?: string[];
+    };
+    meta?: {
+        processingTimeMs: number;
+        warning?: string;
+    };
+}
+

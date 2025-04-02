@@ -8,6 +8,7 @@ import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -84,6 +85,9 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         // 栄養計算を実行
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
 
+        // レガシー形式からStandardizedMealNutrition形式に変換
+        const standardizedNutrition = convertToStandardizedNutrition(nutritionResult.nutrition);
+
         // 結果を返却
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
@@ -96,7 +100,12 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
                 foods: nameQuantityPairs,
                 mealType,
                 ...(trimester ? { trimester } : {}),
-                nutritionResult,
+                nutritionResult: {
+                    nutrition: standardizedNutrition,
+                    reliability: nutritionResult.reliability,
+                    matchResults: nutritionResult.matchResults,
+                    legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
+                },
                 recognitionConfidence: analysisResult.parseResult.confidence
             },
             meta: {
