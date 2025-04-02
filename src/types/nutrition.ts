@@ -486,127 +486,13 @@ export const nutrientUnitMap: Record<string, string> = {
 };
 
 /**
- * JSONデータをNutritionData型に変換（DBから取得時）
+ * 注意: これらの関数は src/lib/nutrition/nutrition-type-utils.ts に移動しました。
+ * 新規開発では、そちらの実装を使用してください。
+ * 
+ * - parseNutritionFromJson
+ * - serializeNutritionToJson
+ * - convertToNutrientDisplayData
  */
-export function parseNutritionFromJson(jsonData: any): NutritionData {
-    return {
-        calories: jsonData.calories || 0,
-        protein: jsonData.protein || 0,
-        iron: jsonData.iron || 0,
-        folic_acid: jsonData.folic_acid || 0,
-        calcium: jsonData.calcium || 0,
-        vitamin_d: jsonData.vitamin_d || 0,
-        extended_nutrients: jsonData.extended_nutrients || {},
-        confidence_score: jsonData.confidence_score || 0,
-        not_found_foods: jsonData.not_found_foods || []
-    };
-}
-
-/**
- * NutritionDataをJSON形式に変換（DB保存時）
- */
-export function serializeNutritionToJson(data: NutritionData): any {
-    // DBスキーマに合わせた構造に変換
-    return {
-        calories: data.calories,
-        protein: data.protein,
-        iron: data.iron,
-        folic_acid: data.folic_acid,
-        calcium: data.calcium,
-        vitamin_d: data.vitamin_d,
-        extended_nutrients: data.extended_nutrients || {},
-        confidence_score: data.confidence_score,
-        not_found_foods: data.not_found_foods || []
-    };
-}
-
-/**
- * NutritionDataからUIコンポーネント用の配列に変換
- */
-export function convertToNutrientDisplayData(
-    data: NutritionData,
-    targets?: Record<string, number>
-): NutrientDisplayData[] {
-    const result: NutrientDisplayData[] = [
-        // 基本栄養素
-        {
-            name: nutrientDisplayNameMap['calories'] || 'エネルギー',
-            amount: data.calories,
-            unit: nutrientUnitMap['calories'] || 'kcal',
-            percentOfDaily: targets?.calories ? data.calories / targets.calories * 100 : undefined
-        },
-        {
-            name: nutrientDisplayNameMap['protein'] || 'タンパク質',
-            amount: data.protein,
-            unit: nutrientUnitMap['protein'] || 'g',
-            percentOfDaily: targets?.protein ? data.protein / targets.protein * 100 : undefined
-        },
-        {
-            name: nutrientDisplayNameMap['iron'] || '鉄分',
-            amount: data.iron,
-            unit: nutrientUnitMap['iron'] || 'mg',
-            percentOfDaily: targets?.iron ? data.iron / targets.iron * 100 : undefined
-        },
-        {
-            name: nutrientDisplayNameMap['folic_acid'] || '葉酸',
-            amount: data.folic_acid,
-            unit: nutrientUnitMap['folic_acid'] || 'μg',
-            percentOfDaily: targets?.folic_acid ? data.folic_acid / targets.folic_acid * 100 : undefined
-        },
-        {
-            name: nutrientDisplayNameMap['calcium'] || 'カルシウム',
-            amount: data.calcium,
-            unit: nutrientUnitMap['calcium'] || 'mg',
-            percentOfDaily: targets?.calcium ? data.calcium / targets.calcium * 100 : undefined
-        },
-        {
-            name: nutrientDisplayNameMap['vitamin_d'] || 'ビタミンD',
-            amount: data.vitamin_d,
-            unit: nutrientUnitMap['vitamin_d'] || 'μg',
-            percentOfDaily: targets?.vitamin_d ? data.vitamin_d / targets.vitamin_d * 100 : undefined
-        }
-    ];
-
-    // 拡張栄養素の変換
-    if (data.extended_nutrients) {
-        // 個別栄養素の追加
-        const mainNutrients = ['dietary_fiber', 'sugars', 'salt'];
-        for (const nutrient of mainNutrients) {
-            const value = (data.extended_nutrients as any)[nutrient];
-            if (value !== undefined) {
-                result.push({
-                    name: nutrientDisplayNameMap[nutrient] || nutrient,
-                    amount: value,
-                    unit: nutrientUnitMap[nutrient] || 'g',
-                    percentOfDaily: targets?.[nutrient] ?
-                        value / targets[nutrient] * 100 : undefined
-                });
-            }
-        }
-
-        // カテゴリ内栄養素の追加（ミネラル、ビタミンなど）
-        for (const [category, nutrients] of Object.entries(data.extended_nutrients)) {
-            if (typeof nutrients === 'object' && nutrients !== null) {
-                for (const [key, value] of Object.entries(nutrients as object)) {
-                    if (typeof value === 'number') {
-                        const fullKey = `${category}.${key}`;
-                        const displayName = nutrientDisplayNameMap[key] || key;
-                        const unit = nutrientUnitMap[key] || 'mg';
-
-                        result.push({
-                            name: displayName,
-                            amount: value,
-                            unit: unit,
-                            percentOfDaily: targets?.[key] ? value / targets[key] * 100 : undefined
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    return result;
-}
 
 /**
  * トライメスター別の栄養摂取目標値

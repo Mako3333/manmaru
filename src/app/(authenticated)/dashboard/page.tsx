@@ -29,7 +29,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, Clock, Calendar } from 'lucide-react';
-import { toast } from 'sonner';
 import { getJapanDate } from '@/lib/date-utils';
 import { NutritionData, calculateNutritionScore, getNutrientColor, getNutrientBarColor } from '@/lib/nutrition/nutrition-display-utils';
 

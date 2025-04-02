@@ -16,8 +16,7 @@ import { Loader2, Camera, Type, Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { handleError, withErrorHandling, checkApiResponse } from '@/lib/errors/error-handler';
-import { AppError, AiAnalysisError, ErrorCode, DataProcessingError, AuthError } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error'
 import {
     normalizeNutritionData,
     validateMealData,
@@ -253,16 +252,15 @@ export default function MealLogPage() {
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
                 user_id: session.user.id,
-                meal_date: selectedDate.toISOString().split('T')[0],
-                meal_type: mealType as any,
+                meal_date: (selectedDate ? selectedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
+                meal_type: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
                 meal_items: recognitionData.foods.map((food) => ({
                     name: food.name,
                     amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
                     unit: food.quantity?.split(' ')[1] || '個',
-                    image_url: undefined
                 })),
                 nutrition_data: standardizedNutrition,
-                image_url: base64Image || undefined
+                ...(base64Image ? { image_url: base64Image } : {})
             };
 
             // データの検証
@@ -459,13 +457,12 @@ export default function MealLogPage() {
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
                 user_id: session.user.id,
-                meal_date: selectedDate.toISOString().split('T')[0],
-                meal_type: mealType as any,
+                meal_date: (selectedDate ? selectedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
+                meal_type: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
                 meal_items: enhancedFoods.map((food) => ({
                     name: food.name,
                     amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
                     unit: food.quantity?.split(' ')[1] || '個',
-                    image_url: undefined
                 })),
                 // 簡易的な変換を行う（本来は詳細な変換が必要）
                 nutrition_data: {
@@ -517,8 +514,8 @@ export default function MealLogPage() {
                         ironPercentage: 0,
                         calciumPercentage: 0
                     }
-                },
-                image_url: undefined
+                }
+                // image_urlは任意のため省略
             };
 
             // データの検証
@@ -807,4 +804,119 @@ export default function MealLogPage() {
             </div>
         </div>
     )
-} 
+}
+
+// APIからのレスポンスを確認するチェック関数
+const checkApiResponse = async (response: Response, errorMessage: string) => {
+    if (!response.ok) {
+        let errorData;
+        try {
+            errorData = await response.json();
+        } catch {
+            errorData = { message: await response.text() || errorMessage };
+        }
+        throw new Error(errorData.message || errorMessage);
+    }
+    return await response.json();
+};
+
+// エラーハンドリング関数
+const handleError = (error: unknown, options: {
+    showToast: boolean,
+    toastOptions?: {
+        title: string;
+        description?: string;
+        duration?: number;
+    }
+} = { showToast: true }) => {
+    console.error('エラー発生:', error);
+
+    if (options.showToast) {
+        toast.error(options.toastOptions?.title || 'エラーが発生しました', {
+            description: error instanceof AppError
+                ? error.userMessage
+                : options.toastOptions?.description || '操作を完了できませんでした',
+            duration: options.toastOptions?.duration || 3000
+        });
+    }
+
+    // エラー発生時の追加アクション
+    if (error instanceof Error && error.message.includes('認証')) {
+        // 認証エラーの場合はログイン画面にリダイレクト
+        // router.push('/auth/login') などの処理
+    }
+};
+
+// DataProcessingErrorクラス（エラー型のサブクラス）
+class DataProcessingError extends Error {
+    userMessage: string;
+    details?: any;
+    suggestions?: string[];
+
+    constructor(
+        message: string,
+        dataType: string,
+        code?: string,
+        details?: any,
+        suggestions?: string[]
+    ) {
+        super(message);
+        this.name = 'DataProcessingError';
+        this.userMessage = `${dataType}の処理中にエラーが発生しました`;
+        this.details = details;
+        this.suggestions = suggestions || ['もう一度お試しください'];
+    }
+}
+
+// AiAnalysisErrorクラス（エラー型のサブクラス）
+class AiAnalysisError extends Error {
+    userMessage: string;
+    code: string;
+    details?: any;
+    suggestions?: string[];
+
+    constructor(
+        message: string,
+        userMessage: string,
+        code: string,
+        details?: any,
+        suggestions?: string[]
+    ) {
+        super(message);
+        this.name = 'AiAnalysisError';
+        this.userMessage = userMessage;
+        this.code = code;
+        this.details = details;
+        this.suggestions = suggestions || ['別の画像を試してください'];
+    }
+}
+
+// AuthErrorクラス（エラー型のサブクラス）
+class AuthError extends Error {
+    userMessage: string;
+    code: string;
+    details?: any;
+    suggestions?: string[];
+
+    constructor(
+        message: string,
+        code: string,
+        userMessage?: string,
+        details?: any,
+        suggestions?: string[]
+    ) {
+        super(message);
+        this.name = 'AuthError';
+        this.userMessage = userMessage || 'ログインが必要です';
+        this.code = code;
+        this.details = details;
+        this.suggestions = suggestions || ['再度ログインしてください'];
+    }
+}
+
+// エラーコード定数
+const ErrorCode = {
+    AUTH_EXPIRED: 'auth_expired',
+    DATA_VALIDATION_ERROR: 'data_validation_error',
+    API_RESPONSE_INVALID: 'api_response_invalid'
+}; 
