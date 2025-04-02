@@ -54,6 +54,7 @@ export interface FoodAnalysisResult {
             suggestion: string;
             similarity: number;
         }>;
+        errors?: string[];
         [key: string]: unknown;
     };
 }

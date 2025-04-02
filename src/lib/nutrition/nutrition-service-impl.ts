@@ -542,23 +542,13 @@ export class NutritionServiceImpl implements NutritionService {
         // 食品名の抽出
         const foodNames = parsedFoods.map(food => food.foodName);
 
-        // 食品マッチング
-        let matchResults: FoodMatchResult[] = [];
+        // 食品マッチング (Mapが返される前提)
+        let matchMap: Map<string, FoodMatchResult | null>;
         try {
-            // foodMatchingServiceの戻り値の型を確認し、必要に応じて型変換
-            const results = await this.foodMatchingService.matchFoods(foodNames);
-            // 配列として扱えるようにする
-            if (Array.isArray(results)) {
-                matchResults = results;
-            } else if (results instanceof Map) {
-                // Mapの場合は配列に変換
-                matchResults = Array.from(foodNames.map((name) => {
-                    return results.get(name) || null;
-                })).filter((result): result is FoodMatchResult => result !== null);
-            }
+            matchMap = await this.foodMatchingService.matchFoods(foodNames);
         } catch (error) {
             throw new AppError({
-                code: ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR, // 適切なエラーコードに修正
+                code: ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR, // マッチングのエラーだが、DBアクセスを含むためこのコードを使用
                 message: '食品マッチング処理中にエラーが発生しました',
                 userMessage: '食品データベースの検索中に問題が発生しました',
                 details: { foodNames },
@@ -570,13 +560,10 @@ export class NutritionServiceImpl implements NutritionService {
         const SIMILARITY_THRESHOLD = 0.7;
 
         // 結果の処理ループ
-        for (let i = 0; i < parsedFoods.length; i++) {
+        for (const parsedFood of parsedFoods) {
             try {
-                const parsedFood = parsedFoods[i];
-                if (!parsedFood) continue; // parsedFoodがundefinedの場合はスキップ
-
-                // matchResultsのインデックスがparsedFoodsと一致することを確認
-                const matchResult = i < matchResults.length ? matchResults[i] : null;
+                // Mapから対応するマッチング結果を取得
+                const matchResult = matchMap.get(parsedFood.foodName);
 
                 // マッチング結果の検証
                 if (!matchResult || !matchResult.food) {
@@ -591,23 +578,22 @@ export class NutritionServiceImpl implements NutritionService {
                 }
 
                 // 量の解析と変換
-                // quantityStrプロパティの存在を確認
-                const quantityString = 'quantityStr' in parsedFood ?
-                    String(parsedFood.quantityStr || '') : '';
-                // categoryプロパティの存在を確認
-                const category = 'category' in parsedFood ?
-                    String(parsedFood.category || '') : '';
+                // 正しいプロパティ `quantityText` を使用
+                const quantityString = parsedFood.quantityText;
+
+                // `category` は matchResult から取得 (parsedFoodには存在しない)
+                const category = matchResult.food.category || '';
 
                 const { quantity: parsedQuantity, confidence: quantityParseConfidence } = QuantityParser.parseQuantity(
-                    quantityString,
+                    quantityString ?? undefined, // 修正: null の場合に undefined に変換
                     matchResult.food.name,
-                    category || matchResult.food.category || ''
+                    category
                 );
 
                 const { grams, confidence: conversionConfidence } = QuantityParser.convertToGrams(
                     parsedQuantity,
                     matchResult.food.name,
-                    category || matchResult.food.category || ''
+                    category
                 );
 
                 // 総合的な確信度の計算（類似度、量解析確信度、グラム変換確信度の組み合わせ）
@@ -618,7 +604,6 @@ export class NutritionServiceImpl implements NutritionService {
                 );
 
                 // MealFoodItemの作成
-                // MealFoodItemの型定義に従って必要なプロパティを設定
                 const mealFoodItem: MealFoodItem = {
                     foodId: matchResult.food.id,
                     food: matchResult.food,
@@ -630,7 +615,7 @@ export class NutritionServiceImpl implements NutritionService {
                 matchedItems.push(mealFoodItem);
             } catch (error) {
                 // 個別の食品処理エラーはスキップして次の食品の処理を続行
-                const foodName = parsedFoods[i]?.foodName ?? '不明な食品'; // null合体演算子でundefinedチェック
+                const foodName = parsedFood?.foodName ?? '不明な食品';
                 const errorMessage = error instanceof Error ? error.message : '不明なエラー';
                 meta.errors.push(`${foodName}の処理中にエラー: ${errorMessage}`);
             }
@@ -676,7 +661,7 @@ export class NutritionServiceImpl implements NutritionService {
             },
             meta: {
                 ...meta,
-                calculationTime: calculationTime.toString(), // number型をstring型に変換
+                calculationTime: calculationTime.toString(),
                 totalItemsFound: matchedItems.length,
                 totalInputItems: parsedFoods.length
             }
