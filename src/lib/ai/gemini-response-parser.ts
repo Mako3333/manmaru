@@ -1,6 +1,15 @@
 //src\lib\ai\gemini-response-parser.ts
-import { AIResponseParser, AIParseResult } from './ai-response-parser';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
+
+/**
+ * AI応答の解析結果を表す型
+ */
+export interface GeminiParseResult {
+    foods: FoodInputParseResult[];
+    confidence: number;
+    error?: string;
+    debug?: any; // デバッグ情報用
+}
 
 /**
  * Gemini APIの応答を解析するパーサー
@@ -8,11 +17,12 @@ import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 export class GeminiResponseParser {
     /**
      * AI応答テキストから食品リストを解析
+     * 戻り値の型を GeminiParseResult に変更
      */
-    async parseResponse(responseText: string): Promise<AIParseResult> {
+    async parseResponse(responseText: string): Promise<GeminiParseResult> {
         try {
             // デフォルトの結果（エラー時）
-            const defaultResult: AIParseResult = {
+            const defaultResult: GeminiParseResult = {
                 foods: [],
                 confidence: 0,
                 error: '応答の解析に失敗しました'

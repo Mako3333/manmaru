@@ -82,24 +82,30 @@ export function createErrorResponse(
  * エラーコードに基づいてHTTPステータスコードを取得
  */
 export function getHttpStatusCode(error: AppError): number {
-    // エラーコードの先頭部分を取得（例：auth_error → auth）
-    const errorType = error.code.split('_')[0];
+    // エラーコードに基づいてHTTPステータスコードを決定
+    const code = error.code;
 
-    switch (errorType) {
-        case 'auth':
-            return 401; // Unauthorized
-        case 'forbidden':
-            return 403; // Forbidden
-        case 'not':
-            return 404; // Not Found
-        case 'validation':
-            return 400; // Bad Request
-        case 'rate':
-        case 'quota':
-            return 429; // Too Many Requests
-        case 'server':
-            return 500; // Internal Server Error
-        default:
-            return 400; // Bad Request
+    // より具体的なエラーコードのマッピング
+    if (code.startsWith('auth_')) return 401; // Unauthorized
+    if (code.startsWith('forbidden_')) return 403; // Forbidden
+    if (code.startsWith('not_found')) return 404; // Not Found
+    if (code.startsWith('validation_') || code.startsWith('data_validation_') || code.startsWith('invalid_')) return 400; // Bad Request (Validation or Invalid input)
+    if (code.startsWith('rate_limit') || code.startsWith('quota_')) return 429; // Too Many Requests
+
+    // サーバーサイドまたは外部サービス起因のエラーは500 Internal Server Error
+    if (
+        code.startsWith('server_') ||
+        code.startsWith('database_') ||
+        code.startsWith('ai_') ||
+        code.startsWith('image_') ||
+        code.startsWith('gemini_') ||
+        code.startsWith('nutrition_') ||
+        code.startsWith('file_') // file_* も一旦500とする (例: file_read_error)
+    ) {
+        return 500;
     }
+
+    // 上記以外は予期せぬ内部エラーとして500を返す
+    console.warn(`Unknown error code prefix encountered: ${code}. Defaulting to 500.`);
+    return 500;
 } 

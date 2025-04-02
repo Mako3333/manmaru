@@ -1,7 +1,8 @@
 //src\lib\ai\gemini-service.ts
-import { AIServiceV2, AIProcessResult } from './ai-service';
-import { GeminiResponseParser } from './gemini-response-parser';
+import { GeminiResponseParser, GeminiParseResult } from './gemini-response-parser';
 import { PromptService, PromptType } from './prompts/prompt-service';
+import { AIModelService } from '@/lib/ai/core/ai-model-service';
+import { ModelOptions } from '@/lib/ai/core/ai-model-factory';
 
 /**
  * Gemini API設定
@@ -49,13 +50,24 @@ interface SafetySetting {
 }
 
 /**
+ * GeminiServiceの処理結果を表す型
+ */
+export interface GeminiProcessResult {
+    parseResult: GeminiParseResult;
+    rawResponse: string;
+    processingTimeMs: number;
+    error?: string;
+}
+
+/**
  * Gemini APIを使用したAIサービス
  */
-export class GeminiService implements AIServiceV2 {
+export class GeminiService {
     private config: GeminiServiceConfig;
     private parser: GeminiResponseParser;
     private safetySettings: SafetySetting[];
     private promptService: PromptService;
+    private modelService: AIModelService;
 
     /**
      * コンストラクタ
@@ -94,62 +106,33 @@ export class GeminiService implements AIServiceV2 {
 
         this.parser = new GeminiResponseParser();
         this.promptService = PromptService.getInstance();
+        this.modelService = new AIModelService();
     }
 
     /**
      * 食事画像から食品を解析
      */
-    async analyzeMealImage(imageData: any): Promise<AIProcessResult> {
+    async analyzeMealImage(imageData: Buffer): Promise<GeminiProcessResult> {
         try {
             const startTime = Date.now();
 
             // 画像のBase64エンコーディング
             const base64Image = imageData.toString('base64');
 
-            // プロンプト生成（PromptServiceを使用）
+            // プロンプト生成
             const prompt = this.promptService.generatePrompt(PromptType.FOOD_ANALYSIS, {
                 mealType: '食事',
                 trimester: undefined
             });
 
-            // API呼び出しURL
-            const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+            // モデルオプションの設定（温度など）
+            const modelOptions: ModelOptions = {
+                temperature: this.config.temperature,
+                maxOutputTokens: this.config.maxOutputTokens,
+            };
 
-            // API呼び出し
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [
-                                { text: prompt },
-                                {
-                                    inline_data: {
-                                        mime_type: 'image/jpeg',
-                                        data: base64Image
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    safety_settings: this.safetySettings,
-                    generation_config: {
-                        temperature: this.config.temperature,
-                        max_output_tokens: this.config.maxOutputTokens
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Gemini API エラー: ${response.status} ${errorText}`);
-            }
-
-            const data = await response.json();
-            const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            // AIモデル呼び出し (invokeVisionを使用)
+            const rawResponse = await this.modelService.invokeVision(prompt, base64Image, modelOptions);
 
             // レスポンスの解析
             const parseResult = await this.parser.parseResponse(rawResponse);
@@ -157,6 +140,7 @@ export class GeminiService implements AIServiceV2 {
             // 処理時間の計算
             const processingTimeMs = Date.now() - startTime;
 
+            // 結果を GeminiProcessResult 型で返す
             return {
                 parseResult,
                 rawResponse,
@@ -165,6 +149,7 @@ export class GeminiService implements AIServiceV2 {
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error('GeminiService: 画像解析エラー', error);
+            // GeminiProcessResult 型でエラー情報を返す
             return {
                 parseResult: {
                     foods: [],
@@ -181,47 +166,23 @@ export class GeminiService implements AIServiceV2 {
     /**
      * テキスト入力から食品を解析
      */
-    async analyzeMealText(text: string): Promise<AIProcessResult> {
+    async analyzeMealText(text: string): Promise<GeminiProcessResult> {
         try {
             const startTime = Date.now();
 
-            // プロンプト生成（PromptServiceを使用）
+            // プロンプト生成
             const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
                 foodsText: text
             });
 
-            // API呼び出しURL
-            const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+            // モデルオプションの設定
+            const modelOptions: ModelOptions = {
+                temperature: this.config.temperature,
+                maxOutputTokens: this.config.maxOutputTokens,
+            };
 
-            // API呼び出し
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [
-                                { text: prompt }
-                            ]
-                        }
-                    ],
-                    safety_settings: this.safetySettings,
-                    generation_config: {
-                        temperature: this.config.temperature,
-                        max_output_tokens: this.config.maxOutputTokens
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Gemini API エラー: ${response.status} ${errorText}`);
-            }
-
-            const data = await response.json();
-            const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            // AIモデル呼び出し (invokeTextを使用)
+            const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
 
             // レスポンスの解析
             const parseResult = await this.parser.parseResponse(rawResponse);
@@ -229,6 +190,7 @@ export class GeminiService implements AIServiceV2 {
             // 処理時間の計算
             const processingTimeMs = Date.now() - startTime;
 
+            // 結果を GeminiProcessResult 型で返す
             return {
                 parseResult,
                 rawResponse,
@@ -237,6 +199,7 @@ export class GeminiService implements AIServiceV2 {
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error('GeminiService: テキスト解析エラー', error);
+            // GeminiProcessResult 型でエラー情報を返す
             return {
                 parseResult: {
                     foods: [],
@@ -253,47 +216,23 @@ export class GeminiService implements AIServiceV2 {
     /**
      * レシピテキストから食品を解析
      */
-    async analyzeRecipeText(recipeText: string): Promise<AIProcessResult> {
+    async analyzeRecipeText(recipeText: string): Promise<GeminiProcessResult> {
         try {
             const startTime = Date.now();
 
-            // プロンプト生成（PromptServiceを使用）
+            // プロンプト生成 (レシピ用だが、現状 TEXT_INPUT_ANALYSIS を流用)
             const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
                 foodsText: recipeText
             });
 
-            // API呼び出しURL
-            const apiUrl = `${this.config.apiUrl}/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+            // モデルオプションの設定
+            const modelOptions: ModelOptions = {
+                temperature: this.config.temperature,
+                maxOutputTokens: this.config.maxOutputTokens,
+            };
 
-            // API呼び出し
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [
-                                { text: prompt }
-                            ]
-                        }
-                    ],
-                    safety_settings: this.safetySettings,
-                    generation_config: {
-                        temperature: this.config.temperature,
-                        max_output_tokens: this.config.maxOutputTokens
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Gemini API エラー: ${response.status} ${errorText}`);
-            }
-
-            const data = await response.json();
-            const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            // AIモデル呼び出し (invokeTextを使用)
+            const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
 
             // レスポンスの解析
             const parseResult = await this.parser.parseResponse(rawResponse);
@@ -301,6 +240,7 @@ export class GeminiService implements AIServiceV2 {
             // 処理時間の計算
             const processingTimeMs = Date.now() - startTime;
 
+            // 結果を GeminiProcessResult 型で返す
             return {
                 parseResult,
                 rawResponse,
@@ -309,6 +249,7 @@ export class GeminiService implements AIServiceV2 {
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error('GeminiService: レシピ解析エラー', error);
+            // GeminiProcessResult 型でエラー情報を返す
             return {
                 parseResult: {
                     foods: [],

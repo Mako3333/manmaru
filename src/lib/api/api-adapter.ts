@@ -139,6 +139,8 @@ export class ApiAdapter {
      * @returns 標準API形式の食事解析レスポンス
      */
     static convertMealAnalysisResponse(legacyAnalysisResponse: any): StandardApiResponse<any> {
+        const startTime = performance.now();
+
         // エラーチェック
         if (legacyAnalysisResponse.error) {
             return {
@@ -147,48 +149,72 @@ export class ApiAdapter {
                     code: legacyAnalysisResponse.errorCode || ErrorCode.AI.ANALYSIS_ERROR,
                     message: legacyAnalysisResponse.error,
                     details: legacyAnalysisResponse.details
+                },
+                meta: {
+                    processingTimeMs: Math.round(performance.now() - startTime)
                 }
             };
         }
 
         // 警告メッセージの抽出
         let warning = undefined;
-        if (legacyAnalysisResponse.warning ||
-            (legacyAnalysisResponse.nutritionResult?.reliability?.confidence < 0.7)) {
+        // 既存の警告チェックに加え、nutritionResultやnutritionが存在しない場合も考慮
+        const nutritionResultData = legacyAnalysisResponse.nutritionResult;
+        const nutritionData = nutritionResultData?.nutrition || legacyAnalysisResponse.nutrition;
+        const confidence = nutritionResultData?.reliability?.confidence ?? legacyAnalysisResponse.confidence;
+
+        if (legacyAnalysisResponse.warning || (confidence != null && confidence < 0.7)) {
             warning = legacyAnalysisResponse.warning ||
                 '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
         }
 
-        // 処理時間の抽出
-        const processingTimeMs = legacyAnalysisResponse.processingTimeMs ||
-            legacyAnalysisResponse.duration ||
-            legacyAnalysisResponse.processingTime;
+        // 処理時間の抽出 (より堅牢に)
+        const processingTimeMs = Math.round(
+            legacyAnalysisResponse.processingTimeMs ??
+            legacyAnalysisResponse.duration ??
+            legacyAnalysisResponse.processingTime ??
+            (performance.now() - startTime) // フォールバック
+        );
 
         // 栄養データをStandardizedMealNutrition形式に変換
-        const nutritionData = legacyAnalysisResponse.nutritionResult?.nutrition ||
-            legacyAnalysisResponse.nutrition;
+        let standardizedNutrition: StandardizedMealNutrition | null = null;
+        let legacyNutritionDataForResponse: NutritionData | null = null;
 
-        let standardizedNutrition = null;
         if (nutritionData) {
-            const legacyNutrition = ApiAdapter.convertToStandardNutrition(nutritionData);
-            standardizedNutrition = ApiAdapter.convertToStandardizedNutritionFormat(legacyNutrition);
+            // まず、どんな形式でも NutritionData (旧標準) に変換しようと試みる
+            const intermediateLegacyNutrition = ApiAdapter.convertToStandardNutrition(nutritionData);
+            // 次に、NutritionData から StandardizedMealNutrition (新標準) へ変換
+            standardizedNutrition = ApiAdapter.convertToStandardizedNutritionFormat(intermediateLegacyNutrition);
+            // レスポンス用の legacyNutrition として、元データに近い形（変換前のオブジェクトか、なければ変換後の中間データ）を保持
+            legacyNutritionDataForResponse = nutritionData; // 元の形式を保持するのが望ましい場合がある
+            // もし元のnutritionDataが標準形式に近ければそちらを使う、なければ中間生成したものを保持
+            if (typeof legacyNutritionDataForResponse !== 'object' || legacyNutritionDataForResponse === null) {
+                legacyNutritionDataForResponse = intermediateLegacyNutrition;
+            }
+
         }
+
+        // 食品リストの取得 (より堅牢に)
+        const foods = legacyAnalysisResponse.foods ?? legacyAnalysisResponse.recognizedFoods ?? [];
 
         // 標準形式への変換
         return {
             success: true,
             data: {
-                foods: legacyAnalysisResponse.foods || legacyAnalysisResponse.recognizedFoods,
+                // foodsが常に配列であることを保証
+                foods: Array.isArray(foods) ? foods : [],
                 nutritionResult: {
-                    nutrition: standardizedNutrition,
-                    reliability: legacyAnalysisResponse.nutritionResult?.reliability || {
-                        confidence: legacyAnalysisResponse.confidence || 0.8,
-                        balanceScore: legacyAnalysisResponse.balanceScore || 50,
-                        completeness: legacyAnalysisResponse.completeness || 0.7
+                    nutrition: standardizedNutrition, // 標準化形式
+                    // legacyNutritionは、変換前の入力データか、それがなければ変換後の中間形式を入れる
+                    legacyNutrition: legacyNutritionDataForResponse,
+                    reliability: nutritionResultData?.reliability || {
+                        confidence: confidence ?? 0.8, // confidenceの取得元を修正
+                        balanceScore: nutritionResultData?.balanceScore ?? legacyAnalysisResponse.balanceScore ?? 50,
+                        completeness: nutritionResultData?.completeness ?? legacyAnalysisResponse.completeness ?? 0.7
                     },
-                    legacyNutrition: nutritionData
                 },
-                processingTimeMs
+                // processingTimeMs が常に存在するように
+                processingTimeMs: processingTimeMs,
             },
             meta: {
                 processingTimeMs,
