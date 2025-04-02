@@ -4,16 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ChevronRight } from 'lucide-react';
-
-interface NutritionData {
-    calories_percent: number;
-    protein_percent: number;
-    iron_percent: number;
-    folic_acid_percent: number;
-    calcium_percent: number;
-    vitamin_d_percent: number;
-    overall_score: number;
-}
+import { NutritionData, calculateNutritionScore } from '@/lib/nutrition/nutrition-display-utils';
 
 interface NutritionSummaryProps {
     dailyNutrition: NutritionData | null;
@@ -22,7 +13,7 @@ interface NutritionSummaryProps {
 export function NutritionSummary({ dailyNutrition }: NutritionSummaryProps) {
     const router = useRouter();
 
-    // 栄養バランススコアの計算
+    // 栄養バランススコアの計算（共通ユーティリティを使用）
     const nutritionScore = calculateNutritionScore(dailyNutrition);
 
     // スコアに応じたメッセージ
@@ -86,10 +77,13 @@ function renderNutritionItems(dailyNutrition: NutritionData | null) {
     ];
 
     return items.map(item => {
-        const percentValue = dailyNutrition && dailyNutrition[item.key as keyof NutritionData]
-            ? Math.round(dailyNutrition[item.key as keyof NutritionData])
+        // キーが存在し、値が数値であることを確認
+        const value = dailyNutrition &&
+            typeof dailyNutrition[item.key as keyof NutritionData] === 'number'
+            ? dailyNutrition[item.key as keyof NutritionData] as number
             : 0;
 
+        const percentValue = Math.round(value);
         const colorClass = getColorForPercent(percentValue);
 
         return (
@@ -109,23 +103,6 @@ function renderNutritionItems(dailyNutrition: NutritionData | null) {
             </div>
         );
     });
-}
-
-// 栄養バランススコアの計算
-function calculateNutritionScore(dailyNutrition: NutritionData | null): number {
-    if (!dailyNutrition) return 0;
-
-    const scores = [
-        dailyNutrition.calories_percent || 0,
-        dailyNutrition.protein_percent || 0,
-        dailyNutrition.iron_percent || 0,
-        dailyNutrition.folic_acid_percent || 0,
-        dailyNutrition.calcium_percent || 0,
-        dailyNutrition.vitamin_d_percent || 0
-    ];
-
-    // 主要栄養素の平均値を総合スコアとする
-    return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
 }
 
 // パーセント値に基づく色クラスの取得

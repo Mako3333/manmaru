@@ -1,5 +1,24 @@
 'use client'
 
+/**
+ * ダッシュボードページ
+ * 
+ * TODO: 栄養データと計算に関する改善点
+ * -----------------------------------------------
+ * 1. 型の標準化:
+ *   - 現在の NutritionData インターフェースを、ドキュメント「栄養データ型標準化ガイドライン」に従って
+ *     StandardizedMealNutrition 型に移行することを検討する
+ *   - 型変換には src/lib/nutrition/nutrition-utils.ts 内の変換関数を使用する
+ *
+ * 2. エラーハンドリング:
+ *   - AppError クラスと ErrorCode を使用して、一貫性のあるエラー処理を実装する
+ *   - 特に API 呼び出しとデータフェッチングでのエラーハンドリングを強化する
+ *
+ * 3. 栄養計算ロジック:
+ *   - 栄養計算は新システムの NutritionService を使用するように更新する
+ *   - 直接的な計算ロジックはコンポーネント内に実装せず、専用サービスを利用する
+ */
+
 import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
@@ -9,16 +28,13 @@ import type { Profile } from '@/lib/utils/profile'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight, Clock, Calendar, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
-import { getJapanDate } from '@/lib/utils/date-utils';
+import { getJapanDate } from '@/lib/date-utils';
+import { NutritionData, calculateNutritionScore, getNutrientColor, getNutrientBarColor } from '@/lib/nutrition/nutrition-display-utils';
 
 // 新しいダッシュボードコンポーネントをインポート
-import MealHistoryList from '@/components/dashboard/meal-history-list';
 import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
-
-// 栄養計算ユーティリティをインポート
-import { NutritionCalculator } from '@/lib/nutrition/calculator';
 
 // 栄養素アイコンマッピング
 const NUTRIENT_ICONS = {
@@ -35,7 +51,7 @@ export default function DashboardPage() {
     const [loadingProfile, setLoadingProfile] = useState(true)
     const [currentDate, setCurrentDate] = useState(getJapanDate())
     const [activeTab, setActiveTab] = useState('today')
-    const [nutritionData, setNutritionData] = useState<any>({
+    const [nutritionData, setNutritionData] = useState<NutritionData>({
         calories_percent: 0,
         protein_percent: 0,
         iron_percent: 0,
@@ -56,7 +72,6 @@ export default function DashboardPage() {
         target_vitamin_d: 0,
     })
     const [nutritionScore, setNutritionScore] = useState(0)
-    const [refreshingAdvice, setRefreshingAdvice] = useState(false)
     const router = useRouter()
     const supabase = createClientComponentClient()
 
@@ -88,11 +103,8 @@ export default function DashboardPage() {
                     throw nutritionError;
                 }
 
-                // 栄養バランススコアを計算
-                const calculator = new NutritionCalculator();
-                const overall_score = nutritionProgress
-                    ? NutritionCalculator.calculateNutritionScoreFromProgress(nutritionProgress)
-                    : 0;
+                // 栄養バランススコアを計算（共通ユーティリティを使用）
+                const overall_score = calculateNutritionScore(nutritionProgress);
 
                 setNutritionScore(overall_score);
                 setNutritionData(nutritionProgress || {
@@ -125,30 +137,6 @@ export default function DashboardPage() {
         fetchData()
     }, [supabase, router, currentDate])
 
-    // アドバイスを手動で更新する関数
-    const refreshAdvice = async () => {
-        try {
-            setRefreshingAdvice(true);
-
-            const response = await fetch('/api/nutrition-advice?force=true&date=' + getJapanDate());
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || '栄養アドバイスの更新に失敗しました');
-            }
-
-            toast.success('栄養アドバイスを更新しました');
-
-            // DetailedNutritionAdviceコンポーネントを更新するためにページをリロード
-            router.refresh();
-        } catch (error) {
-            console.error('アドバイス更新エラー:', error);
-            toast.error(error instanceof Error ? error.message : 'アドバイスの更新に失敗しました');
-        } finally {
-            setRefreshingAdvice(false);
-        }
-    };
-
     // 日付を変更する関数
     const changeDate = (direction: 'prev' | 'next') => {
         const date = new Date(currentDate);
@@ -175,24 +163,6 @@ export default function DashboardPage() {
         } else {
             console.log('未来の日付は選択できません:', format(newDate, 'yyyy-MM-dd'));
         }
-    };
-
-    // 栄養素の状態に応じた色を取得
-    const getNutrientColor = (percent: number) => {
-        if (percent < 50) return 'text-red-500 bg-red-50';
-        if (percent < 70) return 'text-orange-500 bg-orange-50';
-        if (percent <= 110) return 'text-green-500 bg-green-50';
-        if (percent <= 130) return 'text-orange-500 bg-orange-50';
-        return 'text-red-500 bg-red-50';
-    };
-
-    // 栄養素の状態に応じたバーの色を取得
-    const getNutrientBarColor = (percent: number) => {
-        if (percent < 50) return 'bg-red-500';
-        if (percent < 70) return 'bg-orange-500';
-        if (percent <= 110) return 'bg-green-500';
-        if (percent <= 130) return 'bg-orange-500';
-        return 'bg-red-500';
     };
 
     if (loadingProfile) {
@@ -273,10 +243,6 @@ export default function DashboardPage() {
             unit: 'μg'
         }
     ];
-
-    // 不足している栄養素と十分な栄養素に分類
-    const deficientNutrients = nutrientItems.filter(n => n.percent < 70);
-    const sufficientNutrients = nutrientItems.filter(n => n.percent >= 70);
 
     return (
         <div className="container mx-auto px-4 py-6">
@@ -401,10 +367,6 @@ export default function DashboardPage() {
 
                         {/* 詳細栄養アドバイス */}
                         <div className="mb-6">
-                            <div className="flex justify-between items-center mb-2">
-
-                            </div>
-
                             <DetailedNutritionAdvice
                                 selectedDate={currentDate}
                                 onDateSelect={(date) => setCurrentDate(date)}
