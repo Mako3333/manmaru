@@ -105,6 +105,9 @@ export function getHttpStatusCode(error: AppError): number {
         return 500;
     }
 
+    // api_errorは汎用的な内部サーバーエラーとして500を返す
+    if (code.startsWith('api_')) return 500;
+
     // 上記以外は予期せぬ内部エラーとして500を返す
     console.warn(`Unknown error code prefix encountered: ${code}. Defaulting to 500.`);
     return 500;

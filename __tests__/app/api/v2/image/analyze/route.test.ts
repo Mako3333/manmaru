@@ -1,34 +1,56 @@
 import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/v2/image/analyze/route';
-import { FoodRepositoryFactory } from '@/lib/food/food-repository-factory';
+import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
+import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory'; // Import FoodRepositoryFactory and Type
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import { NutritionData, StandardizedMealNutrition } from '@/types/nutrition';
+import { NutritionData, StandardizedMealNutrition, Nutrient } from '@/types/nutrition'; // Import necessary types
 import { StandardApiResponse } from '@/types/api-interfaces';
 import * as fs from 'fs';
 import * as path from 'path';
 
-jest.mock('@/lib/food/food-repository-factory');
+// モックの設定
+jest.mock('@/lib/ai/ai-service-factory');
 jest.mock('@/lib/nutrition/nutrition-service-factory');
+jest.mock('@/lib/food/food-repository-factory'); // Mock FoodRepositoryFactory
 
 // テスト用の画像を読み込む関数
 function loadTestImage(): string {
     const imagePath = path.resolve(process.cwd(), 'public/test_image.jpg');
+    if (!fs.existsSync(imagePath)) {
+        console.warn(`テスト画像が見つかりません: ${imagePath}. ダミーデータを使用します。`);
+        return 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDAwMFBQUFBAQGDAQEDg0PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8P/8AAEQgAEgASAwERAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+4KACgAoAKACgAoAKACgAoAKACgAoAKACgD/2Q=='; // Fallback dummy image
+    }
     const imageBuffer = fs.readFileSync(imagePath);
     return `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
 }
 
 describe('画像分析API v2のテスト', () => {
     let TEST_IMAGE: string;
+    // Common mock data for nutrition results
+    const mockLegacyNutrition: NutritionData = {
+        calories: 320, protein: 15, fat: 10, carbohydrate: 45, iron: 2.5,
+        folic_acid: 100, calcium: 50, vitamin_d: 3, dietaryFiber: 5, salt: 1.2,
+        confidence_score: 0.9
+    };
+    const nutrientsList: Nutrient[] = [
+        { name: 'エネルギー', value: 320, unit: 'kcal' }, { name: 'たんぱく質', value: 15, unit: 'g' },
+        { name: '脂質', value: 10, unit: 'g' }, { name: '炭水化物', value: 45, unit: 'g' },
+        { name: '鉄', value: 2.5, unit: 'mg' }, { name: '葉酸', value: 100, unit: 'mcg' },
+        { name: 'カルシウム', value: 50, unit: 'mg' }, { name: 'ビタミンD', value: 3, unit: 'mcg' },
+        { name: '食物繊維', value: 5, unit: 'g' }, { name: '食塩相当量', value: 1.2, unit: 'g' },
+    ];
+    const mockStandardNutrition: StandardizedMealNutrition = {
+        totalCalories: 320, totalNutrients: nutrientsList,
+        foodItems: [ // Example food items, adjust as needed per test
+            { id: 'img-1', name: '解析された食品1', amount: 100, unit: 'g', nutrition: { calories: 200, nutrients: [{ name: 'エネルギー', value: 200, unit: 'kcal' }], servingSize: { value: 100, unit: 'g' } } },
+            { id: 'img-2', name: '解析された食品2', amount: 50, unit: 'g', nutrition: { calories: 120, nutrients: [{ name: 'エネルギー', value: 120, unit: 'kcal' }], servingSize: { value: 50, unit: 'g' } } }
+        ],
+        pregnancySpecific: { folatePercentage: 25, ironPercentage: 15, calciumPercentage: 5 }
+    };
 
     beforeAll(() => {
-        // テスト画像を一度だけ読み込む
-        try {
-            TEST_IMAGE = loadTestImage();
-        } catch (error) {
-            console.error('テスト画像の読み込みに失敗しました:', error);
-            TEST_IMAGE = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDAwMFBQUFBAQGDAQEDg0PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8P/8AAEQgAEgASAwERAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+4KACgAoAKACgAoAKACgAoAKACgAoAKACgD/2Q=='; // フォールバック小さなダミー画像
-        }
+        TEST_IMAGE = loadTestImage();
     });
 
     beforeEach(() => {
@@ -36,99 +58,49 @@ describe('画像分析API v2のテスト', () => {
     });
 
     it('有効な画像データで正常なレスポンスを返すこと', async () => {
-        // 認識される食べ物のモックデータ
-        const mockFoods = [
-            { name: 'サラダ', confidence: 0.95 },
-            { name: 'パスタ', confidence: 0.85 }
-        ];
-
-        // 栄養計算の結果のモックデータ
-        const mockLegacyNutrition: NutritionData = {
-            calories: 320,
-            protein: 15,
-            iron: 2.5,
-            folic_acid: 100,
-            calcium: 50,
-            vitamin_d: 3,
-            confidence_score: 0.9
-        };
-
-        const mockStandardizedNutrition: StandardizedMealNutrition = {
-            totalCalories: 320,
-            totalNutrients: [
-                { name: 'エネルギー', value: 320, unit: 'kcal' },
-                { name: 'たんぱく質', value: 15, unit: 'g' },
-                { name: '鉄', value: 2.5, unit: 'mg' },
-                { name: '葉酸', value: 100, unit: 'mcg' }
-            ],
-            foodItems: [
-                {
-                    id: '1',
-                    name: 'サラダ',
-                    amount: 100,
-                    unit: 'g',
-                    nutrition: {
-                        calories: 120,
-                        nutrients: [{ name: 'エネルギー', value: 120, unit: 'kcal' }],
-                        servingSize: { value: 100, unit: 'g' }
-                    }
+        // AIサービスが食品リストを返すようにモック
+        const mockAIService = {
+            analyzeMealImage: jest.fn().mockResolvedValue({
+                parseResult: {
+                    foods: [
+                        { foodName: '解析された食品1', quantityText: '100g', confidence: 0.9 },
+                        { foodName: '解析された食品2', quantityText: '50g', confidence: 0.8 }
+                    ],
+                    confidence: 0.85 // Overall confidence from AI
                 },
-                {
-                    id: '2',
-                    name: 'パスタ',
-                    amount: 200,
-                    unit: 'g',
-                    nutrition: {
-                        calories: 200,
-                        nutrients: [{ name: 'エネルギー', value: 200, unit: 'kcal' }],
-                        servingSize: { value: 200, unit: 'g' }
-                    }
-                }
-            ],
-            pregnancySpecific: {
-                folatePercentage: 25,
-                ironPercentage: 15,
-                calciumPercentage: 5
-            }
-        };
-
-        // AIサービスとFoodRepositoryのモック
-        const mockVisionService = {
-            recognizeFoodsInImage: jest.fn().mockResolvedValue({
-                foods: mockFoods,
-                reliability: { confidence: 0.9 }
+                error: null
             })
         };
+        (AIServiceFactory.getService as jest.Mock).mockReturnValue(mockAIService);
 
-        const mockAiServiceFactory = {
-            createVisionService: jest.fn().mockReturnValue(mockVisionService)
-        };
-
+        // NutritionServiceのモックを設定
         const mockNutritionService = {
-            calculateNutritionFromFoods: jest.fn().mockResolvedValue({
-                nutrition: mockLegacyNutrition,
-                standardizedNutrition: mockStandardizedNutrition,
-                reliability: {
-                    confidence: 0.9,
-                    balanceScore: 75,
-                    completeness: 0.95
-                }
+            calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
+                nutrition: mockLegacyNutrition, // This is the legacy data
+                reliability: { confidence: 0.9, balanceScore: 75, completeness: 0.95 },
+                matchResults: [
+                    { foodName: '解析された食品1', matchedFood: { id: 'db-1', name: '食品DBの食品1' } },
+                    { foodName: '解析された食品2', matchedFood: { id: 'db-2', name: '食品DBの食品2' } }
+                ],
+                // The route handler uses convertToStandardizedNutrition(nutritionResult.nutrition)
+                // So, the mock only needs to provide the legacy `nutrition` object.
+                // standardizedNutrition: mockStandardNutrition // This might not be directly used by route
             })
         };
-
         const mockNutritionServiceFactory = {
             createService: jest.fn().mockReturnValue(mockNutritionService)
         };
-
-        (FoodRepositoryFactory.getRepository as jest.Mock).mockReturnValue({});
         (NutritionServiceFactory.getInstance as jest.Mock).mockReturnValue(mockNutritionServiceFactory);
+
+        // FoodRepositoryのモック (NutritionServiceFactory.createService needs it)
+        const mockFoodRepo = {};
+        (FoodRepositoryFactory.getRepository as jest.Mock).mockReturnValue(mockFoodRepo);
 
         // リクエストの作成
         const mockRequest = new NextRequest('http://localhost/api/v2/image/analyze', {
             method: 'POST',
             body: JSON.stringify({
-                imageData: TEST_IMAGE,
-                userId: 'test-user-123'
+                image: TEST_IMAGE, // Use 'image' key as defined in route schema
             }),
             headers: { 'Content-Type': 'application/json' }
         });
@@ -141,115 +113,78 @@ describe('画像分析API v2のテスト', () => {
         expect(response.status).toBe(200);
         expect(responseData.success).toBe(true);
         expect(responseData.data).toBeDefined();
-        expect(responseData.data.foods).toBeDefined();
+        expect(responseData.data.foods).toBeDefined(); // Check parsed foods from AI
         expect(responseData.data.foods).toHaveLength(2);
-        expect(responseData.data.foods[0].name).toBe('サラダ');
+        expect(responseData.data.foods[0].foodName).toBe('解析された食品1');
 
         // 栄養データの検証
         expect(responseData.data.nutritionResult).toBeDefined();
-        expect(responseData.data.nutritionResult.nutrition).toBeDefined();
+        expect(responseData.data.nutritionResult.nutrition).toBeDefined(); // Standardized nutrition
         expect(responseData.data.nutritionResult.nutrition.totalCalories).toBe(320);
-
-        // レガシーフォーマットの栄養データも含まれていることを確認
-        expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined();
+        expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined(); // Legacy nutrition
         expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
+        expect(responseData.data.nutritionResult.reliability).toBeDefined();
     });
 
     it('後方互換性のためのlegacyNutritionフィールドが含まれていること', async () => {
-        // モックデータ
-        const mockFoods = [{ name: 'りんご', confidence: 0.99 }];
-        const mockLegacyNutrition: NutritionData = {
-            calories: 80,
-            protein: 0.4,
-            iron: 0.2,
-            folic_acid: 5,
-            calcium: 10,
-            vitamin_d: 0,
-            confidence_score: 0.95
-        };
-
-        const mockStandardizedNutrition: StandardizedMealNutrition = {
-            totalCalories: 80,
-            totalNutrients: [
-                { name: 'エネルギー', value: 80, unit: 'kcal' }
-            ],
-            foodItems: [
-                {
-                    id: '3',
-                    name: 'りんご',
-                    amount: 1,
-                    unit: '個',
-                    nutrition: {
-                        calories: 80,
-                        nutrients: [{ name: 'エネルギー', value: 80, unit: 'kcal' }],
-                        servingSize: { value: 1, unit: '個' }
-                    }
-                }
-            ],
-            pregnancySpecific: {
-                folatePercentage: 1,
-                ironPercentage: 1,
-                calciumPercentage: 1
-            }
-        };
-
-        // AIサービスとFoodRepositoryのモック
-        const mockVisionService = {
-            recognizeFoodsInImage: jest.fn().mockResolvedValue({
-                foods: mockFoods,
-                reliability: { confidence: 0.99 }
+        // AIサービスが食品リストを返すようにモック
+        const mockAIService = {
+            analyzeMealImage: jest.fn().mockResolvedValue({
+                parseResult: {
+                    foods: [{ foodName: '解析された食品1', quantityText: '100g' }],
+                    confidence: 0.85
+                },
+                error: null
             })
         };
+        (AIServiceFactory.getService as jest.Mock).mockReturnValue(mockAIService);
 
-        const mockAiServiceFactory = {
-            createVisionService: jest.fn().mockReturnValue(mockVisionService)
-        };
-
+        // NutritionServiceのモックを設定
         const mockNutritionService = {
-            calculateNutritionFromFoods: jest.fn().mockResolvedValue({
-                nutrition: mockLegacyNutrition,
-                standardizedNutrition: mockStandardizedNutrition,
-                reliability: {
-                    confidence: 0.95,
-                    balanceScore: 60,
-                    completeness: 0.9
-                }
+            calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
+                nutrition: mockLegacyNutrition, // Provide the legacy data
+                reliability: { confidence: 0.85, balanceScore: 70, completeness: 0.9 },
+                matchResults: [{ foodName: '解析された食品1', matchedFood: { id: 'db-1', name: '食品DBの食品1' } }],
+                // standardizedNutrition: mockStandardNutrition // Not directly used by route
             })
         };
-
         const mockNutritionServiceFactory = {
             createService: jest.fn().mockReturnValue(mockNutritionService)
         };
-
-        (FoodRepositoryFactory.getRepository as jest.Mock).mockReturnValue({});
         (NutritionServiceFactory.getInstance as jest.Mock).mockReturnValue(mockNutritionServiceFactory);
 
-        // リクエストの作成
+        // FoodRepositoryのモック
+        const mockFoodRepo = {};
+        (FoodRepositoryFactory.getRepository as jest.Mock).mockReturnValue(mockFoodRepo);
+
         const mockRequest = new NextRequest('http://localhost/api/v2/image/analyze', {
             method: 'POST',
             body: JSON.stringify({
-                imageData: TEST_IMAGE
+                image: TEST_IMAGE // Use 'image' key
             }),
             headers: { 'Content-Type': 'application/json' }
         });
 
-        // APIの実行
         const response = await POST(mockRequest, { params: {} } as any);
         const responseData: StandardApiResponse<any> = await response.json();
 
         // レスポンスの検証
         expect(response.status).toBe(200);
+        expect(responseData.success).toBe(true);
+        expect(responseData.data).toBeDefined();
+        expect(responseData.data.nutritionResult).toBeDefined();
         expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined();
-        expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(80);
-        expect(responseData.data.nutritionResult.legacyNutrition.protein).toBe(0.4);
+        expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
+        expect(responseData.data.nutritionResult.legacyNutrition.protein).toBe(15);
     });
 
     it('無効な画像データの場合、適切なエラーレスポンスを返すこと', async () => {
-        // 無効な画像データでリクエスト
+        // リクエストボディのキーをルートのスキーマに合わせる ('image')
+        const invalidImageData = 'not-a-base64-string';
         const mockRequest = new NextRequest('http://localhost/api/v2/image/analyze', {
             method: 'POST',
             body: JSON.stringify({
-                imageData: 'invalid-base64-data'
+                image: invalidImageData // Use 'image' key
             }),
             headers: { 'Content-Type': 'application/json' }
         });
@@ -263,34 +198,18 @@ describe('画像分析API v2のテスト', () => {
         expect(responseData.success).toBe(false);
         expect(responseData.error).toBeDefined();
         if (responseData.error) {
+            // The route throws INVALID_IMAGE error *before* Zod validation if it's not base64
             expect(responseData.error.code).toBe(ErrorCode.File.INVALID_IMAGE);
-            expect(responseData.error.message).toBeDefined();
+            expect(responseData.error.message).toBe('画像が無効です。別の画像をお試しください。');
         }
     });
 
-    it('AIサービスでエラーが発生した場合、適切なエラーレスポンスを返すこと', async () => {
-        // エラーをスローするAIサービスモック
-        const mockVisionService = {
-            recognizeFoodsInImage: jest.fn().mockRejectedValue({
-                code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
-                message: '画像認識時にエラーが発生しました'
-            })
-        };
-
-        const mockAiServiceFactory = {
-            createVisionService: jest.fn().mockReturnValue(mockVisionService)
-        };
-
-        (FoodRepositoryFactory.getRepository as jest.Mock).mockReturnValue({});
-        (NutritionServiceFactory.getInstance as jest.Mock).mockReturnValue({
-            createService: jest.fn().mockReturnValue({})
-        });
-
-        // リクエストの作成
+    it('リクエストボディの形式が不正な場合 (imageがない)、適切なエラーレスポンスを返すこと', async () => {
+        // image フィールドを含まないリクエスト
         const mockRequest = new NextRequest('http://localhost/api/v2/image/analyze', {
             method: 'POST',
             body: JSON.stringify({
-                imageData: TEST_IMAGE
+                mealType: 'lunch' // Missing 'image' field
             }),
             headers: { 'Content-Type': 'application/json' }
         });
@@ -299,12 +218,63 @@ describe('画像分析API v2のテスト', () => {
         const response = await POST(mockRequest, { params: {} } as any);
         const responseData: StandardApiResponse<null> = await response.json();
 
-        // エラーレスポンスの検証
-        expect(response.status).toBe(500);
+        // エラーレスポンスの検証 (Zod Validation Error)
+        expect(response.status).toBe(400); // Expect Bad Request for validation error
         expect(responseData.success).toBe(false);
         expect(responseData.error).toBeDefined();
         if (responseData.error) {
-            expect(responseData.error.message).toBeDefined();
+            expect(responseData.error.code).toBe(ErrorCode.Base.DATA_VALIDATION_ERROR);
+            expect(responseData.error.message).toContain('入力データが無効です');
+            // Check if the reason includes mention of the 'image' field
+            if (responseData.error.details && typeof responseData.error.details === 'object' && 'reason' in responseData.error.details && typeof responseData.error.details.reason === 'string') {
+                expect(responseData.error.details.reason).toMatch(/image/i); // Check if 'image' is mentioned
+            }
         }
     });
-}); 
+
+
+    it('AIサービスでエラーが発生した場合、適切なエラーレスポンスを返すこと', async () => {
+        // AIサービスがエラーを返すようにモック
+        const mockAIService = {
+            analyzeMealImage: jest.fn().mockResolvedValue({
+                parseResult: null,
+                error: 'AI analysis failed deliberately for test' // Simulate AI error
+            })
+        };
+        (AIServiceFactory.getService as jest.Mock).mockReturnValue(mockAIService);
+
+        // NutritionServiceのモックは呼ばれないはずだが念のため定義
+        const mockNutritionService = {
+            calculateNutritionFromNameQuantities: jest.fn() // Should not be called
+        };
+        const mockNutritionServiceFactory = {
+            createService: jest.fn().mockReturnValue(mockNutritionService)
+        };
+        (NutritionServiceFactory.getInstance as jest.Mock).mockReturnValue(mockNutritionServiceFactory);
+
+        // FoodRepositoryのモック
+        const mockFoodRepo = {};
+        (FoodRepositoryFactory.getRepository as jest.Mock).mockReturnValue(mockFoodRepo);
+
+
+        const mockRequest = new NextRequest('http://localhost/api/v2/image/analyze', {
+            method: 'POST',
+            body: JSON.stringify({ image: TEST_IMAGE }), // Use 'image' key
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        // APIの実行
+        const response = await POST(mockRequest, { params: {} } as any);
+        const responseData: StandardApiResponse<null> = await response.json();
+
+        // エラーレスポンスの検証
+        expect(response.status).toBe(500); // Expect Internal Server Error
+        expect(responseData.success).toBe(false);
+        expect(responseData.error).toBeDefined();
+        if (responseData.error) {
+            // The route throws IMAGE_PROCESSING_ERROR when aiService returns an error
+            expect(responseData.error.code).toBe(ErrorCode.AI.IMAGE_PROCESSING_ERROR);
+            expect(responseData.error.message).toBe('画像処理中にエラーが発生しました。');
+        }
+    });
+});

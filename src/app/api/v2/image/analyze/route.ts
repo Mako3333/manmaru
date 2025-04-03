@@ -17,17 +17,17 @@ import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-u
  * 食事画像を解析し、新しい栄養計算システムで栄養素を計算します
  */
 const requestSchema = z.object({
-    imageData: z.string().min(1, "画像データは必須です"),
+    image: z.string().min(1, "画像データは必須です"),
 });
 
-export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
+export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => {
     // リクエストデータを取得
     const requestData = await req.json();
 
     try {
         // リクエストデータを検証
         const validatedData = requestSchema.parse(requestData);
-        const imageData = validatedData.imageData;
+        const imageData = validatedData.image;
         const startTime = Date.now();
 
         if (!imageData || !imageData.startsWith('data:image/')) {
@@ -95,23 +95,16 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
         }
 
-        // 結果を返却
+        // 結果を返却 (dataプロパティの中身だけを返す)
         return {
-            success: true,
-            data: {
-                foods: foods,
-                nutritionResult: {
-                    nutrition: standardizedNutrition,
-                    reliability: nutritionResult.reliability,
-                    matchResults: nutritionResult.matchResults,
-                    legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
-                },
-                processingTimeMs: analysisResult.processingTimeMs
+            foods: foods,
+            nutritionResult: {
+                nutrition: standardizedNutrition,
+                reliability: nutritionResult.reliability,
+                matchResults: nutritionResult.matchResults,
+                legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
             },
-            meta: {
-                processingTimeMs: Date.now() - startTime,
-                ...(warningMessage ? { warning: warningMessage } : {})
-            }
+            processingTimeMs: analysisResult.processingTimeMs // AI処理時間も返す
         };
 
     } catch (error) {

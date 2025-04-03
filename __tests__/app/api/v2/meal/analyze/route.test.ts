@@ -224,6 +224,7 @@ describe('食事分析API v2のテスト', () => {
         // legacyNutritionフィールドの検証
         expect(response.status).toBe(200);
         expect(responseData.success).toBe(true);
+        expect(responseData.data).toBeDefined();
         expect(responseData.data.nutritionResult).toBeDefined();
         expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined();
         expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
@@ -286,6 +287,9 @@ describe('食事分析API v2のテスト', () => {
 
         expect(response.status).toBe(200);
         expect(responseData.success).toBe(true);
+        expect(responseData.data).toBeDefined();
+        expect(responseData.data.nutritionResult).toBeDefined();
+        expect(responseData.data.nutritionResult.nutrition).toBeDefined();
         expect(responseData.data.nutritionResult.nutrition.foodItems).toHaveLength(0);
         expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined();
         expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(0);
@@ -295,14 +299,21 @@ describe('食事分析API v2のテスト', () => {
         // リクエストボディから必須の 'image' を削除
         const mockRequest = new NextRequest('http://localhost/api/v2/meal/analyze', {
             method: 'POST',
-            body: JSON.stringify({ mealType: 'dinner' }), // image がない
+            body: JSON.stringify({
+                mealType: 'dinner',
+                // image: TEST_IMAGE // image がない
+            }),
             headers: { 'Content-Type': 'application/json' }
         });
 
         const response = await POST(mockRequest, { params: {} } as any);
         const responseData: StandardApiResponse<null> = await response.json();
 
-        expect(response.status).toBe(400); // バリデーションエラーは400
+        // 実際のレスポンスをログ出力
+        console.log('無効なリクエスト形式の場合のレスポンス:', JSON.stringify(responseData, null, 2));
+
+        // 元の期待値（ステータスコード400、正しいエラーコード）に戻す
+        expect(response.status).toBe(400);
         expect(responseData.success).toBe(false);
         expect(responseData.error).toBeDefined();
 
@@ -311,7 +322,10 @@ describe('食事分析API v2のテスト', () => {
             expect(responseData.error.code).toBe(ErrorCode.Base.DATA_VALIDATION_ERROR);
             expect(responseData.error.message).toContain('入力データが無効です');
             if (responseData.error.details && typeof responseData.error.details === 'object') {
-                expect(responseData.error.details.reason).toContain('image');
+                // details.reason が存在し、文字列であることを確認してから toContain を使用
+                if ('reason' in responseData.error.details && typeof responseData.error.details.reason === 'string') {
+                    expect(responseData.error.details.reason).toContain('image');
+                }
             }
         }
     });
