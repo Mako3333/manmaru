@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import type { NutritionAdvice } from '@/types/nutrition';
@@ -31,68 +31,63 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
     // 日付が提供されていない場合は現在の日付を使用
     const currentDate = date || format(new Date(), 'yyyy-MM-dd');
 
-    const fetchAdvice = async () => {
+    const fetchAdvice = useCallback(async () => {
+        console.log('[AdviceCard] fetchAdvice called');
         setLoading(true);
-        setError('');
-        setAdvice(null);
-
+        setError(null);
         try {
-            // セッション確認
-            const { data: { session } } = await supabase.auth.getSession();
-            console.log('AdviceCard: セッション確認', !!session); // デバッグ用ログ
+            // APIエンドポイントを構築 (日付をクエリパラメータに追加)
+            const apiUrl = `/api/nutrition-advice?date=${currentDate}&detail=true`; // detail=true を追加して詳細を取得
+            console.log(`[AdviceCard] Fetching advice from: ${apiUrl}`);
 
-            if (!session) {
-                throw new Error('ログインが必要です');
-            }
+            const res = await fetch(apiUrl);
+            console.log(`[AdviceCard] API Response status: ${res.status}`);
 
-            // APIからアドバイスを取得
-            console.log('AdviceCard: アドバイス取得開始', { date: currentDate, forceUpdate });
-
-            // APIリクエストURLの構築
-            let apiUrl = `/api/nutrition-advice?date=${currentDate}`;
-            if (forceUpdate) {
-                apiUrl += '&force=true';
-            }
-
-            const response = await fetch(apiUrl);
-
-            if (!response.ok) {
-                const errorData = await response.json();
-
-                // リダイレクト情報がある場合
-                if (errorData.redirect) {
-                    throw new Error(`${errorData.error || 'エラーが発生しました'}: ${errorData.message || ''}`);
+            // レスポンスステータスをチェック
+            if (!res.ok) {
+                let errorData: any = { message: `APIエラーが発生しました (ステータス: ${res.status})` };
+                try {
+                    // エラーレスポンスのJSONパースを試みる
+                    const body = await res.json();
+                    console.log('[AdviceCard] API Error response body:', body);
+                    // API が返すエラー構造に合わせてメッセージを取得
+                    errorData = body.error || { message: body.message || JSON.stringify(body) };
+                } catch (jsonError) {
+                    console.error('[AdviceCard] Failed to parse error response JSON:', jsonError);
+                    // JSONパース失敗時はステータスコードを含むメッセージを使用
                 }
-
-                throw new Error(errorData.error || 'アドバイスの取得に失敗しました');
+                // 修正: errorData から message を抽出して Error を throw
+                throw new Error(errorData.message || 'アドバイスの取得に失敗しました');
             }
 
-            const data = await response.json();
-            console.log('AdviceCard: アドバイスデータ受信', data); // レスポンスデータを詳細にロギング
+            const data = await res.json();
+            console.log('[AdviceCard] API Success response data:', data);
 
-            if (!data.success) {
-                throw new Error(data.error || 'アドバイスの取得に失敗しました');
+            if (data.success && data.advice) {
+                // 詳細アドバイスと推奨食品を状態に設定
+                setAdvice(data);
+            } else {
+                // データが取得できなかった場合（アドバイスがまだ生成されていないなど）
+                setError('今日のアドバイスはまだありません。食事を記録すると生成されます。');
+                setAdvice(null); // アドバイスデータをクリア
             }
 
-            setAdvice(data);
-
-            console.log('AdviceCard: アドバイス取得成功', {
-                type: data.advice_type,
-                date: data.advice_date,
-                summaryLength: data.advice_summary?.length,
-                textLength: data.advice_detail?.length
-            });
-        } catch (err) {
-            console.error('栄養アドバイス取得エラー:', err);
-            setError(err instanceof Error ? err.message : 'アドバイスの取得に失敗しました');
+        } catch (err: unknown) { // 修正: unknown 型を使用
+            // 修正: エラーメッセージを適切に出力
+            const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
+            console.error('栄養アドバイス取得エラー:', errorMessage);
+            console.error('エラー詳細(err):', err); // ← デバッグ用に元のエラーオブジェクトも出力
+            setError(errorMessage);
+            setAdvice(null); // エラー時はアドバイスデータをクリア
         } finally {
             setLoading(false);
+            console.log('[AdviceCard] fetchAdvice finished, loading set to false');
         }
-    };
+    }, [currentDate]); // 依存配列に currentDate を追加
 
     useEffect(() => {
         fetchAdvice();
-    }, [currentDate, forceUpdate]);
+    }, [currentDate, forceUpdate, fetchAdvice]);
 
     return (
         <div className="h-full relative mt-10">

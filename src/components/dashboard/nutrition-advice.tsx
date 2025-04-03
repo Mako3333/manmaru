@@ -9,7 +9,7 @@ import { AdviceState, AdviceType } from "@/types/nutrition";
 import ReactMarkdown from "react-markdown";
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { getJapanDate } from '@/lib/utils/date-utils';
+import { getJapanDate } from '@/lib/date-utils';
 
 interface DetailedNutritionAdviceProps {
     selectedDate?: string;

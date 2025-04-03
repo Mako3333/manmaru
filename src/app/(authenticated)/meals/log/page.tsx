@@ -16,7 +16,7 @@ import { Loader2, Camera, Type, Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { AppError } from '@/lib/error'
+import { AppError, ErrorCode } from '@/lib/error'
 import {
     normalizeNutritionData,
     validateMealData,
@@ -37,47 +37,28 @@ interface FoodItem {
     confidence: number;
 }
 
-// 栄養情報の型定義 - レガシーAPIとの互換性のため一時的に保持
-interface LegacyNutritionData {
-    calories: number;
-    protein: number;
-    iron: number;
-    folic_acid: number;
-    calcium: number;
-    vitamin_d?: number;
-    confidence_score: number;
-}
-
-// 解析結果の食品アイテム型
-interface RecognitionFoodItem {
-    name: string;
-    quantity: string;
-    confidence: number;
-}
-
 // 認識データの型定義 (RecognitionEditorコンポーネントと互換性のある形式)
 interface RecognitionData {
-    foods: RecognitionFoodItem[];
-    nutrition: LegacyNutritionData;
+    foods: {
+        name: string;
+        quantity: string;
+        confidence: number;
+    }[];
+    standardizedNutrition: StandardizedMealNutrition;
 }
 
 // APIからのレスポンスデータのラッパー型
 interface ApiRecognitionResponse {
+    success: boolean;
     data: {
-        foods: RecognitionFoodItem[];
+        foods: {
+            name: string;
+            quantity: string;
+            confidence: number;
+        }[];
+        nutrition: StandardizedMealNutrition;
     };
-    nutrition: LegacyNutritionData;
 }
-
-// 初期の栄養情報
-const initialNutrition: LegacyNutritionData = {
-    calories: 0,
-    protein: 0,
-    iron: 0,
-    folic_acid: 0,
-    calcium: 0,
-    confidence_score: 0
-};
 
 export default function MealLogPage() {
     // ユーザープロフィール関連の状態
@@ -156,13 +137,12 @@ export default function MealLogPage() {
 
         try {
             if (!base64Image || base64Image.length === 0) {
-                throw new DataProcessingError(
-                    '画像データが不足しています',
-                    '食事画像',
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    { imageLength: base64Image?.length || 0 },
-                    ['写真を再度撮影してください']
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: '画像データが不足しています',
+                    userMessage: '食事画像を再度撮影してください',
+                    details: { imageLength: base64Image?.length || 0 }
+                });
             }
 
             console.log('mealType:', mealType);
@@ -174,17 +154,17 @@ export default function MealLogPage() {
 
             // データの存在を確認
             if (!result.success || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
-                throw new AiAnalysisError(
-                    'AI応答データの形式が不正です',
-                    '解析結果が正しくありません',
-                    ErrorCode.API_RESPONSE_INVALID,
-                    { response: result },
-                    ['別の画像を試してください', '手動での食品入力も可能です']
-                );
+                throw new AppError({
+                    code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
+                    message: 'AI応答データの形式が不正です',
+                    userMessage: '解析結果が正しくありません',
+                    details: { response: result },
+                    suggestions: ['別の画像を試してください', '手動での食品入力も可能です']
+                });
             }
 
             // 英語の食品名を検出して警告
-            const hasEnglishFoodNames = result.data.foods.some((food: RecognitionFoodItem) =>
+            const hasEnglishFoodNames = result.data.foods.some((food: any) =>
                 /^[a-zA-Z]/.test(food.name) || (food.quantity && typeof food.quantity === 'string' && /^[0-9]+ [a-z]+/.test(food.quantity))
             );
 
@@ -199,7 +179,7 @@ export default function MealLogPage() {
             // APIレスポンスを認識データの形式に変換
             const formattedData: RecognitionData = {
                 foods: result.data.foods,
-                nutrition: result.data.nutrition
+                standardizedNutrition: result.data.nutrition
             };
 
             setRecognitionData(formattedData);
@@ -238,29 +218,14 @@ export default function MealLogPage() {
             // セッションチェック
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                throw new AuthError(
-                    'ログインセッションが無効です',
-                    ErrorCode.AUTH_EXPIRED,
-                    'ログインセッションの有効期限が切れました',
-                    { redirectTo: '/auth/login' },
-                    ['再度ログインしてください'],
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.AUTH_ERROR,
+                    message: 'ログインセッションが無効です',
+                    userMessage: 'ログインセッションの有効期限が切れました',
+                    details: { redirectTo: '/auth/login' },
+                    suggestions: ['再度ログインしてください']
+                });
             }
-
-            // LegacyNutritionDataをNutritionDataに変換
-            const legacyNutrition = recognitionData.nutrition;
-            const nutrition = {
-                calories: legacyNutrition.calories,
-                protein: legacyNutrition.protein,
-                iron: legacyNutrition.iron,
-                folic_acid: legacyNutrition.folic_acid,
-                calcium: legacyNutrition.calcium,
-                vitamin_d: legacyNutrition.vitamin_d || 0,
-                confidence_score: legacyNutrition.confidence_score
-            };
-
-            // StandardizedMealNutrition型に変換
-            const standardizedNutrition = convertToStandardizedNutrition(nutrition, recognitionData.foods);
 
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
@@ -272,19 +237,19 @@ export default function MealLogPage() {
                     amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
                     unit: food.quantity?.split(' ')[1] || '個',
                 })),
-                nutrition_data: standardizedNutrition,
+                nutrition_data: recognitionData.standardizedNutrition,
                 ...(base64Image ? { image_url: base64Image } : {})
             };
 
             // データの検証
             const validation = validateMealData(standardizedMealData);
             if (!validation.isValid) {
-                throw new DataProcessingError(
-                    `食事データの検証エラー: ${validation.errors.join(', ')}`,
-                    '食事データ',
-                    undefined,
-                    { details: validation.errors }
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: `食事データの検証エラー: ${validation.errors.join(', ')}`,
+                    userMessage: '食事データの検証に失敗しました',
+                    details: { errors: validation.errors }
+                });
             }
 
             // APIリクエスト用にデータを変換（レガシーシステムとの互換性のため）
@@ -393,7 +358,7 @@ export default function MealLogPage() {
 
             // 型安全なマッピング
             const enhancedFoodsWithIds: FoodItem[] = [];
-            result.data.foods.forEach((item: RecognitionFoodItem, index: number) => {
+            result.data.foods.forEach((item: any, index: number) => {
                 const originalItem = foods[index < foods.length ? index : foods.length - 1];
                 if (originalItem) {
                     enhancedFoodsWithIds.push({
@@ -447,10 +412,12 @@ export default function MealLogPage() {
             // 認証状態を確認
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                toast.error("認証エラー", {
-                    description: "ログインセッションが無効です。再ログインしてください。"
+                throw new AppError({
+                    code: ErrorCode.Base.AUTH_ERROR,
+                    message: 'ログインセッションが無効です',
+                    userMessage: 'ログインセッションの有効期限が切れました',
+                    details: { redirectTo: '/auth/login' }
                 });
-                return;
             }
 
             // 保存用のデータ準備（型安全に変換）
@@ -464,19 +431,8 @@ export default function MealLogPage() {
                 throw new Error('栄養計算に失敗しました');
             }
 
-            // 型安全に栄養データを取得
-            const legacyNutrition: LegacyNutritionData = nutritionResult.data.nutrition || initialNutrition;
-
-            // LegacyNutritionData を NutritionData に変換
-            const nutrition = {
-                calories: legacyNutrition.calories,
-                protein: legacyNutrition.protein,
-                iron: legacyNutrition.iron,
-                folic_acid: legacyNutrition.folic_acid,
-                calcium: legacyNutrition.calcium,
-                vitamin_d: legacyNutrition.vitamin_d || 0, // デフォルト値を設定
-                confidence_score: legacyNutrition.confidence_score
-            };
+            // 型安全に栄養データを取得 - StandardizedMealNutrition型を使用
+            const standardizedNutrition: StandardizedMealNutrition = nutritionResult.data.nutrition;
 
             // 食品アイテムを作成
             const mealItems = enhancedFoods.map((food) => ({
@@ -484,9 +440,6 @@ export default function MealLogPage() {
                 amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
                 unit: food.quantity?.split(' ')[1] || '個',
             }));
-
-            // StandardizedMealNutrition型に変換
-            const standardizedNutrition = convertToStandardizedNutrition(nutrition, enhancedFoods);
 
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
@@ -501,12 +454,12 @@ export default function MealLogPage() {
             // データの検証
             const validation = validateMealData(standardizedMealData);
             if (!validation.isValid) {
-                throw new DataProcessingError(
-                    `食事データの検証エラー: ${validation.errors.join(', ')}`,
-                    '食事データ',
-                    undefined,
-                    { details: validation.errors }
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: `食事データの検証エラー: ${validation.errors.join(', ')}`,
+                    userMessage: '食事データの検証に失敗しました',
+                    details: { errors: validation.errors }
+                });
             }
 
             // APIリクエスト用にデータを変換
@@ -555,7 +508,7 @@ export default function MealLogPage() {
 
         // 写真モードからテキストモードに切り替えたとき、認識結果があれば食品リストに変換
         if (mode === 'text' && recognitionData && recognitionData.foods.length > 0) {
-            const foodsWithIds: FoodItem[] = recognitionData.foods.map((food: RecognitionFoodItem) => ({
+            const foodsWithIds: FoodItem[] = recognitionData.foods.map((food) => ({
                 id: crypto.randomUUID(),
                 name: food.name,
                 quantity: food.quantity,
@@ -651,7 +604,7 @@ export default function MealLogPage() {
                             <div>
                                 <p className="mb-2 text-sm text-green-600">解析結果が表示されています</p>
                                 <RecognitionEditor
-                                    initialData={recognitionData}
+                                    initialData={recognitionData.standardizedNutrition}
                                     onSave={handleSaveRecognition}
                                     mealType={mealType}
                                 />
@@ -795,7 +748,11 @@ const checkApiResponse = async (response: Response, errorMessage: string) => {
         } catch {
             errorData = { message: await response.text() || errorMessage };
         }
-        throw new Error(errorData.message || errorMessage);
+        throw new AppError({
+            code: ErrorCode.Base.API_ERROR,
+            message: errorData.message || errorMessage,
+            userMessage: 'API処理中にエラーが発生しました'
+        });
     }
     return await response.json();
 };
@@ -821,82 +778,8 @@ const handleError = (error: unknown, options: {
     }
 
     // エラー発生時の追加アクション
-    if (error instanceof Error && error.message.includes('認証')) {
+    if (error instanceof AppError && error.code === ErrorCode.Base.AUTH_ERROR) {
         // 認証エラーの場合はログイン画面にリダイレクト
         // router.push('/auth/login') などの処理
     }
-};
-
-// DataProcessingErrorクラス（エラー型のサブクラス）
-class DataProcessingError extends Error {
-    userMessage: string;
-    details?: any;
-    suggestions?: string[];
-
-    constructor(
-        message: string,
-        dataType: string,
-        code?: string,
-        details?: any,
-        suggestions?: string[]
-    ) {
-        super(message);
-        this.name = 'DataProcessingError';
-        this.userMessage = `${dataType}の処理中にエラーが発生しました`;
-        this.details = details;
-        this.suggestions = suggestions || ['もう一度お試しください'];
-    }
-}
-
-// AiAnalysisErrorクラス（エラー型のサブクラス）
-class AiAnalysisError extends Error {
-    userMessage: string;
-    code: string;
-    details?: any;
-    suggestions?: string[];
-
-    constructor(
-        message: string,
-        userMessage: string,
-        code: string,
-        details?: any,
-        suggestions?: string[]
-    ) {
-        super(message);
-        this.name = 'AiAnalysisError';
-        this.userMessage = userMessage;
-        this.code = code;
-        this.details = details;
-        this.suggestions = suggestions || ['別の画像を試してください'];
-    }
-}
-
-// AuthErrorクラス（エラー型のサブクラス）
-class AuthError extends Error {
-    userMessage: string;
-    code: string;
-    details?: any;
-    suggestions?: string[];
-
-    constructor(
-        message: string,
-        code: string,
-        userMessage?: string,
-        details?: any,
-        suggestions?: string[]
-    ) {
-        super(message);
-        this.name = 'AuthError';
-        this.userMessage = userMessage || 'ログインが必要です';
-        this.code = code;
-        this.details = details;
-        this.suggestions = suggestions || ['再度ログインしてください'];
-    }
-}
-
-// エラーコード定数
-const ErrorCode = {
-    AUTH_EXPIRED: 'auth_expired',
-    DATA_VALIDATION_ERROR: 'data_validation_error',
-    API_RESPONSE_INVALID: 'api_response_invalid'
 }; 

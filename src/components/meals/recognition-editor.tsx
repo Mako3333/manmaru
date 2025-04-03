@@ -15,8 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Trash2, Plus, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { StandardizedMealNutrition, Nutrient } from "@/types/nutrition";
+import { convertToLegacyNutrition } from "@/lib/nutrition/nutrition-utils";
 
-// 食品アイテムの型定義
+// 食品アイテムの型定義（内部状態用）
 interface FoodItem {
     id: string; // 一意のID
     name: string; // 食品名
@@ -24,34 +26,10 @@ interface FoodItem {
     confidence: number; // 信頼度
 }
 
-// APIに送信する食品アイテムの型定義（IDなし）
-interface ApiFood {
-    name: string;
-    quantity: string;
-    confidence: number;
-}
-
-// 栄養情報の型定義
-interface Nutrition {
-    calories: number;
-    protein: number;
-    iron: number;
-    folic_acid: number;
-    calcium: number;
-    vitamin_d?: number; // ビタミンDを追加（オプショナル）
-    confidence_score: number;
-}
-
-// 解析結果データの型定義
-interface RecognitionData {
-    foods: ApiFood[];
-    nutrition: Nutrition;
-}
-
 // コンポーネントのProps
 interface RecognitionEditorProps {
-    initialData: RecognitionData;
-    onSave: (data: RecognitionData) => void;
+    initialData: StandardizedMealNutrition;
+    onSave: (data: StandardizedMealNutrition) => void;
     className?: string;
     mealType: string;
     mealDate?: string | undefined;
@@ -69,7 +47,7 @@ export function RecognitionEditor({
     // 食品リストの状態
     const [foods, setFoods] = useState<FoodItem[]>([]);
     // 栄養情報の状態
-    const [nutrition, setNutrition] = useState<Nutrition>(initialData.nutrition);
+    const [nutrition, setNutrition] = useState<StandardizedMealNutrition>(initialData);
     // バリデーションエラーの状態
     const [errors, setErrors] = useState<Record<string, string>>({});
     // 保存中の状態
@@ -81,13 +59,15 @@ export function RecognitionEditor({
 
     // initialDataが変更されたら状態を更新
     useEffect(() => {
-        // IDを追加して食品リストを初期化
-        const foodsWithIds = initialData.foods.map(food => ({
-            ...food,
-            id: crypto.randomUUID()
+        // foodItemsから内部用のFoodItem形式に変換
+        const foodItemsWithIds = initialData.foodItems.map(foodItem => ({
+            id: foodItem.id || crypto.randomUUID(),
+            name: foodItem.name,
+            quantity: `${foodItem.amount} ${foodItem.unit}`,
+            confidence: 0.9 // デフォルト値（標準形式に信頼度情報がない場合）
         }));
-        setFoods(foodsWithIds);
-        setNutrition(initialData.nutrition);
+        setFoods(foodItemsWithIds);
+        setNutrition(initialData);
         setErrors({});
     }, [initialData]);
 
@@ -124,7 +104,7 @@ export function RecognitionEditor({
             id: crypto.randomUUID(),
             name: '',
             quantity: '',
-            confidence: 0
+            confidence: 0.9
         };
         setFoods(prev => [...prev, newFood]);
     };
@@ -138,6 +118,14 @@ export function RecognitionEditor({
             delete newErrors[id];
             return newErrors;
         });
+    };
+
+    // 特定の栄養素の値を取得する関数
+    const getNutrientValue = (name: string): number => {
+        const nutrient = nutrition.totalNutrients.find(n =>
+            n.name === name || n.name.toLowerCase() === name.toLowerCase()
+        );
+        return nutrient?.value || 0;
     };
 
     // 保存処理
@@ -161,11 +149,33 @@ export function RecognitionEditor({
                 return; // エラーがある場合は保存しない
             }
 
-            // 保存用のデータを作成（IDは除外）
-            const dataToSave: RecognitionData = {
-                foods: foods.map(({ id, ...rest }) => rest as ApiFood),
-                nutrition
+            // 更新された食品アイテムを標準型に変換
+            const updatedFoodItems = foods.map(food => {
+                const [amountStr, unit] = food.quantity.split(' ');
+                return {
+                    id: food.id,
+                    name: food.name,
+                    amount: parseFloat(amountStr || '1'),
+                    unit: unit || '個',
+                    nutrition: {
+                        calories: nutrition.totalCalories / foods.length, // 単純な割り当て
+                        nutrients: nutrition.totalNutrients.map(n => ({ ...n, value: n.value / foods.length })),
+                        servingSize: {
+                            value: 1,
+                            unit: '人前'
+                        }
+                    }
+                };
+            });
+
+            // 更新された StandardizedMealNutrition を作成
+            const updatedNutrition: StandardizedMealNutrition = {
+                ...nutrition,
+                foodItems: updatedFoodItems
             };
+
+            // レガシーシステムとの互換性のために変換
+            const legacyNutrition = convertToLegacyNutrition(updatedNutrition);
 
             // saveMealWithNutrients APIを使用して、meals と meal_nutrients の両方に保存
             const response = await fetch('/api/meals', {
@@ -179,30 +189,23 @@ export function RecognitionEditor({
                     photo_url: photoUrl,
                     // データベース構造に合わせてフォーマットする
                     food_description: {
-                        items: dataToSave.foods.map(food => ({
+                        items: foods.map(food => ({
                             name: food.name,
                             quantity: food.quantity,
                             confidence: food.confidence
                         }))
                     },
                     // データベース構造に合わせて栄養データをフォーマット
-                    nutrition_data: {
-                        ...dataToSave.nutrition,
-                        // NutritionData型に必要な追加フィールド
-                        overall_score: 0,
-                        deficient_nutrients: [],
-                        sufficient_nutrients: [],
-                        daily_records: []
-                    },
-                    // meal_nutrientsテーブル用のデータも含める
+                    nutrition_data: updatedNutrition,
+                    // 後方互換性のためにレガシーフォーマットも含める
                     nutrition: {
-                        calories: dataToSave.nutrition.calories,
-                        protein: dataToSave.nutrition.protein,
-                        iron: dataToSave.nutrition.iron,
-                        folic_acid: dataToSave.nutrition.folic_acid,
-                        calcium: dataToSave.nutrition.calcium,
-                        vitamin_d: dataToSave.nutrition.vitamin_d || 0, // デフォルト値を設定
-                        confidence_score: dataToSave.nutrition.confidence_score
+                        calories: legacyNutrition.calories,
+                        protein: legacyNutrition.protein,
+                        iron: legacyNutrition.iron,
+                        folic_acid: legacyNutrition.folic_acid,
+                        calcium: legacyNutrition.calcium,
+                        vitamin_d: legacyNutrition.vitamin_d || 0,
+                        confidence_score: legacyNutrition.confidence_score
                     },
                     servings: 1
                 }),
@@ -325,32 +328,32 @@ export function RecognitionEditor({
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         <div className="rounded-lg border p-3">
                             <p className="text-sm text-muted-foreground">カロリー</p>
-                            <p className="text-lg font-medium">{nutrition.calories} kcal</p>
+                            <p className="text-lg font-medium">{nutrition.totalCalories} kcal</p>
                         </div>
 
                         <div className="rounded-lg border p-3">
                             <p className="text-sm text-muted-foreground">タンパク質</p>
-                            <p className="text-lg font-medium">{nutrition.protein} g</p>
+                            <p className="text-lg font-medium">{getNutrientValue('タンパク質')} g</p>
                         </div>
 
                         <div className="rounded-lg border p-3">
                             <p className="text-sm text-muted-foreground">鉄分</p>
-                            <p className="text-lg font-medium">{nutrition.iron} mg</p>
+                            <p className="text-lg font-medium">{getNutrientValue('鉄分')} mg</p>
                         </div>
 
                         <div className="rounded-lg border p-3">
                             <p className="text-sm text-muted-foreground">葉酸</p>
-                            <p className="text-lg font-medium">{nutrition.folic_acid} μg</p>
+                            <p className="text-lg font-medium">{getNutrientValue('葉酸')} μg</p>
                         </div>
 
                         <div className="rounded-lg border p-3">
                             <p className="text-sm text-muted-foreground">カルシウム</p>
-                            <p className="text-lg font-medium">{nutrition.calcium} mg</p>
+                            <p className="text-lg font-medium">{getNutrientValue('カルシウム')} mg</p>
                         </div>
 
                         <div className="rounded-lg border p-3">
                             <p className="text-sm text-muted-foreground">信頼度</p>
-                            <p className="text-lg font-medium">{Math.round(nutrition.confidence_score * 100)}%</p>
+                            <p className="text-lg font-medium">{Math.round(nutrition.pregnancySpecific?.folatePercentage || 90)}%</p>
                         </div>
                     </div>
 

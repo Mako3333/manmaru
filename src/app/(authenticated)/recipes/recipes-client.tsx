@@ -141,14 +141,14 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
                             recipe={{
                                 id: recipe.id,
                                 title: recipe.title,
-                                image_url: recipe.image_url,
-                                recipe_type: recipe.recipe_type,
-                                nutrition_focus: recipe.nutrition_focus,
+                                image_url: recipe.image_url ?? '/images/placeholder-recipe.svg',
+                                recipe_type: recipe.recipe_type ?? 'その他',
+                                nutrition_focus: recipe.nutrition_focus ?? [],
                                 is_favorite: recipe.is_favorite,
-                                caution_level: recipe.caution_level,
-                                source_platform: recipe.source_platform,
-                                content_id: recipe.content_id,
-                                use_placeholder: recipe.use_placeholder
+                                caution_level: recipe.caution_level ?? 'low',
+                                source_platform: recipe.source_platform ?? '',
+                                content_id: recipe.content_id ?? '',
+                                use_placeholder: recipe.use_placeholder ?? false
                             }}
                             onCardClick={handleRecipeClick}
                             onFavoriteToggle={handleFavoriteToggle}

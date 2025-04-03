@@ -107,3 +107,197 @@ try {
 -   **明確なメッセージ:** `message` (開発者向け) と `userMessage` (ユーザー向け) の両方を、状況に応じて明確かつ簡潔に記述します。
 -   **詳細な情報:** `details` には、デバッグや問題解決に役立つ具体的なコンテキスト情報を含めます。個人情報や機密情報は含めないように注意してください。
 -   **元のエラー:** 可能であれば `originalError` を含め、根本原因の特定を容易にします。 
+
+## 8. よくある間違いと修正方法
+
+以下は、コードベースでよく見られるエラー処理の間違いとその修正方法です。
+
+### 8.1 カスタムエラークラスの使用
+
+❌ **間違った実装:**
+```typescript
+class DataProcessingError extends Error {
+    userMessage: string;
+    details?: any;
+    
+    constructor(message: string, dataType: string, code?: string, details?: any) {
+        super(message);
+        this.name = 'DataProcessingError';
+        this.userMessage = `${dataType}の処理中にエラーが発生しました`;
+        this.details = details;
+    }
+}
+
+throw new DataProcessingError(
+    '画像データが不足しています',
+    '食事画像',
+    'data_validation_error',
+    { imageLength: 0 }
+);
+```
+
+✅ **正しい実装:**
+```typescript
+import { AppError, ErrorCode } from '@/lib/error';
+
+throw new AppError({
+    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+    message: '画像データが不足しています',
+    userMessage: '食事画像を再度撮影してください',
+    details: { imageLength: 0 }
+});
+```
+
+### 8.2 独自のErrorCode定義
+
+❌ **間違った実装:**
+```typescript
+// エラーコード定数
+const ErrorCode = {
+    AUTH_EXPIRED: 'auth_expired',
+    DATA_VALIDATION_ERROR: 'data_validation_error',
+    API_RESPONSE_INVALID: 'api_response_invalid'
+};
+
+throw new Error('認証エラー: ' + ErrorCode.AUTH_EXPIRED);
+```
+
+✅ **正しい実装:**
+```typescript
+import { AppError, ErrorCode } from '@/lib/error';
+
+throw new AppError({
+    code: ErrorCode.Base.AUTH_ERROR,
+    message: 'ログインセッションが無効です',
+    userMessage: 'ログインセッションの有効期限が切れました'
+});
+```
+
+### 8.3 ErrorCodeの階層構造の誤用
+
+❌ **間違った実装:**
+```typescript
+import { ErrorCode } from '@/lib/error';
+
+// エラー：ErrorCodeは階層構造（ErrorCode.Base.AUTH_ERROR）
+if (error.code === ErrorCode.AUTH_REQUIRED) {
+    // ...
+}
+```
+
+✅ **正しい実装:**
+```typescript
+import { ErrorCode } from '@/lib/error';
+
+if (error.code === ErrorCode.Base.AUTH_ERROR) {
+    // ...
+}
+```
+
+### 8.4 エラーハンドリングの不足
+
+❌ **間違った実装:**
+```typescript
+try {
+    const result = await api.call();
+    // 結果を処理
+} catch (error) {
+    console.error('API error:', error);
+    toast.error('エラーが発生しました');
+}
+```
+
+✅ **正しい実装:**
+```typescript
+try {
+    const result = await api.call();
+    // 結果を処理
+} catch (error) {
+    console.error('API error:', error);
+    
+    if (error instanceof AppError) {
+        // AppErrorの場合は、そのuserMessageを使用
+        toast.error(error.userMessage || 'エラーが発生しました');
+        
+        // 必要に応じて特定のエラーコードに基づいて処理
+        if (error.code === ErrorCode.Base.AUTH_ERROR) {
+            router.push('/login');
+        }
+    } else {
+        // 一般的なエラーを適切なAppErrorに変換
+        const appError = new AppError({
+            code: ErrorCode.Base.UNKNOWN_ERROR,
+            message: error instanceof Error ? error.message : String(error),
+            userMessage: 'サービスが一時的に利用できません'
+        });
+        
+        toast.error(appError.userMessage);
+    }
+}
+```
+
+## 9. レガシーコードからの移行ガイド
+
+既存のコードでは、独自のエラークラスやエラー処理パターンが使用されている場合があります。以下は、レガシーコードを標準のエラーハンドリングに移行する際のガイドラインです。
+
+### 9.1 カスタムエラークラスの移行
+
+1. カスタムエラークラス（例：`DataProcessingError`、`ApiError`、`AuthError`など）を見つけます。
+2. 該当するエラーをスローしているコードを特定します。
+3. エラーインスタンスの作成を、相当する `AppError` に置き換えます。
+4. 元のエラークラスに存在していたカスタムプロパティを、`AppError` の適切なプロパティにマッピングします：
+   - カスタムの `message` → `message`
+   - カスタムの `userMessage` → `userMessage`
+   - カスタムの `code` → 適切な `ErrorCode` 階層値
+   - カスタムの `details` → `details`
+   - カスタムの `suggestions` → `suggestions`
+
+### 9.2 エラーコード参照の修正
+
+1. 独自の `ErrorCode` 定数や列挙型を見つけます。
+2. それらの代わりに標準の `ErrorCode` を使用するようにコードを修正します。
+3. コード内の `ErrorCode` への直接参照（例：`ErrorCode.AUTH_REQUIRED`）を見つけ、階層構造を使用するように修正します（例：`ErrorCode.Base.AUTH_ERROR`）。
+
+### 9.3 エラーハンドリングのリファクタリング
+
+1. 各`try...catch`ブロックを見直し、標準的なエラーハンドリングパターンを使用しているか確認します。
+2. エラーの種類に応じた条件分岐を追加し、`AppError` の情報に基づいて適切なフィードバックを提供します。
+3. 汎用的なエラー（例：`Error`、`SyntaxError`）が捕捉される場合は、それらを適切な `AppError` インスタンスに変換します。
+
+### 9.4 エラー変換ヘルパー関数
+
+複数の場所で同様のエラー変換が必要な場合、ヘルパー関数を作成することを検討します：
+
+```typescript
+export function handleError(error: unknown, options?: {
+    defaultCode?: AnyErrorCode;
+    defaultMessage?: string;
+    defaultUserMessage?: string;
+}): AppError {
+    if (error instanceof AppError) {
+        return error;
+    }
+    
+    return new AppError({
+        code: options?.defaultCode || ErrorCode.Base.UNKNOWN_ERROR,
+        message: error instanceof Error 
+            ? error.message 
+            : options?.defaultMessage || 'An unknown error occurred',
+        userMessage: options?.defaultUserMessage || 'サービスが一時的に利用できません',
+        originalError: error instanceof Error ? error : undefined
+    });
+}
+```
+
+この関数を使用して、任意のエラーを `AppError` に変換できます。
+
+## 10. 自動化とリンタールール
+
+エラー処理のベストプラクティスを強制するために、ESLintなどのリンターを設定することを検討してください。以下は、使用できるカスタムルールの例です：
+
+1. カスタムエラークラスの使用を禁止する
+2. 直接的な `throw new Error()` を禁止し、代わりに `AppError` の使用を促す
+3. 独自の `ErrorCode` 定数の定義を禁止する
+4. `try...catch` ブロックで `error` 変数の型を適切に絞り込むことを強制する
+
+チームがこれらのガイドラインを一貫して適用できるよう、コードレビュープロセスにおいてもエラー処理パターンに注目することをお勧めします。 
