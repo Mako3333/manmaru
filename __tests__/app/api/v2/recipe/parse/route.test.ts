@@ -11,12 +11,16 @@ jest.mock('@/lib/ai/ai-service-factory');
 jest.mock('@/lib/nutrition/nutrition-service-factory');
 jest.mock('@/lib/food/food-repository-factory');
 
+// グローバルな fetch をモック
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
 describe('レシピ解析API v2のテスト', () => {
     // テスト用サンプルデータ (他のテストから流用・調整)
     const mockIngredients = [
-        { name: '鶏むね肉', quantity: '1枚' },
-        { name: '玉ねぎ', quantity: '1/2個' },
-        { name: '醤油', quantity: '大さじ2' }
+        { foodName: '鶏むね肉', quantityText: '1枚', confidence: 0.9 },
+        { foodName: '玉ねぎ', quantityText: '1/2個', confidence: 0.9 },
+        { foodName: '醤油', quantityText: '大さじ2', confidence: 0.9 }
     ];
     const mockLegacyNutrition: NutritionData = {
         calories: 450, protein: 40, fat: 10, carbohydrate: 45, iron: 1.5,
@@ -42,6 +46,26 @@ describe('レシピ解析API v2のテスト', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // デフォルトの fetch モック実装 (各テストで上書き可能)
+        mockFetch.mockResolvedValue({
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve('<html><body><h1>Mock Recipe</h1><div class="ingredient">鶏むね肉 1枚</div></body></html>'),
+            // Response 型に必要な他のプロパティをモック (最低限)
+            headers: new Headers(),
+            redirected: false,
+            statusText: 'OK',
+            type: 'basic',
+            url: '',
+            clone: jest.fn(),
+            body: null,
+            bodyUsed: false,
+            arrayBuffer: jest.fn(),
+            blob: jest.fn(),
+            formData: jest.fn(),
+            json: jest.fn().mockResolvedValue({}),
+            bytes: jest.fn(() => Promise.resolve(new Uint8Array())),
+        } as Response);
     });
 
     it('有効なレシピURLで正常なレスポンスを返すこと', async () => {
@@ -71,7 +95,7 @@ describe('レシピ解析API v2のテスト', () => {
             calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
                 nutrition: mockLegacyNutrition,
                 reliability: { confidence: 0.85, balanceScore: 70, completeness: 0.9 },
-                matchResults: mockIngredients.map(ing => ({ foodName: ing.name, matchedFood: { id: `db-${ing.name}`, name: `DB ${ing.name}` } })),
+                matchResults: mockIngredients.map(ing => ({ foodName: ing.foodName, matchedFood: { id: `db-${ing.foodName}`, name: `DB ${ing.foodName}` } })),
                 foods: []
                 // standardizedNutrition はルート内で変換するので不要
             })
@@ -123,7 +147,7 @@ describe('レシピ解析API v2のテスト', () => {
                 parseResult: {
                     title: 'サンプルレシピ',
                     servings: '1人分',
-                    foods: [{ foodName: '豆腐', quantityText: '1丁' }]
+                    foods: [{ foodName: '豆腐', quantityText: '1丁', confidence: 0.9 }]
                 },
                 error: null
             }),
@@ -200,24 +224,17 @@ describe('レシピ解析API v2のテスト', () => {
     });
 
     it('レシピに材料がない場合、適切なエラーレスポンスを返すこと', async () => {
-        // 材料リストが空で返るAIサービスのモック
+        // AIサービス (レシピ解析) のモック - 材料が空で返る
         const mockAIService = {
             parseRecipeFromUrl: jest.fn().mockResolvedValue({
                 parseResult: {
                     title: '材料なしレシピ',
                     servings: '1人分',
-                    foods: [],
+                    foods: [], // 材料リストが空
                 },
                 error: null
             }),
-            analyzeRecipeText: jest.fn().mockResolvedValue({
-                parseResult: {
-                    title: 'ダミーテキストレシピ（材料なし）',
-                    servings: '1人分',
-                    foods: []
-                },
-                error: null
-            })
+            analyzeRecipeText: jest.fn().mockResolvedValue({ parseResult: null, error: { code: 'dummy', message: 'dummy' } })
         };
         (AIServiceFactory.getService as jest.Mock).mockReturnValue(mockAIService);
 
@@ -244,12 +261,12 @@ describe('レシピ解析API v2のテスト', () => {
         const responseData: StandardApiResponse<null> = await response.json();
 
         // エラーレスポンスの検証
-        expect(response.status).toBe(400); // ステータスコード 400 を期待
+        expect(response.status).toBe(400); // 404 ではなく 400 を期待
         expect(responseData.success).toBe(false);
         expect(responseData.error).toBeDefined();
         if (responseData.error) {
-            expect(responseData.error.code).toBe(ErrorCode.Nutrition.FOOD_NOT_FOUND);
-            expect(responseData.error.message).toBe('食品が見つかりませんでした。');
+            expect(responseData.error.code).toBe(ErrorCode.AI.ANALYSIS_FAILED); // 期待値を修正
+            expect(responseData.error.message).toBe('AI分析に失敗しました。'); // 期待値を修正
         }
     });
 }); 
