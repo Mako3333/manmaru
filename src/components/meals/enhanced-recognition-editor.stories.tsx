@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { EnhancedRecognitionEditor } from './enhanced-recognition-editor';
+import { StandardizedMealNutrition, Nutrient, NutrientUnit } from '@/types/nutrition';
 
 // APIに送信する食品アイテムの型定義
 interface ApiFood {
@@ -9,24 +10,20 @@ interface ApiFood {
     confidence: number;
 }
 
-// 栄養情報の型定義
-interface Nutrition {
-    calories: number;
-    protein: number;
-    iron: number;
-    folic_acid: number;
-    calcium: number;
-    vitamin_d?: number;
-    confidence_score: number;
-}
-
 // 解析結果データの型定義
 export interface RecognitionData {
     foods: ApiFood[];
-    nutrition: Nutrition;
+    nutrition: StandardizedMealNutrition;
 }
 
-// モックデータ
+// 栄養素作成ヘルパー
+const createNutrient = (name: string, value: number, unit: NutrientUnit): Nutrient => ({
+    name,
+    value,
+    unit,
+});
+
+// モックデータ (StandardizedMealNutrition 形式)
 const mockInitialData: RecognitionData = {
     foods: [
         { name: 'ほうれん草', quantity: '1束', confidence: 0.95 },
@@ -35,13 +32,20 @@ const mockInitialData: RecognitionData = {
         { name: 'ごはん', quantity: '1杯', confidence: 0.9 }
     ],
     nutrition: {
-        calories: 450,
-        protein: 15,
-        iron: 6.5,
-        folic_acid: 250,
-        calcium: 300,
-        vitamin_d: 3.5,
-        confidence_score: 0.85
+        totalCalories: 450,
+        totalNutrients: [
+            createNutrient('たんぱく質', 15, 'g'),
+            createNutrient('鉄分', 6.5, 'mg'),
+            createNutrient('葉酸', 250, 'mcg'),
+            createNutrient('カルシウム', 300, 'mg'),
+            createNutrient('ビタミンD', 3.5, 'mcg'),
+        ],
+        foodItems: [], // Storybook表示では簡易的に空でOK
+        pregnancySpecific: {
+            folatePercentage: (250 / 400) * 100,
+            ironPercentage: (6.5 / 20) * 100,
+            calciumPercentage: (300 / 800) * 100,
+        }
     }
 };
 
@@ -54,12 +58,19 @@ const mockLowConfidenceData: RecognitionData = {
         { name: 'スープ', quantity: '1杯', confidence: 0.65 }
     ],
     nutrition: {
-        calories: 400,
-        protein: 12,
-        iron: 4.5,
-        folic_acid: 200,
-        calcium: 250,
-        confidence_score: 0.5
+        totalCalories: 400,
+        totalNutrients: [
+            createNutrient('たんぱく質', 12, 'g'),
+            createNutrient('鉄分', 4.5, 'mg'),
+            createNutrient('葉酸', 200, 'mcg'),
+            createNutrient('カルシウム', 250, 'mg'),
+        ],
+        foodItems: [],
+        pregnancySpecific: {
+            folatePercentage: (200 / 400) * 100,
+            ironPercentage: (4.5 / 20) * 100,
+            calciumPercentage: (250 / 800) * 100,
+        }
     }
 };
 
@@ -71,13 +82,20 @@ const mockDeficiencyData: RecognitionData = {
         { name: 'チーズ', quantity: '少々', confidence: 0.85 }
     ],
     nutrition: {
-        calories: 550,
-        protein: 18,
-        iron: 2.5, // 鉄分不足
-        folic_acid: 150, // 葉酸不足
-        calcium: 200, // カルシウム不足
-        vitamin_d: 1.2, // ビタミンD不足
-        confidence_score: 0.8
+        totalCalories: 550,
+        totalNutrients: [
+            createNutrient('たんぱく質', 18, 'g'),
+            createNutrient('鉄分', 2.5, 'mg'), // 不足
+            createNutrient('葉酸', 150, 'mcg'), // 不足
+            createNutrient('カルシウム', 200, 'mg'), // 不足
+            createNutrient('ビタミンD', 1.2, 'mcg'), // 不足
+        ],
+        foodItems: [],
+        pregnancySpecific: {
+            folatePercentage: (150 / 400) * 100,
+            ironPercentage: (2.5 / 20) * 100,
+            calciumPercentage: (200 / 800) * 100,
+        }
     }
 };
 
@@ -85,12 +103,14 @@ const mockDeficiencyData: RecognitionData = {
 const mockEmptyData: RecognitionData = {
     foods: [],
     nutrition: {
-        calories: 0,
-        protein: 0,
-        iron: 0,
-        folic_acid: 0,
-        calcium: 0,
-        confidence_score: 0
+        totalCalories: 0,
+        totalNutrients: [],
+        foodItems: [],
+        pregnancySpecific: {
+            folatePercentage: 0,
+            ironPercentage: 0,
+            calciumPercentage: 0,
+        }
     }
 };
 
@@ -125,7 +145,7 @@ type Story = StoryObj<typeof EnhancedRecognitionEditor>;
 // 標準的な認識結果を表示するストーリー
 export const Default: Story = {
     args: {
-        initialData: mockInitialData as any, // 型が完全に一致しない場合の一時的な対応
+        initialData: mockInitialData,
         mealType: 'dinner',
         mealDate: '2023-07-15',
         photoUrl: 'https://example.com/meal-photo.jpg',
@@ -136,7 +156,7 @@ export const Default: Story = {
 // 低確信度のデータを表示するストーリー
 export const LowConfidence: Story = {
     args: {
-        initialData: mockLowConfidenceData as any, // 型が完全に一致しない場合の一時的な対応
+        initialData: mockLowConfidenceData,
         mealType: 'lunch',
         mealDate: '2023-07-15',
         onSave: (data: RecognitionData) => console.log('保存されたデータ:', data),
@@ -146,7 +166,7 @@ export const LowConfidence: Story = {
 // 栄養不足を示すデータを表示するストーリー
 export const WithDeficiencies: Story = {
     args: {
-        initialData: mockDeficiencyData as any, // 型が完全に一致しない場合の一時的な対応
+        initialData: mockDeficiencyData,
         mealType: 'breakfast',
         mealDate: '2023-07-15',
         onSave: (data: RecognitionData) => console.log('保存されたデータ:', data),
@@ -156,7 +176,7 @@ export const WithDeficiencies: Story = {
 // 空の食品リストを表示するストーリー
 export const EmptyFoodList: Story = {
     args: {
-        initialData: mockEmptyData as any, // 型が完全に一致しない場合の一時的な対応
+        initialData: mockEmptyData,
         mealType: 'snack',
         mealDate: '2023-07-15',
         onSave: (data: RecognitionData) => console.log('保存されたデータ:', data),

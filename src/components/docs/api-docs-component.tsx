@@ -6,130 +6,83 @@ import SyntaxHighlighter from 'react-syntax-highlighter';
 import { docco } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 
 interface Method {
-    type: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    color: string;
+  type: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  color: string;
 }
 
 const METHOD_STYLES: Record<string, Method> = {
-    GET: { type: 'GET', color: '#2196f3' },
-    POST: { type: 'POST', color: '#ff9800' },
-    PUT: { type: 'PUT', color: '#4caf50' },
-    DELETE: { type: 'DELETE', color: '#f44336' }
+  GET: { type: 'GET', color: '#2196f3' },
+  POST: { type: 'POST', color: '#ff9800' },
+  PUT: { type: 'PUT', color: '#4caf50' },
+  DELETE: { type: 'DELETE', color: '#f44336' }
 };
 
 interface ApiEndpoint {
-    id: string;
-    title: string;
+  id: string;
+  title: string;
+  description: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  endpoint: string;
+  requestParams?: {
+    name: string;
+    type: string;
     description: string;
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    endpoint: string;
-    requestParams?: {
-        name: string;
-        type: string;
-        description: string;
-        required: boolean;
-    }[];
-    requestBody?: string;
-    responseExample: string;
-    notes?: string[];
+    required: boolean;
+  }[];
+  requestBody?: string;
+  responseExample: string;
+  notes?: string[];
 }
 
 const endpoints: ApiEndpoint[] = [
-    {
-        id: 'meal-analyze',
-        title: '食事解析',
-        description: 'テキスト入力または画像から食事内容を解析し、栄養計算を行います。',
-        method: 'POST',
-        endpoint: '/api/v2/meal/analyze',
-        requestParams: [
-            {
-                name: 'text',
-                type: 'string',
-                description: '解析するテキスト入力（例: "ご飯 味噌汁 鮭の塩焼き"）',
-                required: false
-            },
-            {
-                name: 'image',
-                type: 'string',
-                description: '解析する画像（Base64エンコード文字列）',
-                required: false
-            },
-            {
-                name: 'meal_type',
-                type: 'string',
-                description: '食事タイプ（例: "朝食", "昼食", "夕食", "間食"）',
-                required: false
-            }
-        ],
-        requestBody: `{
-  "text": "ご飯 味噌汁 鮭の塩焼き",
-  "meal_type": "朝食"
-}`,
-        responseExample: `{
-  "success": true,
-  "data": {
-    "foods": [
+  {
+    id: 'meal-analyze',
+    title: '食事解析',
+    description: 'テキスト入力または画像から食事内容を解析し、栄養計算を行います。',
+    method: 'POST',
+    endpoint: '/api/v2/meal/analyze',
+    requestParams: [
       {
-        "name": "ご飯",
-        "quantity": "茶碗1杯",
-        "confidence": 0.95
+        name: 'text',
+        type: 'string',
+        description: '解析するテキスト入力（例: "ご飯 味噌汁 鮭の塩焼き"）',
+        required: false
       },
       {
-        "name": "味噌汁",
-        "quantity": "1杯",
-        "confidence": 0.93
+        name: 'image',
+        type: 'string',
+        description: '解析する画像（Base64エンコード文字列）',
+        required: false
       },
       {
-        "name": "鮭の塩焼き",
-        "quantity": "1切れ",
-        "confidence": 0.89
+        name: 'meal_type',
+        type: 'string',
+        description: '食事タイプ（例: "朝食", "昼食", "夕食", "間食"）',
+        required: false
       }
     ],
-    "nutritionResult": {
-      "nutrition": {
-        "calories": 450,
-        "protein": 22.5,
-        "iron": 1.8,
-        "folic_acid": 58.2,
-        "calcium": 85.3,
-        "vitamin_d": 8.4,
-        "extended_nutrients": {
-          "fat": 12.3,
-          "carbohydrate": 65.7
-        }
-      },
-      "reliability": {
-        "confidence": 0.92,
-        "balanceScore": 78,
-        "completeness": 0.85
-      }
-    },
-    "processingTimeMs": 1248
+    requestBody: `{\n  \"text\": \"ご飯 味噌汁 鮭の塩焼き\",\n  \"meal_type\": \"朝食\"\n}`,
+    responseExample: `{\n  \"success\": true,\n  \"data\": {\n    \"foods\": [\n      {\n        \"name\": \"ご飯\",\n        \"quantity\": \"茶碗1杯\",\n        \"confidence\": 0.95\n      },\n      {\n        \"name\": \"味噌汁\",\n        \"quantity\": \"1杯\",\n        \"confidence\": 0.93\n      },\n      {\n        \"name\": \"鮭の塩焼き\",\n        \"quantity\": \"1切れ\",\n        \"confidence\": 0.89\n      }\n    ],\n    \"nutritionResult\": {\n      \"nutrition\": {\n        \"totalCalories\": 450,\n        \"totalNutrients\": [\n          { \"name\": \"たんぱく質\", \"value\": 22.5, \"unit\": \"g\" },\n          { \"name\": \"脂質\", \"value\": 12.3, \"unit\": \"g\" },\n          { \"name\": \"炭水化物\", \"value\": 65.7, \"unit\": \"g\" },\n          { \"name\": \"鉄分\", \"value\": 1.8, \"unit\": \"mg\" },\n          { \"name\": \"葉酸\", \"value\": 58.2, \"unit\": \"mcg\" },\n          { \"name\": \"カルシウム\", \"value\": 85.3, \"unit\": \"mg\" },\n          { \"name\": \"ビタミンD\", \"value\": 8.4, \"unit\": \"mcg\" }\n        ],\n        \"foodItems\": [ /* 食品ごとの詳細な栄養情報 (省略される場合あり) */ ],\n        \"pregnancySpecific\": {\n          \"folatePercentage\": 14.55,\n          \"ironPercentage\": 8.57,\n          \"calciumPercentage\": 10.66\n        }\n      },\n      \"reliability\": {\n        \"confidence\": 0.92,\n        \"balanceScore\": 78,\n        \"completeness\": 0.85\n      }\n    },\n    \"processingTimeMs\": 1248\n  },\n  \"meta\": {\n    \"processingTimeMs\": 1352\n  }\n}`,
+    notes: ['textとimageのどちらかを指定する必要があります']
   },
-  "meta": {
-    "processingTimeMs": 1352
-  }
-}`,
-        notes: ['textとimageのどちらかを指定する必要があります']
-    },
-    {
-        id: 'food-parse',
-        title: '食品テキスト解析',
-        description: 'テキスト入力から食品情報を解析し、栄養計算を行います。',
-        method: 'POST',
-        endpoint: '/api/v2/food/parse',
-        requestParams: [
-            {
-                name: 'text',
-                type: 'string',
-                description: '解析するテキスト（例: "ご飯 200g、納豆 1パック、目玉焼き 1個"）',
-                required: true
-            }
-        ],
-        requestBody: `{
+  {
+    id: 'food-parse',
+    title: '食品テキスト解析',
+    description: 'テキスト入力から食品情報を解析し、栄養計算を行います。',
+    method: 'POST',
+    endpoint: '/api/v2/food/parse',
+    requestParams: [
+      {
+        name: 'text',
+        type: 'string',
+        description: '解析するテキスト（例: "ご飯 200g、納豆 1パック、目玉焼き 1個"）',
+        required: true
+      }
+    ],
+    requestBody: `{
   "text": "ご飯 200g、納豆 1パック、目玉焼き 1個"
 }`,
-        responseExample: `{
+    responseExample: `{
   "success": true,
   "data": {
     "foods": [
@@ -173,25 +126,25 @@ const endpoints: ApiEndpoint[] = [
     "processingTimeMs": 857
   }
 }`
-    },
-    {
-        id: 'recipe-parse',
-        title: 'レシピ解析',
-        description: 'レシピURLまたはレシピテキストを解析し、栄養計算を行います。',
-        method: 'POST',
-        endpoint: '/api/v2/recipe/parse',
-        requestParams: [
-            {
-                name: 'url',
-                type: 'string',
-                description: '解析するレシピのURL',
-                required: true
-            }
-        ],
-        requestBody: `{
+  },
+  {
+    id: 'recipe-parse',
+    title: 'レシピ解析',
+    description: 'レシピURLまたはレシピテキストを解析し、栄養計算を行います。',
+    method: 'POST',
+    endpoint: '/api/v2/recipe/parse',
+    requestParams: [
+      {
+        name: 'url',
+        type: 'string',
+        description: '解析するレシピのURL',
+        required: true
+      }
+    ],
+    requestBody: `{
   "url": "https://cookpad.com/recipe/1234567"
 }`,
-        responseExample: `{
+    responseExample: `{
   "success": true,
   "data": {
     "recipe": {
@@ -246,34 +199,34 @@ const endpoints: ApiEndpoint[] = [
     "processingTimeMs": 2134
   }
 }`
-    },
-    {
-        id: 'nutrition-advice',
-        title: '栄養アドバイス取得',
-        description: '妊娠週数や栄養摂取状況に基づいた栄養アドバイスを取得します。',
-        method: 'GET',
-        endpoint: '/api/v2/nutrition/advice',
-        requestParams: [
-            {
-                name: 'date',
-                type: 'string',
-                description: 'アドバイスを取得する日付 (YYYY-MM-DD形式)',
-                required: false
-            },
-            {
-                name: 'force',
-                type: 'boolean',
-                description: '既存のアドバイスがあっても強制的に再生成する場合は true',
-                required: false
-            },
-            {
-                name: 'detail',
-                type: 'boolean',
-                description: '詳細なアドバイスを取得する場合は true',
-                required: false
-            }
-        ],
-        responseExample: `{
+  },
+  {
+    id: 'nutrition-advice',
+    title: '栄養アドバイス取得',
+    description: '妊娠週数や栄養摂取状況に基づいた栄養アドバイスを取得します。',
+    method: 'GET',
+    endpoint: '/api/v2/nutrition/advice',
+    requestParams: [
+      {
+        name: 'date',
+        type: 'string',
+        description: 'アドバイスを取得する日付 (YYYY-MM-DD形式)',
+        required: false
+      },
+      {
+        name: 'force',
+        type: 'boolean',
+        description: '既存のアドバイスがあっても強制的に再生成する場合は true',
+        required: false
+      },
+      {
+        name: 'detail',
+        type: 'boolean',
+        description: '詳細なアドバイスを取得する場合は true',
+        required: false
+      }
+    ],
+    responseExample: `{
   "success": true,
   "data": {
     "advice": {
@@ -304,286 +257,134 @@ const endpoints: ApiEndpoint[] = [
     "processingTimeMs": 520
   }
 }`
-    }
+  }
 ];
 
 const errorCodes = [
-    { code: 'AUTH_REQUIRED', description: '認証が必要です' },
-    { code: 'AUTH_INVALID', description: '認証情報が無効です' },
-    { code: 'DATA_VALIDATION_ERROR', description: '入力データが無効です' },
-    { code: 'DATA_NOT_FOUND', description: '要求されたデータが見つかりません' },
-    { code: 'AI_ANALYSIS_ERROR', description: 'AI解析中にエラーが発生しました' },
-    { code: 'FOOD_NOT_FOUND', description: '食品データが見つかりません' },
-    { code: 'NUTRITION_CALCULATION_ERROR', description: '栄養計算中にエラーが発生しました' },
-    { code: 'FOOD_RECOGNITION_ERROR', description: '食品認識中にエラーが発生しました' }
+  { code: 'AUTH_REQUIRED', description: '認証が必要です' },
+  { code: 'AUTH_INVALID', description: '認証情報が無効です' },
+  { code: 'DATA_VALIDATION_ERROR', description: '入力データが無効です' },
+  { code: 'DATA_NOT_FOUND', description: '要求されたデータが見つかりません' },
+  { code: 'AI_ANALYSIS_ERROR', description: 'AI解析中にエラーが発生しました' },
+  { code: 'FOOD_NOT_FOUND', description: '食品データが見つかりません' },
+  { code: 'NUTRITION_CALCULATION_ERROR', description: '栄養計算中にエラーが発生しました' },
+  { code: 'FOOD_RECOGNITION_ERROR', description: '食品認識中にエラーが発生しました' }
 ];
 
 const ApiDocsComponent: React.FC = () => {
-    // 必ず最初のエンドポイントは存在するため、初期値として使用
-    const initialEndpoint = endpoints.length > 0 ? endpoints[0] : null;
-    const [selectedTab, setSelectedTab] = useState(0);
-    const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint | null>(initialEndpoint);
+  const [activeTab, setActiveTab] = useState(0);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint | null | undefined>(
+    endpoints.length > 0 ? endpoints[0] : null
+  );
 
-    const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-        setSelectedTab(newValue);
-        if (newValue >= 0 && newValue < endpoints.length) {
-            // 配列の範囲内であることを確認済み
-            setSelectedEndpoint(endpoints[newValue]);
-        } else {
-            setSelectedEndpoint(null);
-        }
-    };
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+    const newEndpoint = endpoints[newValue];
 
-    return (
-        <Box sx={{ width: '100%', maxWidth: 1200, margin: '0 auto', p: 3 }}>
-            <Typography variant="h4" component="h1" gutterBottom color="primary">
-                manmaru API v2 ドキュメント
+    if (newEndpoint !== undefined) {
+      setSelectedEndpoint(newEndpoint);
+    } else {
+      setSelectedEndpoint(null);
+    }
+  };
+
+  const methodStyle = selectedEndpoint ? METHOD_STYLES[selectedEndpoint.method] : null;
+
+  return (
+    <Box sx={{ display: 'flex' }}>
+      <Tabs
+        orientation="vertical"
+        variant="scrollable"
+        value={activeTab}
+        onChange={handleTabChange}
+        aria-label="Vertical API tabs"
+        sx={{ borderRight: 1, borderColor: 'divider', minWidth: 200 }}
+      >
+        {endpoints.map((ep, index) => (
+          <Tab key={ep.id} label={ep.title} id={`vertical-tab-${index}`} aria-controls={`vertical-tabpanel-${index}`} />
+        ))}
+      </Tabs>
+      <Box sx={{ flexGrow: 1, p: 3 }}>
+        {selectedEndpoint && (
+          <Paper elevation={2} sx={{ p: 3 }}>
+            <Typography variant="h5" component="h2" gutterBottom>
+              {selectedEndpoint.title}
             </Typography>
-
+            <Divider sx={{ my: 2 }} />
             <Typography variant="body1" paragraph>
-                このドキュメントではmanmaruアプリケーションのAPI v2の使用方法について説明します。
-                APIはREST形式で提供され、すべてのエンドポイントは標準化されたJSON形式のレスポンスを返します。
+              {selectedEndpoint.description}
             </Typography>
 
-            <Box sx={{ my: 4 }}>
-                <Typography variant="h5" component="h2" gutterBottom>
-                    認証
-                </Typography>
-                <Typography variant="body1" paragraph>
-                    ほとんどのAPIエンドポイントでは認証が必要です。認証はJWTトークンを使用して行われます。
-                    リクエストヘッダーに<code>Authorization</code>ヘッダーとしてトークンを含める必要があります。
-                </Typography>
-                <Paper sx={{ p: 2, my: 2, borderRadius: 2, bgcolor: '#f5f5f5' }}>
-                    <Typography component="pre" sx={{ fontSize: '0.9rem', fontFamily: 'monospace', m: 0 }}>
-                        Authorization: Bearer {'{your_jwt_token}'}
-                    </Typography>
-                </Paper>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              {methodStyle && (
+                <Chip
+                  label={methodStyle.type}
+                  sx={{
+                    backgroundColor: methodStyle.color,
+                    color: 'white',
+                    fontWeight: 'bold',
+                    mr: 1
+                  }}
+                />
+              )}
+              <Typography variant="body1" component="code" sx={{ background: '#f5f5f5', p: 0.5, borderRadius: 1 }}>
+                {selectedEndpoint.endpoint}
+              </Typography>
             </Box>
 
-            <Box sx={{ my: 4 }}>
-                <Typography variant="h5" component="h2" gutterBottom>
-                    レスポンス形式
+            {selectedEndpoint.requestParams && selectedEndpoint.requestParams.length > 0 && (
+              <>
+                <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+                  リクエストパラメータ
                 </Typography>
-                <Typography variant="body1" paragraph>
-                    すべてのAPIレスポンスは次の標準形式で返されます:
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                  {selectedEndpoint.requestParams.map((param, index) => (
+                    <li key={index} style={{ marginBottom: '8px' }}>
+                      <code>{param.name}</code> ({param.type}) {param.required ? <Chip label="必須" size="small" color="error" sx={{ ml: 1 }} /> : ''}
+                      <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+                        {param.description}
+                      </Typography>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {selectedEndpoint.requestBody && (
+              <>
+                <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+                  リクエストボディ例
                 </Typography>
-                <Paper sx={{ p: 2, my: 2, borderRadius: 2 }}>
-                    <SyntaxHighlighter language="json" style={docco}>
-                        {`{
-  "success": boolean,  // リクエストの成功/失敗
-  "data": any,         // 成功時のレスポンスデータ（オプション）
-  "error": {           // エラー時の情報（オプション）
-    "code": string,    // エラーコード
-    "message": string, // エラーメッセージ
-    "details": any,    // 詳細情報（開発モードのみ）
-    "suggestions": string[] // 解決策の提案（オプション）
-  },
-  "meta": {            // メタ情報（オプション）
-    "processingTimeMs": number, // 処理時間（ミリ秒）
-    "warning": string  // 警告メッセージ（オプション）
-  }
-}`}
-                    </SyntaxHighlighter>
-                </Paper>
-            </Box>
+                <SyntaxHighlighter language="json" style={docco}>
+                  {selectedEndpoint.requestBody}
+                </SyntaxHighlighter>
+              </>
+            )}
 
-            <Box sx={{ my: 4 }}>
-                <Typography variant="h5" component="h2" gutterBottom>
-                    エンドポイント
-                </Typography>
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+              レスポンス例 (成功時)
+            </Typography>
+            <SyntaxHighlighter language="json" style={docco}>
+              {selectedEndpoint.responseExample}
+            </SyntaxHighlighter>
 
-                <Box sx={{ width: '100%' }}>
-                    <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                        <Tabs
-                            value={selectedTab}
-                            onChange={handleTabChange}
-                            variant="scrollable"
-                            scrollButtons="auto"
-                        >
-                            {endpoints.map((endpoint) => (
-                                <Tab key={endpoint.id} label={endpoint.title} />
-                            ))}
-                            <Tab label="エラーコード" />
-                        </Tabs>
-                    </Box>
-
-                    {selectedTab < endpoints.length ? (
-                        <Box sx={{ p: 3 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                <Chip
-                                    label={selectedEndpoint.method}
-                                    sx={{
-                                        bgcolor: METHOD_STYLES[selectedEndpoint.method]?.color || '#9e9e9e',
-                                        color: 'white',
-                                        fontWeight: 'bold',
-                                        mr: 2
-                                    }}
-                                />
-                                <Typography variant="h6" component="span">
-                                    {selectedEndpoint.endpoint}
-                                </Typography>
-                            </Box>
-
-                            <Typography variant="body1" paragraph>
-                                {selectedEndpoint.description}
-                            </Typography>
-
-                            {selectedEndpoint.requestParams && (
-                                <>
-                                    <Typography variant="h6" gutterBottom>
-                                        リクエストパラメータ
-                                    </Typography>
-                                    <Paper sx={{ overflow: 'auto', mb: 3 }}>
-                                        <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-                                            <Box component="thead">
-                                                <Box component="tr" sx={{ bgcolor: '#f5f5f5' }}>
-                                                    <Box component="th" sx={{ p: 2, textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-                                                        パラメータ
-                                                    </Box>
-                                                    <Box component="th" sx={{ p: 2, textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-                                                        型
-                                                    </Box>
-                                                    <Box component="th" sx={{ p: 2, textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-                                                        説明
-                                                    </Box>
-                                                    <Box component="th" sx={{ p: 2, textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-                                                        必須
-                                                    </Box>
-                                                </Box>
-                                            </Box>
-                                            <Box component="tbody">
-                                                {selectedEndpoint.requestParams.map((param, index) => (
-                                                    <Box component="tr" key={index} sx={{ '&:nth-of-type(even)': { bgcolor: '#f9f9f9' } }}>
-                                                        <Box component="td" sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
-                                                            {param.name}
-                                                        </Box>
-                                                        <Box component="td" sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
-                                                            <code>{param.type}</code>
-                                                        </Box>
-                                                        <Box component="td" sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
-                                                            {param.description}
-                                                        </Box>
-                                                        <Box component="td" sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
-                                                            {param.required ? (
-                                                                <Chip size="small" label="必須" sx={{ bgcolor: '#f44336', color: 'white' }} />
-                                                            ) : (
-                                                                <Chip size="small" label="省略可" sx={{ bgcolor: '#9e9e9e', color: 'white' }} />
-                                                            )}
-                                                        </Box>
-                                                    </Box>
-                                                ))}
-                                            </Box>
-                                        </Box>
-                                    </Paper>
-                                </>
-                            )}
-
-                            {selectedEndpoint.requestBody && (
-                                <>
-                                    <Typography variant="h6" gutterBottom>
-                                        リクエスト例
-                                    </Typography>
-                                    <Paper sx={{ p: 2, my: 2, borderRadius: 2 }}>
-                                        <SyntaxHighlighter language="json" style={docco}>
-                                            {selectedEndpoint.requestBody}
-                                        </SyntaxHighlighter>
-                                    </Paper>
-                                </>
-                            )}
-
-                            <Typography variant="h6" gutterBottom>
-                                レスポンス例
-                            </Typography>
-                            <Paper sx={{ p: 2, my: 2, borderRadius: 2 }}>
-                                <SyntaxHighlighter language="json" style={docco}>
-                                    {selectedEndpoint.responseExample}
-                                </SyntaxHighlighter>
-                            </Paper>
-
-                            {selectedEndpoint.notes && selectedEndpoint.notes.length > 0 && (
-                                <>
-                                    <Typography variant="h6" gutterBottom>
-                                        注意事項
-                                    </Typography>
-                                    <Paper sx={{ p: 2, my: 2, borderRadius: 2, bgcolor: '#fff8e1' }}>
-                                        <ul style={{ margin: '0.5em 0', paddingLeft: '1.5em' }}>
-                                            {selectedEndpoint.notes.map((note, index) => (
-                                                <li key={index}>{note}</li>
-                                            ))}
-                                        </ul>
-                                    </Paper>
-                                </>
-                            )}
-                        </Box>
-                    ) : (
-                        <Box sx={{ p: 3 }}>
-                            <Typography variant="h6" gutterBottom>
-                                エラーコード一覧
-                            </Typography>
-                            <Typography variant="body1" paragraph>
-                                APIがエラーを返す場合、以下のようなエラーコードが含まれます:
-                            </Typography>
-                            <Paper sx={{ overflow: 'auto' }}>
-                                <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <Box component="thead">
-                                        <Box component="tr" sx={{ bgcolor: '#f5f5f5' }}>
-                                            <Box component="th" sx={{ p: 2, textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-                                                コード
-                                            </Box>
-                                            <Box component="th" sx={{ p: 2, textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-                                                説明
-                                            </Box>
-                                        </Box>
-                                    </Box>
-                                    <Box component="tbody">
-                                        {errorCodes.map((error, index) => (
-                                            <Box component="tr" key={index} sx={{ '&:nth-of-type(even)': { bgcolor: '#f9f9f9' } }}>
-                                                <Box component="td" sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
-                                                    <code>{error.code}</code>
-                                                </Box>
-                                                <Box component="td" sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
-                                                    {error.description}
-                                                </Box>
-                                            </Box>
-                                        ))}
-                                    </Box>
-                                </Box>
-                            </Paper>
-                        </Box>
-                    )}
-                </Box>
-            </Box>
-
-            <Divider sx={{ my: 4 }} />
-
-            <Box sx={{ mt: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                    関連リソース
+            {selectedEndpoint.notes && selectedEndpoint.notes.length > 0 && (
+              <>
+                <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+                  備考
                 </Typography>
                 <ul>
-                    <li>
-                        <Typography variant="body1" component="a" href="/docs/nutrition-types" color="primary">
-                            栄養素データ型リファレンス
-                        </Typography>
-                    </li>
-                    <li>
-                        <Typography variant="body1" component="a" href="/docs/food-database" color="primary">
-                            食品データベースリファレンス
-                        </Typography>
-                    </li>
+                  {selectedEndpoint.notes.map((note, index) => (
+                    <li key={index}><Typography variant="body2">{note}</Typography></li>
+                  ))}
                 </ul>
-            </Box>
-
-            <Box sx={{ mt: 8, pt: 2, borderTop: '1px solid #ddd', textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                    © 2023-2024 manmaru. All rights reserved.
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                    API バージョン: v2.0.0
-                </Typography>
-            </Box>
-        </Box>
-    );
+              </>
+            )}
+          </Paper>
+        )}
+      </Box>
+    </Box>
+  );
 };
 
 export default ApiDocsComponent; 

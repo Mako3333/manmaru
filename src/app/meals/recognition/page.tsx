@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { EnhancedRecognitionEditor } from "@/components/meals/enhanced-recognition-editor";
 import { RecognitionEditor } from "@/components/meals/recognition-editor";
+import { StandardizedMealNutrition, Nutrient, NutrientUnit } from "@/types/nutrition";
 
 // API食品アイテムの型定義
 interface ApiFood {
@@ -15,8 +16,8 @@ interface ApiFood {
     confidence: number;
 }
 
-// 栄養情報の型定義
-interface Nutrition {
+// 栄養情報の型定義 (レガシー用)
+interface LegacyNutrition {
     calories: number;
     protein: number;
     iron: number;
@@ -26,11 +27,72 @@ interface Nutrition {
     confidence_score: number;
 }
 
-// 解析結果データの型定義
+// 解析結果データの型定義 (レガシー用)
+interface LegacyRecognitionData {
+    foods: ApiFood[];
+    nutrition: LegacyNutrition;
+}
+
+// 解析結果データの型定義 (新しいStandardizedNutrition用)
 interface RecognitionData {
     foods: ApiFood[];
-    nutrition: Nutrition;
+    nutrition: StandardizedMealNutrition;
 }
+
+// 栄養素作成ヘルパー
+const createNutrient = (name: string, value: number, unit: NutrientUnit): Nutrient => ({
+    name,
+    value,
+    unit,
+});
+
+// モックデータ (StandardizedMealNutrition 形式)
+const mockStandardizedNutrition: StandardizedMealNutrition = {
+    totalCalories: 450,
+    totalNutrients: [
+        createNutrient('たんぱく質', 15, 'g'),
+        createNutrient('鉄分', 6.5, 'mg'),
+        createNutrient('葉酸', 250, 'mcg'),
+        createNutrient('カルシウム', 300, 'mg'),
+        createNutrient('ビタミンD', 3.5, 'mcg'),
+    ],
+    foodItems: [], // モックでは簡易的に空
+    pregnancySpecific: {
+        folatePercentage: (250 / 400) * 100,
+        ironPercentage: (6.5 / 20) * 100,
+        calciumPercentage: (300 / 800) * 100,
+    }
+};
+
+// モックデータ (レガシー形式)
+const mockLegacyNutrition: LegacyNutrition = {
+    calories: 450,
+    protein: 15,
+    iron: 6.5,
+    folic_acid: 250,
+    calcium: 300,
+    vitamin_d: 3.5,
+    confidence_score: 0.85
+};
+
+const mockFoods: ApiFood[] = [
+    { name: "ほうれん草", quantity: "1束", confidence: 0.92 },
+    { name: "にんじん", quantity: "1本", confidence: 0.89 },
+    { name: "豆腐", quantity: "1パック", confidence: 0.85 },
+    { name: "ごはん", quantity: "1杯", confidence: 0.95 }
+];
+
+// モックデータ (新しい形式)
+const mockRecognitionData: RecognitionData = {
+    foods: mockFoods,
+    nutrition: mockStandardizedNutrition
+};
+
+// モックデータ (レガシー形式)
+const mockLegacyRecognitionData: LegacyRecognitionData = {
+    foods: mockFoods,
+    nutrition: mockLegacyNutrition
+};
 
 export default function RecognitionPage() {
     const searchParams = useSearchParams();
@@ -63,23 +125,11 @@ export default function RecognitionPage() {
         router.push(`/meals/recognition?${params.toString()}`);
     };
 
-    // モックデータ（通常はAPIから取得）
-    const mockRecognitionData: RecognitionData = {
-        foods: [
-            { name: "ほうれん草", quantity: "1束", confidence: 0.92 },
-            { name: "にんじん", quantity: "1本", confidence: 0.89 },
-            { name: "豆腐", quantity: "1パック", confidence: 0.85 },
-            { name: "ごはん", quantity: "1杯", confidence: 0.95 }
-        ],
-        nutrition: {
-            calories: 450,
-            protein: 15,
-            iron: 6.5,
-            folic_acid: 250,
-            calcium: 300,
-            vitamin_d: 3.5,
-            confidence_score: 0.85
-        }
+    // 保存ハンドラー（型をanyにして両方のエディタから受け取れるようにする）
+    const handleSave = (data: any) => {
+        console.log(`保存データ (${editorVersion}):`, data);
+        // 保存後にリダイレクト
+        router.push("/home");
     };
 
     return (
@@ -124,11 +174,7 @@ export default function RecognitionPage() {
             {editorVersion === "enhanced" ? (
                 <EnhancedRecognitionEditor
                     initialData={mockRecognitionData}
-                    onSave={(data: RecognitionData) => {
-                        console.log("保存データ:", data);
-                        // 保存後にリダイレクト
-                        router.push("/home");
-                    }}
+                    onSave={handleSave}
                     mealType={mealType}
                     mealDate={mealDate}
                     photoUrl={photoUrl}
@@ -137,12 +183,8 @@ export default function RecognitionPage() {
             ) : (
                 <div className="max-w-4xl mx-auto">
                     <RecognitionEditor
-                        initialData={mockRecognitionData}
-                        onSave={(data: RecognitionData) => {
-                            console.log("保存データ (従来版):", data);
-                            // 保存後にリダイレクト
-                            router.push("/home");
-                        }}
+                        initialData={mockLegacyRecognitionData}
+                        onSave={handleSave}
                         mealType={mealType}
                         mealDate={mealDate}
                         photoUrl={photoUrl}

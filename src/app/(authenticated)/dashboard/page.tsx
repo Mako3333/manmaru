@@ -30,7 +30,17 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, Clock, Calendar } from 'lucide-react';
 import { getJapanDate } from '@/lib/date-utils';
-import { NutritionData, calculateNutritionScore, getNutrientColor, getNutrientBarColor } from '@/lib/nutrition/nutrition-display-utils';
+import {
+    calculateNutritionScore,
+    getNutrientColor,
+    getNutrientBarColor,
+    calculatePercentage,
+    DEFAULT_NUTRITION_TARGETS,
+    NUTRIENT_NAME_TO_KEY,
+    NutritionTargets
+} from '@/lib/nutrition/nutrition-display-utils';
+import { StandardizedMealNutrition, NutritionData as LegacyNutritionData, NutritionProgress } from '@/types/nutrition';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // 新しいダッシュボードコンポーネントをインポート
 import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
@@ -50,26 +60,18 @@ export default function DashboardPage() {
     const [loadingProfile, setLoadingProfile] = useState(true)
     const [currentDate, setCurrentDate] = useState(getJapanDate())
     const [activeTab, setActiveTab] = useState('today')
-    const [nutritionData, setNutritionData] = useState<NutritionData>({
-        calories_percent: 0,
-        protein_percent: 0,
-        iron_percent: 0,
-        folic_acid_percent: 0,
-        calcium_percent: 0,
-        vitamin_d_percent: 0,
-        actual_calories: 0,
-        target_calories: 0,
-        actual_protein: 0,
-        target_protein: 0,
-        actual_iron: 0,
-        target_iron: 0,
-        actual_folic_acid: 0,
-        target_folic_acid: 0,
-        actual_calcium: 0,
-        target_calcium: 0,
-        actual_vitamin_d: 0,
-        target_vitamin_d: 0,
+    const [nutritionData, setNutritionData] = useState<StandardizedMealNutrition>({
+        totalCalories: 0,
+        totalNutrients: [],
+        foodItems: [],
+        pregnancySpecific: {
+            folatePercentage: 0,    // 葉酸摂取割合
+            ironPercentage: 0,      // 鉄分摂取割合
+            calciumPercentage: 0,   // カルシウム摂取割合
+        }
     })
+    const [nutritionProgress, setNutritionProgress] = useState<NutritionProgress | null>(null)
+    const [nutritionTargets, setNutritionTargets] = useState<NutritionTargets>(DEFAULT_NUTRITION_TARGETS)
     const [nutritionScore, setNutritionScore] = useState(0)
     const router = useRouter()
     const supabase = createClientComponentClient()
@@ -91,7 +93,7 @@ export default function DashboardPage() {
                 setProfile(profileData)
 
                 // 栄養データを取得
-                const { data: nutritionProgress, error: nutritionError } = await supabase
+                const { data: nutritionProgressData, error: nutritionError } = await supabase
                     .from('nutrition_goal_prog')
                     .select('*')
                     .eq('user_id', session.user.id)
@@ -102,30 +104,40 @@ export default function DashboardPage() {
                     throw nutritionError;
                 }
 
-                // 栄養バランススコアを計算（共通ユーティリティを使用）
-                const overall_score = calculateNutritionScore(nutritionProgress);
+                if (nutritionProgressData) {
+                    // 取得した進捗データを保存 (表示用)
+                    setNutritionProgress(nutritionProgressData);
 
-                setNutritionScore(overall_score);
-                setNutritionData(nutritionProgress || {
-                    calories_percent: 0,
-                    protein_percent: 0,
-                    iron_percent: 0,
-                    folic_acid_percent: 0,
-                    calcium_percent: 0,
-                    vitamin_d_percent: 0,
-                    actual_calories: 0,
-                    target_calories: 0,
-                    actual_protein: 0,
-                    target_protein: 0,
-                    actual_iron: 0,
-                    target_iron: 0,
-                    actual_folic_acid: 0,
-                    target_folic_acid: 0,
-                    actual_calcium: 0,
-                    target_calcium: 0,
-                    actual_vitamin_d: 0,
-                    target_vitamin_d: 0,
-                });
+                    // 取得した栄養データをレガシー形式から標準形式に変換
+                    const standardizedNutrition = convertToStandardizedNutrition(nutritionProgressData as LegacyNutritionData);
+
+                    // ユーザープロファイルに基づく目標値調整 (必要に応じて)
+                    const userTargets = { ...DEFAULT_NUTRITION_TARGETS };
+                    // TODO: プロファイル情報に基づいて、userTargets を調整
+
+                    setNutritionTargets(userTargets);
+
+                    // 栄養バランススコアを計算（更新されたユーティリティを使用）
+                    const overall_score = calculateNutritionScore(standardizedNutrition, userTargets);
+
+                    setNutritionScore(overall_score);
+                    setNutritionData(standardizedNutrition);
+                } else {
+                    // データがない場合は空のオブジェクトを設定
+                    setNutritionProgress(null);
+                    // 空の StandardizedMealNutrition を設定
+                    setNutritionData({
+                        totalCalories: 0,
+                        totalNutrients: [],
+                        foodItems: [],
+                        pregnancySpecific: {
+                            folatePercentage: 0,    // 葉酸摂取割合
+                            ironPercentage: 0,      // 鉄分摂取割合
+                            calciumPercentage: 0,   // カルシウム摂取割合
+                        }
+                    });
+                    setNutritionScore(0);
+                }
             } catch (error) {
                 console.error('データ取得エラー:', error)
             } finally {
@@ -191,54 +203,54 @@ export default function DashboardPage() {
         )
     }
 
-    // 栄養素カード
+    // 栄養素カード - nutritionProgress (オリジナルのデータ) を使用
     const nutrientItems = [
         {
             name: 'カロリー',
             icon: NUTRIENT_ICONS.calories,
-            percent: nutritionData?.calories_percent || 0,
-            actual: nutritionData?.actual_calories || 0,
-            target: nutritionData?.target_calories || 0,
+            percent: nutritionProgress?.calories_percent || 0,
+            actual: nutritionProgress?.actual_calories || 0,
+            target: nutritionProgress?.target_calories || nutritionTargets.calories || 0,
             unit: 'kcal'
         },
         {
             name: 'タンパク質',
             icon: NUTRIENT_ICONS.protein,
-            percent: nutritionData?.protein_percent || 0,
-            actual: nutritionData?.actual_protein || 0,
-            target: nutritionData?.target_protein || 0,
+            percent: nutritionProgress?.protein_percent || 0,
+            actual: nutritionProgress?.actual_protein || 0,
+            target: nutritionProgress?.target_protein || nutritionTargets.protein || 0,
             unit: 'g'
         },
         {
             name: '鉄分',
             icon: NUTRIENT_ICONS.iron,
-            percent: nutritionData?.iron_percent || 0,
-            actual: nutritionData?.actual_iron || 0,
-            target: nutritionData?.target_iron || 0,
+            percent: nutritionProgress?.iron_percent || 0,
+            actual: nutritionProgress?.actual_iron || 0,
+            target: nutritionProgress?.target_iron || nutritionTargets.iron || 0,
             unit: 'mg'
         },
         {
             name: '葉酸',
             icon: NUTRIENT_ICONS.folic_acid,
-            percent: nutritionData?.folic_acid_percent || 0,
-            actual: nutritionData?.actual_folic_acid || 0,
-            target: nutritionData?.target_folic_acid || 0,
+            percent: nutritionProgress?.folic_acid_percent || 0,
+            actual: nutritionProgress?.actual_folic_acid || 0,
+            target: nutritionProgress?.target_folic_acid || nutritionTargets.folic_acid || 0,
             unit: 'μg'
         },
         {
             name: 'カルシウム',
             icon: NUTRIENT_ICONS.calcium,
-            percent: nutritionData?.calcium_percent || 0,
-            actual: nutritionData?.actual_calcium || 0,
-            target: nutritionData?.target_calcium || 0,
+            percent: nutritionProgress?.calcium_percent || 0,
+            actual: nutritionProgress?.actual_calcium || 0,
+            target: nutritionProgress?.target_calcium || nutritionTargets.calcium || 0,
             unit: 'mg'
         },
         {
             name: 'ビタミンD',
             icon: NUTRIENT_ICONS.vitamin_d,
-            percent: nutritionData?.vitamin_d_percent || 0,
-            actual: nutritionData?.actual_vitamin_d || 0,
-            target: nutritionData?.target_vitamin_d || 0,
+            percent: nutritionProgress?.vitamin_d_percent || 0,
+            actual: nutritionProgress?.actual_vitamin_d || 0,
+            target: nutritionProgress?.target_vitamin_d || nutritionTargets.vitamin_d || 0,
             unit: 'μg'
         }
     ];

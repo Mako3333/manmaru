@@ -7,7 +7,7 @@ import Image from 'next/image';
 
 interface ScreenshotUploaderProps {
     onImageCapture: (imageData: string) => void;
-    initialImage?: string;
+    initialImage?: string | undefined;
 }
 
 export const ScreenshotUploader: React.FC<ScreenshotUploaderProps> = ({

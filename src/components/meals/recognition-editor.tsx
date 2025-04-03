@@ -54,8 +54,8 @@ interface RecognitionEditorProps {
     onSave: (data: RecognitionData) => void;
     className?: string;
     mealType: string;
-    mealDate?: string;
-    photoUrl?: string;
+    mealDate?: string | undefined;
+    photoUrl?: string | undefined;
 }
 
 export function RecognitionEditor({

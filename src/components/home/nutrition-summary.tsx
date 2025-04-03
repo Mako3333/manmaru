@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ChevronRight } from 'lucide-react';
-import { NutritionData, calculateNutritionScore } from '@/lib/nutrition/nutrition-display-utils';
+import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
+import { calculateNutritionScore, calculatePercentage, DEFAULT_NUTRITION_TARGETS, getNutrientBarColor } from '@/lib/nutrition/nutrition-display-utils';
 
 interface NutritionSummaryProps {
-    dailyNutrition: NutritionData | null;
+    dailyNutrition: StandardizedMealNutrition | null;
 }
 
 export function NutritionSummary({ dailyNutrition }: NutritionSummaryProps) {
@@ -66,25 +67,34 @@ export function NutritionSummary({ dailyNutrition }: NutritionSummaryProps) {
 }
 
 // 栄養素アイテム表示
-function renderNutritionItems(dailyNutrition: NutritionData | null) {
+function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null) {
     const items = [
-        { key: 'calories_percent', name: 'カロリー', icon: '🔥', color: 'orange' },
-        { key: 'protein_percent', name: 'タンパク質', icon: '🥩', color: 'red' },
-        { key: 'iron_percent', name: '鉄分', icon: 'Fe', color: 'purple' },
-        { key: 'folic_acid_percent', name: '葉酸', icon: '🥬', color: 'green' },
-        { key: 'calcium_percent', name: 'カルシウム', icon: '🥛', color: 'blue' },
-        { key: 'vitamin_d_percent', name: 'ビタミンD', icon: '☀️', color: 'yellow' }
+        { key: 'calories', name: 'カロリー', icon: '🔥', color: 'orange' },
+        { key: 'protein', name: 'タンパク質', icon: '🥩', color: 'red' },
+        { key: 'iron', name: '鉄分', icon: 'Fe', color: 'purple' },
+        { key: 'folic_acid', name: '葉酸', icon: '🥬', color: 'green' },
+        { key: 'calcium', name: 'カルシウム', icon: '🥛', color: 'blue' },
+        { key: 'vitamin_d', name: 'ビタミンD', icon: '☀️', color: 'yellow' }
     ];
 
     return items.map(item => {
-        // キーが存在し、値が数値であることを確認
-        const value = dailyNutrition &&
-            typeof dailyNutrition[item.key as keyof NutritionData] === 'number'
-            ? dailyNutrition[item.key as keyof NutritionData] as number
-            : 0;
+        const nutrientKey = item.key as keyof typeof DEFAULT_NUTRITION_TARGETS;
+        const target = DEFAULT_NUTRITION_TARGETS[nutrientKey];
+        let value = 0;
 
-        const percentValue = Math.round(value);
-        const colorClass = getColorForPercent(percentValue);
+        if (dailyNutrition) {
+            if (nutrientKey === 'calories') {
+                value = dailyNutrition.totalCalories;
+            } else {
+                const nutrient = dailyNutrition.totalNutrients.find(
+                    n => n.name.toLowerCase().includes(item.name)
+                );
+                value = nutrient ? nutrient.value : 0;
+            }
+        }
+
+        const percentValue = calculatePercentage(value, target);
+        const colorClass = getNutrientBarColor(percentValue);
 
         return (
             <div key={item.key} className="bg-gray-50 rounded p-2 flex items-center">
@@ -103,14 +113,6 @@ function renderNutritionItems(dailyNutrition: NutritionData | null) {
             </div>
         );
     });
-}
-
-// パーセント値に基づく色クラスの取得
-function getColorForPercent(percent: number): string {
-    if (percent >= 80) return "bg-green-500";
-    if (percent >= 60) return "bg-yellow-500";
-    if (percent > 0) return "bg-orange-500";
-    return "bg-gray-300";
 }
 
 // アイコン背景色の取得

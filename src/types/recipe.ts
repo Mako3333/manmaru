@@ -1,4 +1,5 @@
 // レシピ関連の型定義
+import { StandardizedMealNutrition } from './nutrition'; // StandardizedMealNutrition をインポート
 
 // クリップしたレシピの型
 export interface ClippedRecipe {
@@ -11,7 +12,7 @@ export interface ClippedRecipe {
     content_id?: string;
     recipe_type?: string;
     ingredients: RecipeIngredient[];
-    nutrition_per_serving: NutritionData;
+    nutrition_per_serving: StandardizedMealNutrition;
     caution_foods?: string[];
     caution_level?: 'low' | 'medium' | 'high';
     is_favorite: boolean;
@@ -31,18 +32,8 @@ export interface RecipeIngredient {
     unit?: string;
 }
 
-// 栄養データ
-export interface NutritionData {
-    calories?: number;
-    protein?: number;
-    fat?: number;
-    carbs?: number;
-    iron?: number;
-    folic_acid?: number;
-    calcium?: number;
-    vitamin_d?: number;
-    [key: string]: number | undefined; // その他の栄養素
-}
+// 栄養データ (削除 - StandardizedMealNutrition を使用)
+// export interface NutritionData { ... }
 
 // 妊婦向け注意食材の型
 export interface CautionFood {
@@ -92,7 +83,7 @@ export interface RecipeUrlClipResponse {
     source_url: string;
     source_platform?: string;
     ingredients: RecipeIngredient[];
-    nutrition_per_serving: NutritionData;
+    nutrition_per_serving: StandardizedMealNutrition;
     caution_foods?: string[];
     caution_level?: 'low' | 'medium' | 'high';
     content_id?: string;
@@ -107,7 +98,7 @@ export interface RecipeFormData {
     recipe_type: string;
     servings: number;
     ingredients: RecipeIngredient[];
-    nutrition_per_serving: NutritionData;
+    nutrition_per_serving: StandardizedMealNutrition;
 }
 
 // レシピフィルターオプション型

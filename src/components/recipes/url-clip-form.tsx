@@ -11,7 +11,7 @@ import { Info } from 'lucide-react';
 interface URLClipFormProps {
     onSubmit: (data: RecipeUrlClipRequest, isSocialMedia: boolean) => Promise<void>;
     isLoading: boolean;
-    error?: string;
+    error?: string | undefined;
 }
 
 export const URLClipForm: React.FC<URLClipFormProps> = ({

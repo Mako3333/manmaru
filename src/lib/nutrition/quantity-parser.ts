@@ -130,7 +130,7 @@ export class QuantityParser {
 
         // 数値のみの場合は標準量とみなす
         const numericOnly = /^(\d+(\.\d+)?)$/.exec(quantityStr);
-        if (numericOnly) {
+        if (numericOnly && numericOnly[1]) {
             return {
                 quantity: { value: parseFloat(numericOnly[1]), unit: '標準量' },
                 confidence: 0.7
@@ -139,12 +139,12 @@ export class QuantityParser {
 
         // 一般的な形式: 数値 + 単位
         const standardFormat = /^(\d+(\.\d+)?)\s*([a-zａ-ｚＡ-Ｚ一-龠々ぁ-ヶ]+)$/i.exec(quantityStr);
-        if (standardFormat) {
+        if (standardFormat && standardFormat[1] && standardFormat[3]) {
             const value = parseFloat(standardFormat[1]);
             const unitText = standardFormat[3];
 
             // 単位の正規化
-            const normalizedUnit = unitText in UNIT_MAPPING ? UNIT_MAPPING[unitText] : unitText;
+            const normalizedUnit = UNIT_MAPPING[unitText] || unitText;
 
             return {
                 quantity: { value, unit: normalizedUnit },
@@ -154,12 +154,12 @@ export class QuantityParser {
 
         // 日本語表現: "大さじ2"、"3個" など
         const japaneseFormat = /^([大小]さじ|[一-龠々ぁ-ヶ]+)(\d+(\.\d+)?)$/.exec(quantityStr);
-        if (japaneseFormat) {
+        if (japaneseFormat && japaneseFormat[1] && japaneseFormat[2]) {
             const unitText = japaneseFormat[1];
             const value = parseFloat(japaneseFormat[2]);
 
             // 単位の正規化
-            const normalizedUnit = unitText in UNIT_MAPPING ? UNIT_MAPPING[unitText] : unitText;
+            const normalizedUnit = UNIT_MAPPING[unitText] || unitText;
 
             return {
                 quantity: { value, unit: normalizedUnit },
@@ -200,7 +200,7 @@ export class QuantityParser {
             if (normalized.includes(kanji)) {
                 // 単位を抽出
                 const unitMatch = normalized.match(new RegExp(`${kanji}([^\\d${Object.keys(kanjiNumbers).join('')}]+)`));
-                const unit = unitMatch ? unitMatch[1] : '標準量';
+                const unit = unitMatch && unitMatch[1] ? unitMatch[1] : '標準量';
 
                 return { found: true, value, unit };
             }
@@ -234,25 +234,29 @@ export class QuantityParser {
         }
 
         // カテゴリと単位の組み合わせによる特殊なケース
-        if (category && category in CATEGORY_UNIT_GRAMS && unit in CATEGORY_UNIT_GRAMS[category]) {
-            const categoryUnitValue = CATEGORY_UNIT_GRAMS[category][unit];
+        if (category && category in CATEGORY_UNIT_GRAMS) {
+            const categoryUnits = CATEGORY_UNIT_GRAMS[category];
+            if (categoryUnits && unit in categoryUnits) {
+                const categoryUnitValue = categoryUnits[unit];
 
-            // 食品名特有の量がある場合
-            if (typeof categoryUnitValue === 'object' && foodName) {
-                const specificFruitGrams = categoryUnitValue as SpecificFruitGrams;
-                for (const [specificFood, specificGrams] of Object.entries(specificFruitGrams)) {
-                    if (foodName.includes(specificFood)) {
-                        return { grams: value * specificGrams, confidence: 0.95 };
+                // 食品名特有の量がある場合
+                if (typeof categoryUnitValue === 'object' && foodName) {
+                    const specificFruitGrams = categoryUnitValue as SpecificFruitGrams;
+                    for (const [specificFood, specificGrams] of Object.entries(specificFruitGrams)) {
+                        if (foodName.includes(specificFood)) {
+                            return { grams: value * specificGrams, confidence: 0.95 };
+                        }
                     }
+                } else if (typeof categoryUnitValue === 'number') {
+                    return { grams: value * categoryUnitValue, confidence: 0.9 };
                 }
-            } else if (typeof categoryUnitValue === 'number') {
-                return { grams: value * categoryUnitValue, confidence: 0.9 };
             }
         }
 
         // 一般的な単位変換
-        if (unit in UNIT_TO_GRAM) {
-            return { grams: value * UNIT_TO_GRAM[unit], confidence: 0.8 };
+        const gramsPerUnit = UNIT_TO_GRAM[unit];
+        if (gramsPerUnit !== undefined) {
+            return { grams: value * gramsPerUnit, confidence: 0.8 };
         }
 
         // 単位が不明の場合は標準量とみなす

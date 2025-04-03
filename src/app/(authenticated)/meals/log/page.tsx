@@ -20,9 +20,10 @@ import { AppError } from '@/lib/error'
 import {
     normalizeNutritionData,
     validateMealData,
-    prepareForApiRequest
+    prepareForApiRequest,
+    convertToStandardizedNutrition
 } from '@/lib/nutrition/nutrition-utils';
-import { StandardizedMealData } from '@/types/nutrition';
+import { StandardizedMealData, StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
 
 
 // 入力モードの型定義
@@ -36,8 +37,8 @@ interface FoodItem {
     confidence: number;
 }
 
-// 栄養情報の型定義
-interface NutritionData {
+// 栄養情報の型定義 - レガシーAPIとの互換性のため一時的に保持
+interface LegacyNutritionData {
     calories: number;
     protein: number;
     iron: number;
@@ -57,7 +58,7 @@ interface RecognitionFoodItem {
 // 認識データの型定義 (RecognitionEditorコンポーネントと互換性のある形式)
 interface RecognitionData {
     foods: RecognitionFoodItem[];
-    nutrition: NutritionData;
+    nutrition: LegacyNutritionData;
 }
 
 // APIからのレスポンスデータのラッパー型
@@ -65,11 +66,11 @@ interface ApiRecognitionResponse {
     data: {
         foods: RecognitionFoodItem[];
     };
-    nutrition: NutritionData;
+    nutrition: LegacyNutritionData;
 }
 
 // 初期の栄養情報
-const initialNutrition: NutritionData = {
+const initialNutrition: LegacyNutritionData = {
     calories: 0,
     protein: 0,
     iron: 0,
@@ -246,8 +247,20 @@ export default function MealLogPage() {
                 );
             }
 
-            // AI認識結果から標準化された栄養データを取得
-            const standardizedNutrition = normalizeNutritionData(recognitionData);
+            // LegacyNutritionDataをNutritionDataに変換
+            const legacyNutrition = recognitionData.nutrition;
+            const nutrition = {
+                calories: legacyNutrition.calories,
+                protein: legacyNutrition.protein,
+                iron: legacyNutrition.iron,
+                folic_acid: legacyNutrition.folic_acid,
+                calcium: legacyNutrition.calcium,
+                vitamin_d: legacyNutrition.vitamin_d || 0,
+                confidence_score: legacyNutrition.confidence_score
+            };
+
+            // StandardizedMealNutrition型に変換
+            const standardizedNutrition = convertToStandardizedNutrition(nutrition, recognitionData.foods);
 
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
@@ -452,69 +465,36 @@ export default function MealLogPage() {
             }
 
             // 型安全に栄養データを取得
-            const nutrition: NutritionData = nutritionResult.data.nutrition || initialNutrition;
+            const legacyNutrition: LegacyNutritionData = nutritionResult.data.nutrition || initialNutrition;
+
+            // LegacyNutritionData を NutritionData に変換
+            const nutrition = {
+                calories: legacyNutrition.calories,
+                protein: legacyNutrition.protein,
+                iron: legacyNutrition.iron,
+                folic_acid: legacyNutrition.folic_acid,
+                calcium: legacyNutrition.calcium,
+                vitamin_d: legacyNutrition.vitamin_d || 0, // デフォルト値を設定
+                confidence_score: legacyNutrition.confidence_score
+            };
+
+            // 食品アイテムを作成
+            const mealItems = enhancedFoods.map((food) => ({
+                name: food.name,
+                amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
+                unit: food.quantity?.split(' ')[1] || '個',
+            }));
+
+            // StandardizedMealNutrition型に変換
+            const standardizedNutrition = convertToStandardizedNutrition(nutrition, enhancedFoods);
 
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
                 user_id: session.user.id,
                 meal_date: (selectedDate ? selectedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
                 meal_type: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
-                meal_items: enhancedFoods.map((food) => ({
-                    name: food.name,
-                    amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
-                    unit: food.quantity?.split(' ')[1] || '個',
-                })),
-                // 簡易的な変換を行う（本来は詳細な変換が必要）
-                nutrition_data: {
-                    totalCalories: nutrition.calories,
-                    totalNutrients: [
-                        {
-                            name: 'たんぱく質',
-                            value: nutrition.protein,
-                            unit: 'g'
-                        },
-                        {
-                            name: '鉄分',
-                            value: nutrition.iron,
-                            unit: 'mg'
-                        },
-                        {
-                            name: '葉酸',
-                            value: nutrition.folic_acid,
-                            unit: 'mcg'
-                        },
-                        {
-                            name: 'カルシウム',
-                            value: nutrition.calcium,
-                            unit: 'mg'
-                        },
-                        {
-                            name: 'ビタミンD',
-                            value: nutrition.vitamin_d || 0,
-                            unit: 'mcg'
-                        }
-                    ],
-                    // 食品データは簡易的な構造で代用
-                    foodItems: enhancedFoods.map(food => ({
-                        id: food.id,
-                        name: food.name,
-                        nutrition: {
-                            calories: nutrition.calories / enhancedFoods.length,
-                            nutrients: [],
-                            servingSize: {
-                                value: 1,
-                                unit: '人前'
-                            }
-                        },
-                        amount: 1,
-                        unit: '人前'
-                    })),
-                    pregnancySpecific: {
-                        folatePercentage: 0,  // 詳細データがないため0を設定
-                        ironPercentage: 0,
-                        calciumPercentage: 0
-                    }
-                }
+                meal_items: mealItems,
+                nutrition_data: standardizedNutrition
                 // image_urlは任意のため省略
             };
 

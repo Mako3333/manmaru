@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { EnhancedRecognitionEditor } from "@/components/meals/enhanced-recognition-editor";
 import { toast } from "sonner";
+import { StandardizedMealNutrition, Nutrient, NutrientUnit } from "@/types/nutrition";
 
 // スケルトンコンポーネントの型定義
 interface SkeletonProps {
@@ -22,24 +23,20 @@ interface ApiFood {
     confidence: number;
 }
 
-// 栄養情報の型定義
-interface Nutrition {
-    calories: number;
-    protein: number;
-    iron: number;
-    folic_acid: number;
-    calcium: number;
-    vitamin_d?: number;
-    confidence_score: number;
-}
-
 // 解析結果データの型定義
 interface RecognitionData {
     foods: ApiFood[];
-    nutrition: Nutrition;
+    nutrition: StandardizedMealNutrition;
 }
 
-// デモ用のモックデータ
+// 栄養素作成ヘルパー
+const createNutrient = (name: string, value: number, unit: NutrientUnit): Nutrient => ({
+    name,
+    value,
+    unit,
+});
+
+// デモ用のモックデータ (StandardizedMealNutrition 形式)
 const mockRecognitionData: RecognitionData = {
     foods: [
         { name: "ほうれん草", quantity: "1束", confidence: 0.92 },
@@ -48,13 +45,32 @@ const mockRecognitionData: RecognitionData = {
         { name: "ごはん", quantity: "1杯", confidence: 0.95 }
     ],
     nutrition: {
-        calories: 450,
-        protein: 15,
-        iron: 6.5,
-        folic_acid: 250,
-        calcium: 300,
-        vitamin_d: 3.5,
-        confidence_score: 0.85
+        totalCalories: 450,
+        totalNutrients: [
+            createNutrient('たんぱく質', 15, 'g'),
+            createNutrient('鉄分', 6.5, 'mg'),
+            createNutrient('葉酸', 250, 'mcg'),
+            createNutrient('カルシウム', 300, 'mg'),
+            createNutrient('ビタミンD', 3.5, 'mcg'),
+        ],
+        foodItems: [], // モックでは簡易的に空
+        pregnancySpecific: {
+            folatePercentage: (250 / 400) * 100,
+            ironPercentage: (6.5 / 20) * 100,
+            calciumPercentage: (300 / 800) * 100,
+        }
+    }
+};
+
+// 空の栄養データ
+const emptyNutrition: StandardizedMealNutrition = {
+    totalCalories: 0,
+    totalNutrients: [],
+    foodItems: [],
+    pregnancySpecific: {
+        folatePercentage: 0,
+        ironPercentage: 0,
+        calciumPercentage: 0,
     }
 };
 
@@ -62,7 +78,7 @@ export default function EnhancedRecognitionPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
-    const [recognitionData, setRecognitionData] = useState<RecognitionData>(mockRecognitionData);
+    const [recognitionData, setRecognitionData] = useState<RecognitionData>({ foods: [], nutrition: emptyNutrition });
     const [error, setError] = useState<string | null>(null);
 
     const mealId = searchParams.get("meal_id");
@@ -104,12 +120,27 @@ export default function EnhancedRecognitionPage() {
 
                     // 既存データを変更して少し異なるデータにする
                     const modifiedData: RecognitionData = {
-                        ...mockRecognitionData,
                         foods: [
                             { name: "サラダ", quantity: "1皿", confidence: 0.88 },
                             { name: "チキン", quantity: "1枚", confidence: 0.93 },
                             { name: "ライス", quantity: "1杯", confidence: 0.95 }
-                        ]
+                        ],
+                        nutrition: {
+                            totalCalories: 600,
+                            totalNutrients: [
+                                createNutrient('たんぱく質', 30, 'g'),
+                                createNutrient('鉄分', 4.0, 'mg'),
+                                createNutrient('葉酸', 180, 'mcg'),
+                                createNutrient('カルシウム', 150, 'mg'),
+                                createNutrient('ビタミンD', 2.5, 'mcg'),
+                            ],
+                            foodItems: [],
+                            pregnancySpecific: {
+                                folatePercentage: (180 / 400) * 100,
+                                ironPercentage: (4.0 / 20) * 100,
+                                calciumPercentage: (150 / 800) * 100,
+                            }
+                        }
                     };
                     setRecognitionData(modifiedData);
                 }
@@ -117,14 +148,7 @@ export default function EnhancedRecognitionPage() {
                 else {
                     setRecognitionData({
                         foods: [],
-                        nutrition: {
-                            calories: 0,
-                            protein: 0,
-                            iron: 0,
-                            folic_acid: 0,
-                            calcium: 0,
-                            confidence_score: 0
-                        }
+                        nutrition: emptyNutrition
                     });
                 }
             } catch (err) {

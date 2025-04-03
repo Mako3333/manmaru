@@ -12,6 +12,20 @@ import { AlertCircle, Check, Loader2, InfoIcon, Info } from 'lucide-react';
 import { ManualIngredientsForm } from '@/components/recipes/manual-ingredients-form';
 import { ScreenshotUploader } from '@/components/recipes/screenshot-uploader';
 import { SocialMediaPlaceholder } from '@/components/recipes/social-media-placeholder';
+import { StandardizedMealNutrition } from '@/types/nutrition';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-utils';
+import { toast } from 'react-hot-toast';
+
+const createEmptyStandardizedNutrition = (): StandardizedMealNutrition => ({
+    totalCalories: 0,
+    totalNutrients: [],
+    foodItems: [],
+    pregnancySpecific: {
+        folatePercentage: 0,
+        ironPercentage: 0,
+        calciumPercentage: 0,
+    }
+});
 
 export default function RecipeClipClient() {
     const router = useRouter();
@@ -19,7 +33,11 @@ export default function RecipeClipClient() {
     const [error, setError] = useState<string | null>(null);
     const [step, setStep] = useState<'url' | 'confirm' | 'success'>('url');
     const [parsedRecipe, setParsedRecipe] = useState<RecipeUrlClipResponse | null>(null);
-    const [editedRecipe, setEditedRecipe] = useState<RecipeUrlClipResponse & { recipe_type?: string; is_social_media?: boolean; content_id?: string; } | null>(null);
+    const [editedRecipe, setEditedRecipe] = useState<
+        Omit<RecipeUrlClipResponse, 'nutrition_per_serving'> &
+        { nutrition_per_serving: StandardizedMealNutrition; recipe_type?: string; is_social_media?: boolean; content_id?: string; use_placeholder?: boolean; }
+        | null
+    >(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [usePlaceholder, setUsePlaceholder] = useState<boolean>(true);
     const [servings, setServings] = useState<number>(2); // デフォルト人数：2人前
@@ -52,7 +70,7 @@ export default function RecipeClipClient() {
             }
 
             const responseData = await response.json();
-            const parsedData = responseData.data; // 成功レスポンスのデータフィールドを取得
+            const parsedData = responseData.data as RecipeUrlClipResponse; // 取得データに型アサーション
 
             // ソーシャルメディア情報を追加
             if (isSocialMedia && !parsedData.is_social_media) {
@@ -61,9 +79,24 @@ export default function RecipeClipClient() {
 
             console.log('レシピ解析結果:', parsedData);
 
-            setParsedRecipe(parsedData);
+            // parsedData.nutrition_per_serving が StandardizedMealNutrition でない可能性を考慮
+            // 必要に応じて convertToStandardizedNutrition を使用して変換
+            let standardizedNutrition: StandardizedMealNutrition;
+            if (parsedData.nutrition_per_serving && !('totalNutrients' in parsedData.nutrition_per_serving)) {
+                // 仮の食品アイテムリストを作成 (変換関数が要求するため)
+                const tempFoodItems = parsedData.ingredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
+                // convertToStandardizedNutrition は NutritionData (古い型) を期待するため、型アサーション
+                standardizedNutrition = convertToStandardizedNutrition(parsedData.nutrition_per_serving as any, tempFoodItems as any);
+            } else if (parsedData.nutrition_per_serving) {
+                standardizedNutrition = parsedData.nutrition_per_serving;
+            } else {
+                standardizedNutrition = createEmptyStandardizedNutrition();
+            }
+
+            setParsedRecipe(parsedData); // 元のレスポンスも保持
             setEditedRecipe({
                 ...parsedData,
+                nutrition_per_serving: standardizedNutrition, // 変換後のデータをセット
                 recipe_type: 'main_dish', // デフォルト値
             });
 
@@ -110,11 +143,17 @@ export default function RecipeClipClient() {
                         });
 
                         if (response.ok) {
-                            const nutritionData = await response.json();
+                            const nutritionApiResponse = await response.json();
 
-                            if (nutritionData.success) {
+                            if (nutritionApiResponse.success) {
+                                // 取得した栄養データを StandardizedMealNutrition に変換
+                                const calculatedNutrition = nutritionApiResponse.nutrition_per_serving;
+                                const tempFoodItems = validIngredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
+                                // 変換関数は NutritionData (古い型) を期待する可能性
+                                const standardizedNutrition = convertToStandardizedNutrition(calculatedNutrition as any, tempFoodItems as any);
+
                                 // 栄養素データを更新
-                                editedRecipe.nutrition_per_serving = nutritionData.nutrition_per_serving;
+                                editedRecipe.nutrition_per_serving = standardizedNutrition;
                             }
                         }
                     }
@@ -181,11 +220,11 @@ export default function RecipeClipClient() {
         }
     };
 
-    const updateIngredients = (ingredients: RecipeIngredient[]) => {
+    const updateIngredients = (newIngredients: RecipeIngredient[]) => {
         if (editedRecipe) {
             setEditedRecipe({
                 ...editedRecipe,
-                ingredients
+                ingredients: newIngredients
             });
         }
     };
@@ -237,7 +276,7 @@ export default function RecipeClipClient() {
                         </AlertDescription>
                     </Alert>
                 )}
-                <URLClipForm onSubmit={handleUrlSubmit} isLoading={isLoading} error={undefined} />
+                <URLClipForm onSubmit={handleUrlSubmit} isLoading={isLoading} error={error || undefined} />
             </CardContent>
         </Card>
     );
@@ -249,10 +288,17 @@ export default function RecipeClipClient() {
             editedRecipe.source_platform === 'Instagram' ||
             editedRecipe.source_platform === 'TikTok';
 
+        // 栄養情報の表示（StandardizedMealNutrition に合わせて調整）
+        const nutrition = editedRecipe.nutrition_per_serving;
+        const displayNutrients = [
+            { key: 'totalCalories', label: 'カロリー', value: nutrition.totalCalories, unit: 'kcal' },
+            ...nutrition.totalNutrients.map(n => ({ key: n.name, label: n.name, value: n.value, unit: n.unit }))
+        ].filter(n => n.value !== undefined && n.value > 0); // 値が0より大きいものだけ表示
+
         return (
             <Card className="w-full max-w-3xl mx-auto">
                 <CardHeader>
-                    <CardTitle>クリップ内容の確認</CardTitle>
+                    <CardTitle>クリップ内容の確認・編集</CardTitle>
                     <CardDescription>
                         {isSocialMedia
                             ? 'ソーシャルメディアからクリップした内容を編集できます'
@@ -298,48 +344,6 @@ export default function RecipeClipClient() {
                         />
                     </div>
 
-                    {/* サムネイル画像セクション */}
-                    {isSocialMedia && (
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">サムネイル画像</label>
-
-                            {!usePlaceholder ? (
-                                // スクリーンショットアップローダー
-                                <div>
-                                    <ScreenshotUploader
-                                        initialImage={editedRecipe.image_url}
-                                        onImageCapture={handleImageCapture}
-                                    />
-                                    <div className="mt-3">
-                                        <p className="text-sm text-gray-500 mb-2">
-                                            または以下のプレースホルダーを使用:
-                                        </p>
-                                        <div className="cursor-pointer" onClick={handleUsePlaceholder}>
-                                            <SocialMediaPlaceholder
-                                                platform={editedRecipe.source_platform as 'Instagram' | 'TikTok'}
-                                                title={editedRecipe.title}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                // プレースホルダー
-                                <div>
-                                    <SocialMediaPlaceholder
-                                        platform={editedRecipe.source_platform as 'Instagram' | 'TikTok'}
-                                        title={editedRecipe.title}
-                                    />
-                                    <div className="mt-3">
-                                        <p className="text-sm text-gray-500 mb-2">スクリーンショットをアップロードする:</p>
-                                        <ScreenshotUploader
-                                            onImageCapture={handleImageCapture}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
                     <div className="space-y-2">
                         <label className="text-sm font-medium">レシピの種類</label>
                         <Tabs defaultValue="main_dish" onValueChange={handleRecipeTypeChange}>
@@ -351,6 +355,18 @@ export default function RecipeClipClient() {
                                 <TabsTrigger value="dessert">デザート</TabsTrigger>
                             </TabsList>
                         </Tabs>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">人数</label>
+                        <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={servings}
+                            onChange={(e) => handleServingsChange(parseInt(e.target.value, 10))}
+                            className="w-full p-2 border rounded"
+                        />
                     </div>
 
                     <div className="space-y-2">
@@ -381,11 +397,11 @@ export default function RecipeClipClient() {
                             <label className="text-sm font-medium">栄養情報 (1人前)</label>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {Object.entries(editedRecipe.nutrition_per_serving).map(([key, value]) => (
-                                <div key={key} className="bg-gray-50 p-2 rounded">
-                                    <div className="text-xs text-gray-500">{getNutrientLabel(key)}</div>
+                            {displayNutrients.map((nutrient) => (
+                                <div key={nutrient.key} className="bg-gray-50 p-2 rounded">
+                                    <div className="text-xs text-gray-500">{nutrient.label}:</div>
                                     <div className="font-medium">
-                                        {typeof value === 'number' ? Number(value).toFixed(1) : value} {getNutrientUnit(key)}
+                                        {Math.round(nutrient.value * 10) / 10} {nutrient.unit}
                                     </div>
                                 </div>
                             ))}
@@ -396,6 +412,34 @@ export default function RecipeClipClient() {
                             </p>
                         )}
                     </div>
+
+                    {/* 画像関連 (ソーシャルメディアの場合) */}
+                    {isSocialMedia && (
+                        <div className="mb-6">
+                            <h3 className="text-lg font-semibold mb-3">表示画像</h3>
+                            <Tabs defaultValue={usePlaceholder ? "placeholder" : "screenshot"} className="w-full">
+                                <TabsList className="grid w-full grid-cols-2">
+                                    <TabsTrigger value="placeholder" onClick={handleUsePlaceholder}>プレースホルダー</TabsTrigger>
+                                    <TabsTrigger value="screenshot" onClick={() => setUsePlaceholder(false)}>スクリーンショット</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="placeholder" className="mt-4">
+                                    <SocialMediaPlaceholder platform={(editedRecipe.source_platform === 'Instagram' || editedRecipe.source_platform === 'TikTok') ? editedRecipe.source_platform : 'other'} />
+                                    <p className="text-xs text-gray-500 mt-2">著作権に配慮し、プレースホルダー画像を使用します。</p>
+                                </TabsContent>
+                                <TabsContent value="screenshot" className="mt-4">
+                                    <ScreenshotUploader onImageCapture={handleImageCapture} initialImage={usePlaceholder ? undefined : editedRecipe.image_url} />
+                                    <Alert variant="warning" className="mt-4">
+                                        <Info className="h-4 w-4" />
+                                        <AlertTitle>注意</AlertTitle>
+                                        <AlertDescription>
+                                            スクリーンショットを使用する場合、著作権にご注意ください。
+                                            個人的な利用にとどめてください。
+                                        </AlertDescription>
+                                    </Alert>
+                                </TabsContent>
+                            </Tabs>
+                        </div>
+                    )}
                 </CardContent>
                 <CardFooter className="flex justify-between">
                     <Button
@@ -483,24 +527,4 @@ export default function RecipeClipClient() {
             {renderContent()}
         </div>
     );
-}
-
-function getNutrientLabel(key: string): string {
-    const labels: Record<string, string> = {
-        calories: 'カロリー',
-        protein: 'タンパク質',
-        fat: '脂質',
-        carbs: '炭水化物',
-        iron: '鉄分',
-        folic_acid: '葉酸',
-        calcium: 'カルシウム',
-        vitamin_d: 'ビタミンD',
-    };
-    return labels[key] || key;
-}
-
-function getNutrientUnit(key: string): string {
-    if (key === 'calories') return 'kcal';
-    if (key === 'folic_acid') return 'μg';
-    return 'g';
 } 
