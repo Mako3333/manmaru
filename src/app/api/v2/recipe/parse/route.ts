@@ -7,14 +7,20 @@ import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
-import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { convertToStandardizedNutrition, convertToLegacyNutrition, createStandardizedMealNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
+import { IAIService } from '@/lib/ai/ai-service.interface';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
-    url: z.string().url("有効なURLを指定してください"),
-});
+    url: z.string().url("有効なURLを指定してください").optional(),
+    text: z.string().min(1, "テキストを入力してください").optional(),
+})
+    .refine(data => data.url || data.text, {
+        message: "URLまたはテキストのいずれか一方を指定してください",
+        path: ["url", "text"], // エラーメッセージを関連付けるパス
+    });
 
 /**
  * レシピ解析API v2
@@ -27,16 +33,33 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
     try {
         // スキーマ検証
         const validatedData = requestSchema.parse(requestData);
-        const url = validatedData.url.trim();
+        const url = validatedData.url?.trim(); // Optional chaining
+        const text = validatedData.text?.trim(); // Optional chaining
+
+        // urlもtextもない場合は refine で弾かれるはずだが念のため
+        if (!url && !text) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'URLまたはテキストが必要です'
+            });
+        }
 
         // 処理時間計測開始
         const startTime = Date.now();
 
         // AIサービス初期化
-        const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
+        const aiService: IAIService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
-        // レシピ解析の実行
-        const analysisResult = await aiService.analyzeRecipeText(url);
+        // レシピ解析の実行 (urlがあればurlを、なければtextを使用)
+        let analysisResult;
+        if (url) {
+            analysisResult = await aiService.parseRecipeFromUrl(url);
+        } else if (text) {
+            analysisResult = await aiService.analyzeRecipeText(text);
+        } else {
+            // この分岐には到達しないはず
+            throw new AppError({ code: ErrorCode.Base.API_ERROR, message: '解析対象の指定が無効です' });
+        }
 
         if (analysisResult.error) {
             throw new AppError({
@@ -51,8 +74,18 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
 
         // 解析結果から食品リストを取得
         const ingredients = analysisResult.parseResult.foods || [];
-        const recipeTitle = 'レシピ'; // デフォルトタイトル
-        const servings = 1; // デフォルトの人数
+        const recipeTitle = analysisResult.parseResult.title || 'レシピ'; // デフォルト値フォールバック
+        const servingsString = analysisResult.parseResult.servings || '1人分'; // デフォルト値フォールバック
+
+        // servingsString から数値を取得 (1人前計算用)
+        let servingsNum = 1;
+        const match = servingsString.match(/\d+/);
+        if (match) {
+            const parsed = parseInt(match[0], 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                servingsNum = parsed;
+            }
+        }
 
         // 材料リストの検証
         if (ingredients.length === 0) {
@@ -81,15 +114,15 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
 
         // 1人前のStandardizedMealNutrition形式を作成
         const standardizedPerServing: StandardizedMealNutrition = {
-            totalCalories: standardizedNutrition.totalCalories / servings,
+            totalCalories: standardizedNutrition.totalCalories / servingsNum,
             totalNutrients: standardizedNutrition.totalNutrients.map(nutrient => {
                 const newNutrient: Nutrient = {
                     name: nutrient.name,
-                    value: nutrient.value / servings,
+                    value: nutrient.value / servingsNum,
                     unit: nutrient.unit
                 };
                 if (nutrient.percentDailyValue !== undefined) {
-                    newNutrient.percentDailyValue = nutrient.percentDailyValue / servings;
+                    newNutrient.percentDailyValue = nutrient.percentDailyValue / servingsNum;
                 }
                 return newNutrient;
             }),
@@ -97,18 +130,18 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
                 const newFoodItem = {
                     id: item.id,
                     name: item.name,
-                    amount: item.amount / servings,
+                    amount: item.amount / servingsNum,
                     unit: item.unit,
                     nutrition: {
-                        calories: item.nutrition.calories / servings,
+                        calories: item.nutrition.calories / servingsNum,
                         nutrients: item.nutrition.nutrients.map(nutrient => {
                             const newNutrient: Nutrient = {
                                 name: nutrient.name,
-                                value: nutrient.value / servings,
+                                value: nutrient.value / servingsNum,
                                 unit: nutrient.unit
                             };
                             if (nutrient.percentDailyValue !== undefined) {
-                                newNutrient.percentDailyValue = nutrient.percentDailyValue / servings;
+                                newNutrient.percentDailyValue = nutrient.percentDailyValue / servingsNum;
                             }
                             return newNutrient;
                         }),
@@ -122,34 +155,34 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         // オプショナルプロパティを別途追加（型エラー回避のため）
         if (standardizedNutrition.pregnancySpecific) {
             standardizedPerServing.pregnancySpecific = {
-                folatePercentage: standardizedNutrition.pregnancySpecific.folatePercentage / servings,
-                ironPercentage: standardizedNutrition.pregnancySpecific.ironPercentage / servings,
-                calciumPercentage: standardizedNutrition.pregnancySpecific.calciumPercentage / servings
+                folatePercentage: standardizedNutrition.pregnancySpecific.folatePercentage / servingsNum,
+                ironPercentage: standardizedNutrition.pregnancySpecific.ironPercentage / servingsNum,
+                calciumPercentage: standardizedNutrition.pregnancySpecific.calciumPercentage / servingsNum
             };
         }
 
         // レガシー形式の1人前データも作成（後方互換性のため）
         const legacyPerServing = {
-            calories: nutritionResult.nutrition.calories / servings,
-            protein: nutritionResult.nutrition.protein / servings,
-            iron: nutritionResult.nutrition.iron / servings,
-            folic_acid: nutritionResult.nutrition.folic_acid / servings,
-            calcium: nutritionResult.nutrition.calcium / servings,
-            vitamin_d: nutritionResult.nutrition.vitamin_d / servings,
+            calories: nutritionResult.nutrition.calories / servingsNum,
+            protein: nutritionResult.nutrition.protein / servingsNum,
+            iron: nutritionResult.nutrition.iron / servingsNum,
+            folic_acid: nutritionResult.nutrition.folic_acid / servingsNum,
+            calcium: nutritionResult.nutrition.calcium / servingsNum,
+            vitamin_d: nutritionResult.nutrition.vitamin_d / servingsNum,
             confidence_score: nutritionResult.nutrition.confidence_score,
             ...(nutritionResult.nutrition.extended_nutrients
                 ? {
                     extended_nutrients: Object.entries(nutritionResult.nutrition.extended_nutrients).reduce(
                         (acc, [key, value]) => {
                             if (typeof value === 'number') {
-                                return { ...acc, [key]: value / servings };
+                                return { ...acc, [key]: value / servingsNum };
                             } else if (typeof value === 'object' && value !== null) {
                                 return {
                                     ...acc,
                                     [key]: Object.entries(value).reduce(
                                         (subAcc, [subKey, subValue]) => ({
                                             ...subAcc,
-                                            [subKey]: (subValue as number) / servings
+                                            [subKey]: (subValue as number) / servingsNum
                                         }),
                                         {}
                                     )
@@ -174,7 +207,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             data: {
                 recipe: {
                     title: recipeTitle,
-                    servings: servings,
+                    servings: servingsString, // AIからの解析結果(文字列) or デフォルト値
                     ingredients: ingredients,
                     sourceUrl: url
                 },

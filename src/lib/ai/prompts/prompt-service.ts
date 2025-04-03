@@ -2,13 +2,20 @@
 import { TemplateEngine } from './template-engine';
 import { PromptVersionManager } from './version-manager';
 
-// プロンプトID定義
+/**
+ * プロンプト種別
+ */
 export enum PromptType {
+    /** 食事画像解析用 */
     FOOD_ANALYSIS = 'food-analysis',
+    /** 栄養アドバイス生成用 */
     NUTRITION_ADVICE = 'nutrition-advice',
+    /** レシピ推薦用 */
+    RECIPE_RECOMMENDATION = 'recipe-recommendation',
+    /** テキスト入力解析用 */
     TEXT_INPUT_ANALYSIS = 'text-input-analysis',
-    // 将来的に追加するプロンプトタイプ
-    RECIPE_RECOMMENDATION = 'recipe-recommendation'
+    /** URLからのレシピ解析用 (新規追加) */
+    RECIPE_URL_ANALYSIS = 'recipe-url-analysis',
 }
 
 /**
@@ -156,6 +163,22 @@ export class PromptService {
             });
         } catch (error) {
             console.error('レシピ推薦プロンプトの登録に失敗しました:', error);
+        }
+
+        // URLレシピ解析 (新規追加)
+        try {
+            const recipeUrlAnalysisV1 = require('./templates/recipe-url-analysis/v1');
+            this.versionManager.registerPrompt({
+                id: PromptType.RECIPE_URL_ANALYSIS,
+                name: 'URLレシピ解析',
+                description: 'URLからレシピ情報を抽出するプロンプト',
+                category: 'レシピ解析',
+                versions: [recipeUrlAnalysisV1.metadata],
+                parameters: ['recipeContent'], // テンプレートの変数名に合わせる
+                defaultVersion: 'v1'
+            });
+        } catch (error) {
+            console.error('URLレシピ解析プロンプトの登録に失敗しました:', error);
         }
     }
 } 

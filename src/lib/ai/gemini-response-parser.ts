@@ -6,7 +6,9 @@ import { FoodInputParseResult } from '@/lib/food/food-input-parser';
  */
 export interface GeminiParseResult {
     foods: FoodInputParseResult[];
-    confidence: number;
+    confidence?: number;
+    title?: string;
+    servings?: string;
     error?: string;
     debug?: any; // デバッグ情報用
 }
@@ -20,95 +22,88 @@ export class GeminiResponseParser {
      * 戻り値の型を GeminiParseResult に変更
      */
     async parseResponse(responseText: string): Promise<GeminiParseResult> {
+        console.log(`[GeminiResponseParser] Parsing response (length: ${responseText.length})`);
         try {
-            // デフォルトの結果（エラー時）
-            const defaultResult: GeminiParseResult = {
-                foods: [],
-                confidence: 0,
-                error: '応答の解析に失敗しました'
-            };
+            // ```json ... ``` ブロックを探す
+            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            let jsonStr = '';
 
-            if (!responseText) {
-                return defaultResult;
+            if (jsonMatch && jsonMatch[1]) {
+                jsonStr = jsonMatch[1].trim();
+                console.log(`[GeminiResponseParser] Found JSON block.`);
+            } else {
+                // JSONブロックがない場合、全体がJSONであると仮定してみる
+                try {
+                    // 応答全体がJSONとしてパースできるか試す
+                    JSON.parse(responseText);
+                    jsonStr = responseText.trim();
+                    console.log(`[GeminiResponseParser] Response might be raw JSON.`);
+                } catch (e) {
+                    // パース失敗ならJSONではないと判断
+                    console.error('[GeminiResponseParser] Failed to find or parse JSON block:', responseText);
+                    return {
+                        foods: [],
+                        error: 'AIの応答から有効なJSONデータが見つかりませんでした。'
+                    };
+                }
             }
 
-            // JSONフォーマットの検出
-            const jsonMatch = responseText.match(/```json([\s\S]*?)```|{[\s\S]*}/);
-            if (!jsonMatch) {
-                console.error('GeminiResponseParser: JSON形式の応答が見つかりませんでした', responseText);
+            if (!jsonStr) {
+                return { foods: [], error: '抽出されたJSON文字列が空です。' };
+            }
+
+            console.log(`[GeminiResponseParser] Extracted JSON string (preview): ${jsonStr.substring(0, 100)}...`);
+            const parsedData = JSON.parse(jsonStr);
+
+            // レシピ解析結果 (title, servings, ingredients) かどうかをチェック
+            if ('title' in parsedData || 'servings' in parsedData || 'ingredients' in parsedData) {
+                console.log('[GeminiResponseParser] Parsing as Recipe Analysis result.');
+                const foods: FoodInputParseResult[] = (parsedData.ingredients || []).map((item: any) => ({
+                    foodName: item.name || '',
+                    quantityText: item.quantity || null, // プロンプトで quantity は string or null を期待
+                    confidence: 0.8 // レシピからの抽出なので、信頼度は比較的高めに設定 (仮)
+                }));
                 return {
-                    ...defaultResult,
-                    debug: { rawResponse: responseText }
+                    foods,
+                    title: parsedData.title,
+                    servings: parsedData.servings,
+                    // confidence はレシピ解析では不要かも
+                    debug: { parsedData, sourceFormat: 'recipe' }
+                };
+            }
+            // 画像・テキスト解析結果 (foods, confidence) かどうかをチェック
+            else if ('foods' in parsedData) {
+                console.log('[GeminiResponseParser] Parsing as Food/Text Analysis result.');
+                const foods: FoodInputParseResult[] = (parsedData.foods || []).map((item: any) => ({
+                    foodName: item.name || '',
+                    // 既存の画像/テキスト解析プロンプトは quantity を返す想定か？
+                    // なければ null を設定
+                    quantityText: item.quantity || null,
+                    confidence: typeof item.confidence === 'number' ? item.confidence : 0.7 // デフォルト値
+                }));
+                const confidence = typeof parsedData.confidence === 'number' ? parsedData.confidence : undefined;
+                return {
+                    foods,
+                    confidence,
+                    // title, servings はこの形式では含まれない
+                    debug: { parsedData, sourceFormat: 'food/text' }
+                };
+            }
+            // 想定外のJSON形式
+            else {
+                console.warn('[GeminiResponseParser] Unknown JSON structure:', parsedData);
+                return {
+                    foods: [],
+                    error: 'AIの応答JSONの構造が予期しない形式でした。'
                 };
             }
 
-            // JSONテキストの抽出と解析
-            let jsonText = jsonMatch[1] || jsonMatch[0];
-            jsonText = jsonText.trim();
-
-            // 最初と最後の波括弧がない場合、追加
-            if (!jsonText.startsWith('{')) {
-                jsonText = '{' + jsonText;
-            }
-            if (!jsonText.endsWith('}')) {
-                jsonText = jsonText + '}';
-            }
-
-            let parsedData;
-            try {
-                parsedData = JSON.parse(jsonText);
-            } catch (e: unknown) {
-                const errorMessage = e instanceof Error ? e.message : String(e);
-                console.error('GeminiResponseParser: JSON解析エラー', e, jsonText);
-                return {
-                    ...defaultResult,
-                    error: 'JSON解析エラー: ' + errorMessage,
-                    debug: { rawResponse: responseText, jsonText }
-                };
-            }
-
-            // 期待される形式の確認
-            if (!parsedData.foods || !Array.isArray(parsedData.foods)) {
-                console.error('GeminiResponseParser: 期待される形式ではありません', parsedData);
-                return {
-                    ...defaultResult,
-                    error: '応答フォーマットエラー: foods配列がありません',
-                    debug: { parsedData }
-                };
-            }
-
-            // 食品リストの変換
-            const foods: FoodInputParseResult[] = parsedData.foods.map((item: any) => {
-                // 食品名と量の取得
-                const foodName = item.name || item.food_name || '';
-                const quantityText = item.quantity || item.amount || null;
-
-                return {
-                    foodName,
-                    quantityText,
-                    confidence: item.confidence || 0.8 // AIの確信度（指定がなければデフォルト値）
-                };
-            });
-
-            // 全体の確信度をメタデータから取得、または計算
-            let confidence = parsedData.confidence || 0;
-            if (confidence === 0 && foods.length > 0) {
-                // 個々の食品の確信度の平均
-                confidence = foods.reduce((sum, food) => sum + food.confidence, 0) / foods.length;
-            }
-
-            return {
-                foods,
-                confidence,
-                debug: { parsedData }
-            };
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error('GeminiResponseParser: 予期しないエラー', error);
+            console.error('[GeminiResponseParser] Error parsing response:', error, { responseText });
             return {
                 foods: [],
-                confidence: 0,
-                error: '解析中の予期しないエラー: ' + errorMessage
+                error: `AI応答の解析中にエラーが発生しました: ${errorMessage}`
             };
         }
     }

@@ -134,7 +134,7 @@ export class TemplateEngine {
         while ((match = ifRegex.exec(template)) !== null) {
             matches.push({
                 fullMatch: match[0],
-                condition: match[1].trim(),
+                condition: match[1]?.trim() || '',
                 ifContent: match[2],
                 elseContent: match[3] || ''
             });
@@ -145,19 +145,18 @@ export class TemplateEngine {
 
         // 最後のマッチから処理（ネスト対応）
         for (let i = matches.length - 1; i >= 0; i--) {
-            const { fullMatch, condition, ifContent, elseContent } = matches[i];
+            const currentMatch = matches[i];
+            if (!currentMatch) continue;
+            const { fullMatch, condition, ifContent, elseContent } = currentMatch;
 
             try {
                 const conditionValue = this.evaluateCondition(condition, context);
                 // console.log(`条件評価: ${condition} => ${conditionValue}`);
 
-                // 条件に応じてコンテンツを選択
-                const selectedContent = conditionValue ? ifContent : elseContent;
+                // 条件に応じてコンテンツを選択 (undefined なら空文字)
+                const selectedContent = conditionValue ? (ifContent ?? '') : (elseContent ?? '');
 
-                // 選択されたコンテンツ内も再帰的に処理
-                // const processedContent = this.processNestedBlocks(selectedContent, context);
-
-                // 結果を置換
+                // 結果を置換 (selectedContent は常に string)
                 result = result.replace(fullMatch, selectedContent);
             } catch (error) {
                 console.error(`条件ブロック処理エラー [${condition}]:`, error);
@@ -183,7 +182,7 @@ export class TemplateEngine {
         while ((match = eachRegex.exec(template)) !== null) {
             matches.push({
                 fullMatch: match[0],
-                arrayPath: match[1].trim(),
+                arrayPath: match[1]?.trim() || '',
                 itemTemplate: match[2]
             });
         }
@@ -193,31 +192,26 @@ export class TemplateEngine {
 
         // 最後のマッチから処理（ネスト対応）
         for (let i = matches.length - 1; i >= 0; i--) {
-            const { fullMatch, arrayPath, itemTemplate } = matches[i];
+            const currentMatch = matches[i];
+            if (!currentMatch) continue;
+            const { fullMatch, arrayPath, itemTemplate } = currentMatch;
+            const currentItemTemplate = itemTemplate ?? ''; // undefined なら空文字
 
             try {
                 const array = this.getNestedValue(arrayPath, context);
 
                 if (!Array.isArray(array) || array.length === 0) {
-                    // 配列が空または存在しない場合は空文字に置換
                     result = result.replace(fullMatch, '');
                     continue;
                 }
 
                 console.log(`処理中の配列: ${arrayPath}, 要素数: ${array.length}`);
 
-                // 各アイテムを処理して結合
                 const processedItems = array.map((item, index) => {
                     try {
-                        // 各項目用のローカルコンテキストを作成
                         const itemContext = { ...context, '@index': index, 'this': item };
-
-                        // まず変数置換
-                        let processed = itemTemplate;
-
-                        // 条件とループの処理（条件→変数の順に適用する必要がある）
-                        processed = this.replaceItemVariables(processed, item, itemContext);
-
+                        // currentItemTemplate (string) を渡す
+                        let processed = this.replaceItemVariables(currentItemTemplate, item, itemContext);
                         return processed;
                     } catch (error) {
                         console.error(`アイテム処理エラー [${index}]:`, error);
@@ -225,7 +219,6 @@ export class TemplateEngine {
                     }
                 }).join('');
 
-                // 結果を置換
                 result = result.replace(fullMatch, processedItems);
             } catch (error) {
                 console.error(`ループブロック処理エラー [${arrayPath}]:`, error);

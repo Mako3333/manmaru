@@ -1,7 +1,7 @@
 //src\app\api\recipes\calculate-nutrients\route.ts
 import { NextResponse } from 'next/server';
 import { RecipeIngredient } from '@/types/recipe';
-import { AIService } from '@/lib/ai/ai-service';
+import { AIService } from '@/lib/ai/ai-service.interface';
 import { withAuthAndErrorHandling, createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
 import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 

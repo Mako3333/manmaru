@@ -1,4 +1,5 @@
 import { AppError } from '../error/types/base-error';
+import { ErrorCode } from '../error/codes/error-codes';
 
 /**
  * APIレスポンスのメタデータ
@@ -88,8 +89,8 @@ export function getHttpStatusCode(error: AppError): number {
     // より具体的なエラーコードのマッピング
     if (code.startsWith('auth_')) return 401; // Unauthorized
     if (code.startsWith('forbidden_')) return 403; // Forbidden
-    if (code.startsWith('not_found')) return 404; // Not Found
-    if (code.startsWith('validation_') || code.startsWith('data_validation_') || code.startsWith('invalid_')) return 400; // Bad Request (Validation or Invalid input)
+    if (code.startsWith('not_found')) return 404; // Not Found (他の not_found 系エラー)
+    if (code.startsWith('validation_') || code.startsWith('data_validation_') || code.startsWith('invalid_') || code === ErrorCode.Nutrition.FOOD_NOT_FOUND) return 400; // Bad Request (Validation, Invalid input, or food_not_found)
     if (code.startsWith('rate_limit') || code.startsWith('quota_')) return 429; // Too Many Requests
 
     // サーバーサイドまたは外部サービス起因のエラーは500 Internal Server Error

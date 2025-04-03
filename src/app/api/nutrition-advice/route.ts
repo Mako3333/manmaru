@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AdviceType } from "@/types/nutrition";
 import { z } from 'zod';
-import { AIService } from '@/lib/ai/ai-service';
+import { AIService } from '@/lib/ai/ai-service.interface';
 import { getCurrentSeason, getJapanDate } from '@/lib/utils/date-utils';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';

@@ -21,7 +21,7 @@ const requestSchema = z.object({
  * 食事画像解析API v2
  * 画像から食品を認識し、栄養素を計算する
  */
-export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
+export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => {
     // リクエストデータを取得して検証
     const requestData = await req.json();
 
@@ -40,14 +40,25 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             });
         }
 
+        // Base64画像データからバイナリに変換 (image/analyzeからコピー)
+        const base64Data = imageData.split(',')[1];
+        if (!base64Data) {
+            throw new AppError({
+                code: ErrorCode.File.INVALID_IMAGE,
+                message: 'Base64データの解析に失敗しました',
+                details: { reason: '画像データからBase64部分を抽出できませんでした' }
+            });
+        }
+        const imageBuffer = Buffer.from(base64Data, 'base64');
+
         // 処理時間計測開始
         const startTime = Date.now();
 
         // AIサービス初期化
         const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
-        // 画像解析の実行
-        const analysisResult = await aiService.analyzeMealImage(imageData);
+        // 画像解析の実行 (Bufferを渡す)
+        const analysisResult = await aiService.analyzeMealImage(imageBuffer);
 
         if (analysisResult.error) {
             throw new AppError({
@@ -95,23 +106,17 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         }
 
         return {
-            success: true,
-            data: {
-                foods: nameQuantityPairs,
-                mealType,
-                ...(trimester ? { trimester } : {}),
-                nutritionResult: {
-                    nutrition: standardizedNutrition,
-                    reliability: nutritionResult.reliability,
-                    matchResults: nutritionResult.matchResults,
-                    legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
-                },
-                recognitionConfidence: analysisResult.parseResult.confidence
+            foods: nameQuantityPairs,
+            mealType,
+            ...(trimester ? { trimester } : {}),
+            nutritionResult: {
+                nutrition: standardizedNutrition,
+                reliability: nutritionResult.reliability,
+                matchResults: nutritionResult.matchResults,
+                legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
             },
-            meta: {
-                processingTimeMs: Date.now() - startTime,
-                ...(warningMessage ? { warning: warningMessage } : {})
-            }
+            recognitionConfidence: analysisResult.parseResult.confidence,
+            ...(warningMessage ? { warning: warningMessage } : {})
         };
 
     } catch (error) {
