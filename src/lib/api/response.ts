@@ -1,5 +1,6 @@
 import { AppError } from '../error/types/base-error';
 import { ErrorCode } from '../error/codes/error-codes';
+import { NextResponse } from 'next/server';
 
 /**
  * APIレスポンスのメタデータ
@@ -51,13 +52,16 @@ export interface ApiResponse<T> {
  */
 export function createSuccessResponse<T>(
     data: T,
-    meta?: ApiResponseMeta
-): ApiResponse<T> {
-    return {
+    meta?: ApiResponseMeta,
+    status: number = 200
+): NextResponse {
+    const responseBody: ApiResponse<T> = {
         success: true,
         data,
         meta
     };
+
+    return NextResponse.json(responseBody, { status });
 }
 
 /**
@@ -66,25 +70,28 @@ export function createSuccessResponse<T>(
 export function createErrorResponse(
     error: AppError,
     meta?: ApiResponseMeta
-): ApiResponse<never> {
-    return {
+): NextResponse {
+    const statusCode = getHttpStatusCode(error.code);
+
+    const responseBody: ApiResponse<never> = {
         success: false,
         error: {
             code: error.code,
-            message: error.userMessage,
+            message: error.userMessage || error.message || 'エラーが発生しました。',
             details: error.details,
             suggestions: error.suggestions
         },
         meta
     };
+
+    return NextResponse.json(responseBody, { status: statusCode });
 }
 
 /**
  * エラーコードに基づいてHTTPステータスコードを取得
  */
-export function getHttpStatusCode(error: AppError): number {
+export function getHttpStatusCode(code: string): number {
     // エラーコードに基づいてHTTPステータスコードを決定
-    const code = error.code;
 
     // 新しいエラーコード体系に対応
     switch (code) {

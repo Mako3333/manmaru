@@ -17,6 +17,18 @@ interface AdviceCardProps {
     profile?: any;
 }
 
+// 修正: APIレスポンスの型を仮定 (必要に応じて調整)
+interface AdviceApiResponse {
+    success: boolean;
+    data?: NutritionAdvice; // 成功時のデータ
+    error?: { // エラー時の情報
+        code?: string;
+        message?: string;
+    };
+    // Linter Error Fix: トップレベルの message も考慮 (もし存在するなら)
+    message?: string;
+}
+
 export const AdviceCard: React.FC<AdviceCardProps> = ({
     date,
     className = '',
@@ -43,40 +55,67 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
             const res = await fetch(apiUrl);
             console.log(`[AdviceCard] API Response status: ${res.status}`);
 
+            // デバッグログ追加: レスポンスの生データをログ出力
+            const responseText = await res.clone().text(); // clone()しないと後でjson()が読めなくなる
+            console.log(`[AdviceCard] Raw response text (status: ${res.status}):`, responseText);
+
             // レスポンスステータスをチェック
             if (!res.ok) {
-                let errorData: any = { message: `APIエラーが発生しました (ステータス: ${res.status})` };
+                let errorMessage = `APIエラーが発生しました (ステータス: ${res.status})`; // デフォルトメッセージ
                 try {
-                    // エラーレスポンスのJSONパースを試みる
-                    const body = await res.json();
-                    console.log('[AdviceCard] API Error response body:', body);
+                    // 修正: cloneしたレスポンスではなく、元のレスポンスでjson()を試す
+                    const errorData: AdviceApiResponse = await res.json(); // 型注釈を追加
+                    console.log('[AdviceCard] Parsed API Error response body:', errorData);
                     // API が返すエラー構造に合わせてメッセージを取得
-                    errorData = body.error || { message: body.message || JSON.stringify(body) };
+                    // errorData.error.message が存在すればそれを使う
+                    if (errorData?.error?.message) {
+                        errorMessage = errorData.error.message;
+                    } else if (errorData?.message) { // Linter Error Fix: Optional Chaining
+                        errorMessage = errorData.message;
+                    }
                 } catch (jsonError) {
                     console.error('[AdviceCard] Failed to parse error response JSON:', jsonError);
-                    // JSONパース失敗時はステータスコードを含むメッセージを使用
+                    // JSONパース失敗時は、生のテキストをエラーメッセージに含める（もしあれば）
+                    if (responseText) {
+                        errorMessage += ` - Response body: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+                    }
                 }
-                // 修正: errorData から message を抽出して Error を throw
-                throw new Error(errorData.message || 'アドバイスの取得に失敗しました');
+                // 最終的なエラーメッセージで Error を throw
+                throw new Error(errorMessage);
             }
 
-            const data = await res.json();
-            console.log('[AdviceCard] API Success response data:', data);
+            // 修正: レスポンスがOKでも、JSONパースに失敗する可能性に対処
+            let data: AdviceApiResponse;
+            try {
+                data = await res.json(); // 型注釈を追加
+                console.log('[AdviceCard] Parsed API Success response data:', data);
+            } catch (jsonParseError) {
+                console.error('[AdviceCard] Failed to parse success response JSON:', jsonParseError);
+                // JSONパース失敗時のエラーメッセージ
+                let parseErrorMessage = 'APIからの応答の解析に失敗しました。';
+                if (responseText) {
+                    parseErrorMessage += ` - Received: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+                }
+                throw new Error(parseErrorMessage);
+            }
 
-            if (data.success && data.advice) {
-                // 詳細アドバイスと推奨食品を状態に設定
-                setAdvice(data);
+            // 修正: APIレスポンスの success フラグと data を確認
+            if (data.success && data.data) {
+                // data.data が NutritionAdvice の形式に合うか確認
+                // 修正: data.data をセット (NutritionAdvice 型のはず)
+                setAdvice(data.data);
             } else {
-                // データが取得できなかった場合（アドバイスがまだ生成されていないなど）
-                setError('今日のアドバイスはまだありません。食事を記録すると生成されます。');
+                // APIは成功(2xx)を返したが、レスポンス形式が予期したものと違う場合や success: false の場合
+                console.warn('[AdviceCard] API response indicates failure or unexpected format:', data);
+                // data.error.message があればそれを使う、なければデフォルトメッセージ
+                setError(data.error?.message || '今日のアドバイスはまだありません。食事を記録すると生成されます。');
                 setAdvice(null); // アドバイスデータをクリア
             }
 
         } catch (err: unknown) { // 修正: unknown 型を使用
-            // 修正: エラーメッセージを適切に出力
             const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
             console.error('栄養アドバイス取得エラー:', errorMessage);
-            console.error('エラー詳細(err):', err); // ← デバッグ用に元のエラーオブジェクトも出力
+            console.error('エラー詳細(err):', err); // デバッグ用に元のエラーオブジェクトも出力
             setError(errorMessage);
             setAdvice(null); // エラー時はアドバイスデータをクリア
         } finally {
@@ -107,6 +146,8 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                         <div className="text-center space-y-2">
                             <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto" />
                             <p className="text-sm text-gray-700">アドバイスを読み込めませんでした</p>
+                            {/* エラーメッセージ表示を追加 */}
+                            <p className="text-xs text-red-600">{error}</p>
                             <Button variant="outline" size="sm" onClick={fetchAdvice} className="mt-2">
                                 再試行
                             </Button>
@@ -145,7 +186,8 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                                     "
                                 </div>
                                 <p className="text-[15px] text-gray-700 leading-relaxed relative z-1">
-                                    {advice.advice_summary || advice.advice_detail || '栄養アドバイスがありません'}
+                                    {/* Linter Error Fix: NutritionAdvice 型のプロパティを参照 */}
+                                    {advice.advice_detail || advice.advice_summary || '栄養アドバイスがありません'}
                                 </p>
                             </div>
 

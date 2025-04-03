@@ -11,6 +11,21 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { getJapanDate } from '@/lib/date-utils';
 
+// ★ 追加: APIエラーレスポンスの型定義
+interface ApiErrorResponse {
+    success: boolean; // falseのはずだが、型のために入れておく
+    error?: {
+        code?: string;
+        message?: string;
+        details?: {
+            redirect?: string;
+            // 他の詳細情報
+        };
+        // userMessage など AppError の他のプロパティ
+    };
+    message?: string; // トップレベルのメッセージも考慮
+}
+
 interface DetailedNutritionAdviceProps {
     selectedDate?: string;
     onDateSelect?: (date: string) => void;
@@ -26,7 +41,7 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
     }>({
         loading: true,
         error: null,
-        advice: null
+        advice: null,
     });
 
     // アドバイスタイプは固定でDAILYを使用
@@ -45,64 +60,100 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
     const fetchDetailedAdvice = async (date = currentDate, force = forceUpdate) => {
         try {
             setState(prev => ({ ...prev, loading: true, error: null }));
-            console.log('DetailedNutritionAdvice: データ取得開始', { date, force }); // デバッグ用ログ
+            console.log('DetailedNutritionAdvice: データ取得開始', { date, force });
 
-            // APIリクエストURLの構築
             let apiUrl = `/api/nutrition-advice?detail=true&date=${date}`;
             if (force) {
                 apiUrl += '&force=true';
             }
 
-            // APIからデータを取得
             const response = await fetch(apiUrl);
-            console.log('DetailedNutritionAdvice: APIレスポンス', response.status); // デバッグ用ログ
+            console.log('DetailedNutritionAdvice: APIレスポンスステータス', response.status);
 
             if (!response.ok) {
-                const errorData = await response.json();
-                console.log('DetailedNutritionAdvice: APIエラー', errorData); // デバッグ用ログ
+                let errorJson: ApiErrorResponse | null = null;
+                let httpErrorMessage = `HTTPエラー: ${response.status}`; // デフォルトメッセージ
 
-                if (errorData.redirect) {
-                    setState(prev => ({
-                        loading: false,
-                        error: `${errorData.error}: ${errorData.message || ''}`,
-                        advice: null,
-                        redirect: errorData.redirect
-                    }));
-                    return;
+                try {
+                    // ★ 修正: 型アサーションを追加
+                    errorJson = await response.json() as ApiErrorResponse;
+                    console.log('DetailedNutritionAdvice: APIエラー JSON', errorJson);
+                } catch (jsonError) {
+                    console.error('DetailedNutritionAdvice: APIエラーレスポンスのJSONパース失敗', jsonError);
+                    // errorJson は null のまま
                 }
 
-                throw new Error(errorData.error || "詳細アドバイスの取得に失敗しました");
+                // ★ 修正: エラーメッセージを安全に抽出
+                const errorMessage = errorJson?.error?.message || // 優先度1: ネストされたエラーメッセージ
+                    errorJson?.message ||          // 優先度2: トップレベルメッセージ
+                    httpErrorMessage;              // フォールバック: HTTPステータスメッセージ
+
+                // ★ 修正: リダイレクトURLを安全に抽出
+                const redirectUrl = errorJson?.error?.details?.redirect;
+
+                // ★ デバッグログ追加: setState直前のエラーメッセージを確認
+                console.log('[fetchDetailedAdvice] Setting error state. Type:', typeof errorMessage, 'Value:', errorMessage);
+
+                if (redirectUrl) {
+                    setState(prev => ({
+                        ...prev,
+                        loading: false,
+                        error: errorMessage,
+                        advice: null,
+                        redirect: redirectUrl
+                    }));
+                } else {
+                    // redirect がない場合は、redirect プロパティを含めずに更新
+                    // ★ デバッグログ追加: setState直前のエラーメッセージを確認 (elseブロック)
+                    console.log('[fetchDetailedAdvice] Setting error state (no redirect). Type:', typeof errorMessage, 'Value:', errorMessage);
+                    setState(prev => ({
+                        ...prev,
+                        loading: false,
+                        error: errorMessage,
+                        advice: null,
+                    }));
+                }
+                return; // エラーハンドリング後に関数を終了
             }
 
-            const data = await response.json();
-            console.log('DetailedNutritionAdvice: 取得データ', {
-                success: data.success,
-                type: data.advice_type,
-                date: data.advice_date,
-                hasAdvice: !!data.advice || !!data.advice_detail
+            // --- response.ok の場合の処理 --- 
+            const responseData = await response.json();
+            console.log('DetailedNutritionAdvice: 取得データ raw', responseData);
+
+            if (!responseData.success || !responseData.data) { // successフラグとdata本体の存在を確認
+                const errorMessage = responseData.error?.message || responseData.message || "APIから予期しない応答がありました";
+                throw new Error(errorMessage);
+            }
+
+            const actualData = responseData.data;
+
+            if (!actualData) {
+                throw new Error("APIからアドバイスデータが返されませんでした。");
+            }
+
+            console.log('DetailedNutritionAdvice: 取得データ (data part)', {
+                type: actualData.advice_type,
+                date: actualData.advice_date,
+                hasAdvice: !!actualData.advice || !!actualData.advice_detail
             }); // デバッグ用ログ
-
-            if (!data.success) {
-                throw new Error(data.error || "アドバイスの取得に失敗しました");
-            }
 
             // 3. アドバイスデータの設定
             setState({
                 loading: false,
                 error: null,
                 advice: {
-                    content: data.advice?.content || data.advice_detail || "",
-                    recommended_foods: data.advice?.recommended_foods || data.recommended_foods || []
+                    content: actualData.advice?.content || actualData.advice_detail || "",
+                    recommended_foods: actualData.advice?.recommended_foods || actualData.recommended_foods || []
                 }
             });
 
             // 4. 既読状態の更新
-            if (data.id && !data.is_read) {
+            if (actualData.id && !actualData.is_read) {
                 try {
                     await fetch("/api/nutrition-advice", {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: data.id })
+                        body: JSON.stringify({ id: actualData.id })
                     });
                     console.log('DetailedNutritionAdvice: 既読状態更新完了'); // デバッグ用ログ
                 } catch (readError) {
@@ -113,16 +164,19 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
             // 強制更新フラグをリセット
             setForceUpdate(false);
         } catch (err) {
-            console.error("詳細アドバイス取得エラー:", err);
+            // fetch自体、または response.ok 後の処理でエラーが発生した場合
+            console.error("詳細アドバイス取得/処理エラー:", err);
+            const errorMessageString = err instanceof Error ? err.message : "詳細アドバイスの読み込み中に予期せぬエラーが発生しました";
+            // ★ デバッグログ追加: 最終catchブロックでのsetState直前の値を確認
+            console.log('[fetchDetailedAdvice] Setting error state in FINAL CATCH. Type:', typeof errorMessageString, 'Value:', errorMessageString);
             setState(prev => ({
+                ...prev,
                 loading: false,
-                error: err instanceof Error ? err.message : "詳細アドバイスを読み込めませんでした",
-                advice: null
+                error: errorMessageString,
+                advice: null,
             }));
 
             toast.error("詳細アドバイスの読み込みに失敗しました");
-
-            // 強制更新フラグをリセット
             setForceUpdate(false);
         }
     };
