@@ -1,3 +1,5 @@
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
+
 export interface RecipeParser {
     /**
      * レシピサイトから材料情報を抽出する
@@ -5,12 +7,7 @@ export interface RecipeParser {
      * @returns 材料情報の配列
      */
     //src\lib\recipe-parsers\parser-interface.ts
-    extractIngredients(document: Document): {
-        name: string;
-        quantity?: string;
-        unit?: string;
-        group?: string;
-    }[];
+    extractIngredients(document: Document): FoodInputParseResult[];
 
     /**
      * レシピのタイトルを抽出する

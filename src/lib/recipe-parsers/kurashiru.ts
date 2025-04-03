@@ -1,12 +1,14 @@
 import { RecipeParser, getMetaContent } from './parser-interface';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 export class KurashiruParser implements RecipeParser {
     /**
      * クラシルのレシピから材料情報を抽出する
      */
-    extractIngredients(document: Document): { name: string; quantity?: string; unit?: string; group?: string; }[] {
-        const ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[] = [];
+    extractIngredients(document: Document): FoodInputParseResult[] {
+        const ingredients: FoodInputParseResult[] = [];
 
         try {
             console.log('クラシルのレシピを解析中...');
@@ -21,13 +23,18 @@ export class KurashiruParser implements RecipeParser {
                     if (textContent) {
                         // 「材料名：分量」形式を分割
                         const parts = textContent.split(/：|:/);
-                        if (parts.length > 1) {
+                        if (parts.length > 1 && parts[0]) {
                             ingredients.push({
-                                name: parts[0].trim(),
-                                quantity: parts[1].trim()
+                                foodName: parts[0].trim() || '',
+                                quantityText: parts.length > 1 && parts[1] ? parts[1].trim() || null : null,
+                                confidence: 0.9
                             });
                         } else {
-                            ingredients.push({ name: textContent });
+                            ingredients.push({
+                                foodName: textContent,
+                                quantityText: null,
+                                confidence: 0.8
+                            });
                         }
                     }
                 });
@@ -45,25 +52,31 @@ export class KurashiruParser implements RecipeParser {
                     if (elements.length > 0) {
                         elements.forEach(element => {
                             const name = element.querySelector('.ingredient-name, .material-name, .name')?.textContent?.trim();
-                            const quantity = element.querySelector('.ingredient-quantity, .material-quantity, .quantity')?.textContent?.trim();
+                            const quantity = element.querySelector('.ingredient-quantity, .material-quantity, .quantity')?.textContent?.trim() || null;
 
                             if (name) {
                                 ingredients.push({
-                                    name: name,
-                                    quantity: quantity
+                                    foodName: name,
+                                    quantityText: quantity,
+                                    confidence: 0.9
                                 });
                             } else {
                                 const text = element.textContent?.trim();
                                 if (text) {
                                     // 「材料名：分量」形式を分割
                                     const parts = text.split(/：|:|…/);
-                                    if (parts.length > 1) {
+                                    if (parts.length > 1 && parts[0]) {
                                         ingredients.push({
-                                            name: parts[0].trim(),
-                                            quantity: parts[1].trim()
+                                            foodName: parts[0].trim() || '',
+                                            quantityText: parts.length > 1 && parts[1] ? parts[1].trim() || null : null,
+                                            confidence: 0.8
                                         });
                                     } else {
-                                        ingredients.push({ name: text });
+                                        ingredients.push({
+                                            foodName: text,
+                                            quantityText: null,
+                                            confidence: 0.7
+                                        });
                                     }
                                 }
                             }
@@ -92,12 +105,12 @@ export class KurashiruParser implements RecipeParser {
             return ingredients;
         } catch (error) {
             console.error('クラシル材料抽出エラー:', error);
-            throw new ApiError(
-                `クラシルのレシピ解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.RECIPE_PROCESSING_ERROR,
-                'クラシルのレシピ解析に失敗しました。サイトの仕様が変更された可能性があります。',
-                400
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `クラシルのレシピ解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'クラシルのレシピ解析に失敗しました。サイトの仕様が変更された可能性があります。',
+                originalError: error instanceof Error ? error : new Error(String(error))
+            });
         }
     }
 
@@ -106,7 +119,7 @@ export class KurashiruParser implements RecipeParser {
      */
     private extractIngredientsFromTables(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         const tables = document.querySelectorAll('table');
         for (const table of tables) {
@@ -114,13 +127,14 @@ export class KurashiruParser implements RecipeParser {
             if (rows.length >= 3) { // 最低3行ある表は材料テーブルの可能性が高い
                 for (const row of rows) {
                     const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const name = cells[0].textContent?.trim();
-                        const quantity = cells[1].textContent?.trim();
+                    if (cells.length >= 2 && cells[0]?.textContent && cells[1]?.textContent) {
+                        const name = cells[0].textContent.trim();
+                        const quantity = cells[1].textContent.trim() || null;
                         if (name && !name.includes('function(') && !name.includes('script')) {
                             ingredients.push({
-                                name: name,
-                                quantity: quantity
+                                foodName: name,
+                                quantityText: quantity,
+                                confidence: 0.8
                             });
                         }
                     }
@@ -135,7 +149,7 @@ export class KurashiruParser implements RecipeParser {
      */
     private extractFromStructuredData(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         const scriptElements = document.querySelectorAll('script[type="application/ld+json"]');
 
@@ -151,13 +165,18 @@ export class KurashiruParser implements RecipeParser {
                             if (typeof ingredient === 'string') {
                                 // 「材料名：分量」形式を分割
                                 const parts = ingredient.split(/：|:|…/);
-                                if (parts.length > 1) {
+                                if (parts.length > 1 && parts[0]) {
                                     ingredients.push({
-                                        name: parts[0].trim(),
-                                        quantity: parts.slice(1).join('').trim()
+                                        foodName: parts[0].trim() || '',
+                                        quantityText: parts.slice(1).join('').trim() || null,
+                                        confidence: 0.8
                                     });
                                 } else {
-                                    ingredients.push({ name: ingredient.trim() });
+                                    ingredients.push({
+                                        foodName: ingredient.trim(),
+                                        quantityText: null,
+                                        confidence: 0.7
+                                    });
                                 }
                             }
                         }

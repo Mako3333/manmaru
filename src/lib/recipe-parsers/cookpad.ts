@@ -1,118 +1,80 @@
 import { RecipeParser, getMetaContent } from './parser-interface';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 export class CookpadParser implements RecipeParser {
     /**
      * クックパッドのレシピから材料情報を抽出する
      */
-    extractIngredients(document: Document): { name: string; quantity?: string; unit?: string; group?: string; }[] {
-        let ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[] = [];
+    extractIngredients(document: Document): FoodInputParseResult[] {
+        const ingredients: FoodInputParseResult[] = [];
+        const ingredientSections = document.querySelectorAll('.ingredient_group');
 
-        try {
-            console.log('クックパッドのレシピを解析中...');
+        if (ingredientSections.length > 0) {
+            // 材料グループがある場合 (.ingredient_group)
+            ingredientSections.forEach((section) => {
+                const groupNameElement = section.querySelector('.ingredient_group_name');
+                // 現在は使用していないが、将来的にグループ情報を活用する可能性があるため保持
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const _groupName = groupNameElement?.textContent?.trim() || undefined;
 
-            // 新しいHTML構造に対応したセレクタ
-            const selectors = [
-                // 新しい構造
-                '.ingredient-list li.justified-quantity-and-name',
-                'li[id^="ingredient_"]',
-                '.ingredients-list li',
-                // 旧構造
-                '.ingredient_row',
-                // 可能性のある代替セレクター
-                '.ingredient-list__item',
-                '.ingredient',
-                '.recipe-ingredients__item',
-                '.recipe_ingredient',
-                '.ingredients_list_item',
-                // より汎用的なセレクター
-                '[class*="ingredient"]',
-                'ol li'
-            ];
+                const items = section.querySelectorAll('.ingredient');
+                items.forEach((item) => {
+                    const nameElement = item.querySelector('.ingredient_name .name');
+                    const quantityElement = item.querySelector('.ingredient_quantity');
 
-            let ingredientElements: NodeListOf<Element> | Element[] = new Array<Element>();
+                    if (nameElement) { // nameElement の存在チェック
+                        const name = nameElement.textContent?.trim();
+                        const quantity = quantityElement?.textContent?.trim() || null; // null にフォールバック
 
-            // セレクタを一つずつ試す
-            for (const selector of selectors) {
-                const elements = document.querySelectorAll(selector);
-                console.log(`セレクター ${selector} で ${elements.length}個の要素が見つかりました`);
-
-                if (elements.length > 0) {
-                    ingredientElements = elements;
-                    break;
-                }
-            }
-
-            // 材料を抽出
-            ingredientElements.forEach(element => {
-                try {
-                    // 新しい構造: <span>材料名</span> <bdi>分量</bdi>
-                    const nameSpan = element.querySelector('span');
-                    const quantityBdi = element.querySelector('bdi');
-
-                    if (nameSpan && quantityBdi) {
-                        // 新しい構造での抽出
-                        const name = nameSpan.textContent?.trim() || '';
-                        const quantity = quantityBdi.textContent?.trim() || '';
-
-                        if (name) {
+                        if (name) { // 名前がある場合のみ追加
                             ingredients.push({
-                                name: name,
-                                quantity: quantity
+                                foodName: name,
+                                quantityText: quantity,
+                                confidence: 0.9
                             });
-                        }
-                    } else {
-                        // 旧構造または代替構造をチェック
-                        const nameElement = element.querySelector('.ingredient_name, .name, .ingredient-name');
-                        const quantityElement = element.querySelector('.ingredient_quantity, .quantity, .ingredient-quantity');
-
-                        if (nameElement) {
-                            ingredients.push({
-                                name: nameElement.textContent?.trim() || '',
-                                quantity: quantityElement?.textContent?.trim()
-                            });
-                        } else if (element.textContent) {
-                            // セレクターで見つからない場合、テキスト全体から抽出を試みる
-                            const text = element.textContent.trim();
-
-                            // 「材料名：分量」または「材料名 分量」の形式を検出
-                            const parts = text.split(/：|:|…|\s{2,}/);
-                            if (parts.length > 1 && parts[0].length > 0) {
-                                ingredients.push({
-                                    name: parts[0].trim(),
-                                    quantity: parts.slice(1).join(' ').trim()
-                                });
-                            } else if (text.length > 0 && text.length < 50) {
-                                ingredients.push({ name: text });
-                            }
                         }
                     }
-                } catch (e) {
-                    console.error('材料抽出中にエラーが発生しました:', e);
-                }
+                });
             });
+        } else {
+            // 材料グループがない場合 (#ingredients_list .ingredient)
+            const ingredientList = document.querySelector('#ingredients_list');
+            if (ingredientList) {
+                const items = ingredientList.querySelectorAll('.ingredient');
+                items.forEach((item) => {
+                    const nameElement = item.querySelector('.ingredient_name');
+                    const quantityElement = item.querySelector('.ingredient_quantity');
 
-            // テーブルからの材料抽出
-            if (ingredients.length === 0) {
-                this.extractIngredientsFromTables(document, ingredients);
+                    if (nameElement) { // nameElement の存在チェック
+                        const name = nameElement.textContent?.trim();
+                        const quantity = quantityElement?.textContent?.trim() || null; // null にフォールバック
+
+                        if (name) { // 名前がある場合のみ追加
+                            ingredients.push({
+                                foodName: name,
+                                quantityText: quantity,
+                                confidence: 0.9
+                            });
+                        }
+                    }
+                });
             }
-
-            // テキスト全体からの材料抽出
-            if (ingredients.length === 0) {
-                this.extractIngredientsFromBodyText(document, ingredients);
-            }
-
-            // 不適切な材料の除外と重複の除去
-            return this.cleanIngredients(ingredients);
-        } catch (error) {
-            console.error('クックパッド材料抽出エラー:', error);
-            throw new ApiError(
-                `クックパッドのレシピ解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.RECIPE_PROCESSING_ERROR,
-                'クックパッドのレシピ解析に失敗しました。サイトの仕様が変更された可能性があります。',
-                400
-            );
         }
+
+        // テーブルからの材料抽出
+        if (ingredients.length === 0) {
+            this.extractIngredientsFromTables(document, ingredients);
+        }
+
+        // テキスト全体からの材料抽出
+        if (ingredients.length === 0) {
+            this.extractIngredientsFromBodyText(document, ingredients);
+        }
+
+        // 不適切な材料の除外と重複の除去
+        return this.cleanIngredients(ingredients);
     }
 
     /**
@@ -120,7 +82,7 @@ export class CookpadParser implements RecipeParser {
      */
     private extractIngredientsFromTables(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         console.log('リスト要素から材料が見つからないため、テーブルを検索します');
         const tables = document.querySelectorAll('table');
@@ -130,14 +92,15 @@ export class CookpadParser implements RecipeParser {
             if (rows.length >= 3) { // 最低3行ある表は材料テーブルの可能性が高い
                 rows.forEach(row => {
                     const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const name = cells[0].textContent?.trim();
-                        const quantity = cells[1].textContent?.trim();
+                    if (cells.length >= 2 && cells[0]?.textContent && cells[1]?.textContent) {
+                        const name = cells[0].textContent.trim() || '';
+                        const quantity = cells[1].textContent.trim() || null;
 
                         if (name && name.length > 0 && name.length < 50) {
                             ingredients.push({
-                                name: name,
-                                quantity: quantity
+                                foodName: name,
+                                quantityText: quantity,
+                                confidence: 0.8
                             });
                         }
                     }
@@ -151,7 +114,7 @@ export class CookpadParser implements RecipeParser {
      */
     private extractIngredientsFromBodyText(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         console.log('構造化要素から材料が見つからないため、テキスト全体から抽出を試みます');
         const bodyText = document.body.textContent || '';
@@ -190,13 +153,18 @@ export class CookpadParser implements RecipeParser {
                     if (line.length > 2 && line.length < 50 && !line.includes('材料') && !line.includes('つくり方')) {
                         // 材料名と分量を分ける試み
                         const parts = line.split(/[：:]|\s{2,}/);
-                        if (parts.length > 1) {
+                        if (parts.length > 1 && parts[0]) {
                             ingredients.push({
-                                name: parts[0].trim(),
-                                quantity: parts.slice(1).join(' ').trim()
+                                foodName: parts[0].trim() || '',
+                                quantityText: parts.slice(1).join(' ').trim() || null,
+                                confidence: 0.7
                             });
                         } else {
-                            ingredients.push({ name: line });
+                            ingredients.push({
+                                foodName: line,
+                                quantityText: null,
+                                confidence: 0.6
+                            });
                         }
                     }
                 }
@@ -209,19 +177,24 @@ export class CookpadParser implements RecipeParser {
      */
     private extractLinesAsIngredients(
         lines: string[],
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         for (const line of lines) {
             if (line.length > 2 && line.length < 50) {
                 // 材料名と分量を分ける試み
                 const parts = line.split(/[：:]|\s{2,}/);
-                if (parts.length > 1) {
+                if (parts.length > 1 && parts[0]) {
                     ingredients.push({
-                        name: parts[0].trim(),
-                        quantity: parts.slice(1).join(' ').trim()
+                        foodName: parts[0].trim() || '',
+                        quantityText: parts.slice(1).join(' ').trim() || null,
+                        confidence: 0.7
                     });
-                } else if (!line.match(/^(大さじ|小さじ|カップ|\d+|g|適量|少々)$/)) {
-                    ingredients.push({ name: line });
+                } else if (!line.match(/^(大さじ|小さじ|カップ|\d+|g|ml|cc|適量|少々|手順|作り方|ポイント)/) && line.length < 30) {
+                    ingredients.push({
+                        foodName: line,
+                        quantityText: null,
+                        confidence: 0.6
+                    });
                 }
             }
         }
@@ -231,23 +204,19 @@ export class CookpadParser implements RecipeParser {
      * 抽出した材料リストをクリーニング
      */
     private cleanIngredients(
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
-    ): { name: string; quantity?: string; unit?: string; group?: string; }[] {
+        ingredients: FoodInputParseResult[]
+    ): FoodInputParseResult[] {
         // 不適切な材料の除外
         let cleaned = ingredients.filter(item => {
-            // '材料'という名前の要素や、明らかに材料でない要素を除外
-            return item.name !== '材料' &&
-                item.name !== '2人分' &&
-                item.name !== '4人分' &&
-                !/^\d+人分$/.test(item.name) &&
-                item.name.length > 1;
+            const name = item.foodName.toLowerCase();
+            return !name.includes('作り方') && !name.includes('手順') && !name.includes('ポイント') && name.length < 50;
         });
 
         // 重複の除去
-        const uniqueIngredients: { [key: string]: { name: string; quantity?: string; unit?: string; group?: string; } } = {};
+        const uniqueIngredients: { [key: string]: FoodInputParseResult } = {};
         cleaned.forEach(item => {
-            if (!uniqueIngredients[item.name]) {
-                uniqueIngredients[item.name] = item;
+            if (!uniqueIngredients[item.foodName]) {
+                uniqueIngredients[item.foodName] = item;
             }
         });
         cleaned = Object.values(uniqueIngredients);
@@ -285,5 +254,18 @@ export class CookpadParser implements RecipeParser {
      */
     extractImage(document: Document): string | undefined {
         return getMetaContent(document, 'og:image');
+    }
+
+    // 他のヘルパーメソッド（例: normalizeQuantity）は変更なし
+
+    // 例外処理を更新
+    private handleError(error: unknown, context: string): never {
+        console.error(`Cookpad Parser Error (${context}):`, error);
+        const message = `クックパッドのレシピ解析中にエラーが発生しました (${context})`;
+        throw new AppError({ // AppError の呼び出し形式を修正
+            code: ErrorCode.Base.DATA_PROCESSING_ERROR, // 適切なエラーコードに変更
+            message: message,
+            originalError: error instanceof Error ? error : new Error(String(error))
+        });
     }
 } 

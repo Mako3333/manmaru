@@ -1,12 +1,14 @@
 import { RecipeParser, getMetaContent } from './parser-interface';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 export class GenericParser implements RecipeParser {
     /**
      * 汎用パーサー: 様々なレシピサイトから材料情報を抽出する
      */
-    extractIngredients(document: Document): { name: string; quantity?: string; unit?: string; group?: string; }[] {
-        const ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[] = [];
+    extractIngredients(document: Document): FoodInputParseResult[] {
+        const ingredients: FoodInputParseResult[] = [];
 
         try {
             console.log('汎用パーサーでレシピを解析中...');
@@ -31,7 +33,7 @@ export class GenericParser implements RecipeParser {
 
             // JavaScriptコードや長すぎるテキストを除外する最終的なフィルタリング
             const filteredIngredients = ingredients.filter(ing => {
-                const name = ing.name || '';
+                const name = ing.foodName || '';
                 return !name.includes('function(') &&
                     !name.includes('script') &&
                     !name.includes('var ') &&
@@ -48,12 +50,12 @@ export class GenericParser implements RecipeParser {
             return filteredIngredients;
         } catch (error) {
             console.error('汎用パーサー材料抽出エラー:', error);
-            throw new ApiError(
-                `レシピの解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.RECIPE_PROCESSING_ERROR,
-                'レシピの解析に失敗しました。別のレシピURLを試してください。',
-                400
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `レシピの解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'レシピの解析に失敗しました。別のレシピURLを試してください。',
+                originalError: error instanceof Error ? error : new Error(String(error))
+            });
         }
     }
 
@@ -62,7 +64,7 @@ export class GenericParser implements RecipeParser {
      */
     private extractFromStructuredData(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         const scriptElements = document.querySelectorAll('script[type="application/ld+json"]');
 
@@ -82,13 +84,18 @@ export class GenericParser implements RecipeParser {
                             if (typeof ingredient === 'string') {
                                 // 「材料名：分量」または「材料名 分量」形式を分割
                                 const parts = ingredient.split(/：|:|\s{2,}/);
-                                if (parts.length > 1) {
+                                if (parts.length > 1 && parts[0]) {
                                     ingredients.push({
-                                        name: parts[0].trim(),
-                                        quantity: parts.slice(1).join(' ').trim()
+                                        foodName: parts[0].trim() || '',
+                                        quantityText: parts.slice(1).join(' ').trim() || null,
+                                        confidence: 0.9
                                     });
                                 } else {
-                                    ingredients.push({ name: ingredient.trim() });
+                                    ingredients.push({
+                                        foodName: ingredient.trim(),
+                                        quantityText: null,
+                                        confidence: 0.8
+                                    });
                                 }
                             }
                         }
@@ -105,7 +112,7 @@ export class GenericParser implements RecipeParser {
      */
     private extractFromPotentialLists(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         // 材料らしい要素を探す条件
         const potentialClasses = [
@@ -123,13 +130,18 @@ export class GenericParser implements RecipeParser {
                     if (text && text.length > 0 && text.length < 100) {
                         // 「材料名：分量」または「材料名 分量」形式を分割
                         const parts = text.split(/：|:|\s{2,}/);
-                        if (parts.length > 1) {
+                        if (parts.length > 1 && parts[0]) {
                             ingredients.push({
-                                name: parts[0].trim(),
-                                quantity: parts.slice(1).join(' ').trim()
+                                foodName: parts[0].trim() || '',
+                                quantityText: parts.slice(1).join(' ').trim() || null,
+                                confidence: 0.8
                             });
                         } else {
-                            ingredients.push({ name: text });
+                            ingredients.push({
+                                foodName: text,
+                                quantityText: null,
+                                confidence: 0.7
+                            });
                         }
                     }
                 }
@@ -149,13 +161,18 @@ export class GenericParser implements RecipeParser {
                         if (text && !text.includes('function(') && !text.includes('script') && text.length < 100) {
                             // 「材料名：分量」または「材料名 分量」形式を分割
                             const parts = text.split(/：|:|\s{2,}/);
-                            if (parts.length > 1) {
+                            if (parts.length > 1 && parts[0]) {
                                 ingredients.push({
-                                    name: parts[0].trim(),
-                                    quantity: parts.slice(1).join(' ').trim()
+                                    foodName: parts[0].trim() || '',
+                                    quantityText: parts.slice(1).join(' ').trim() || null,
+                                    confidence: 0.8
                                 });
                             } else {
-                                ingredients.push({ name: text });
+                                ingredients.push({
+                                    foodName: text,
+                                    quantityText: null,
+                                    confidence: 0.7
+                                });
                             }
                         }
                     }
@@ -170,7 +187,7 @@ export class GenericParser implements RecipeParser {
      */
     private extractIngredientsFromTables(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         const tables = document.querySelectorAll('table');
         for (const table of tables) {
@@ -178,13 +195,14 @@ export class GenericParser implements RecipeParser {
             if (rows.length >= 3) { // 最低3行ある表は材料テーブルの可能性が高い
                 for (const row of rows) {
                     const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const name = cells[0].textContent?.trim();
-                        const quantity = cells[1].textContent?.trim();
+                    if (cells.length >= 2 && cells[0]?.textContent && cells[1]?.textContent) {
+                        const name = cells[0].textContent.trim();
+                        const quantity = cells[1].textContent.trim() || null;
                         if (name && !name.includes('function(') && !name.includes('script')) {
                             ingredients.push({
-                                name: name,
-                                quantity: quantity
+                                foodName: name,
+                                quantityText: quantity,
+                                confidence: 0.8
                             });
                         }
                     }
@@ -199,7 +217,7 @@ export class GenericParser implements RecipeParser {
      */
     private extractFromBodyText(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         const bodyText = document.body.textContent || '';
 
@@ -216,13 +234,18 @@ export class GenericParser implements RecipeParser {
                 if (line.length > 1 && line.length < 30) { // 妥当な長さの行のみ
                     // 「材料名：分量」または「材料名 分量」形式を分割
                     const parts = line.split(/：|:|\s+/);
-                    if (parts.length > 1) {
+                    if (parts.length > 1 && parts[0]) {
                         ingredients.push({
-                            name: parts[0].trim(),
-                            quantity: parts.slice(1).join(' ').trim()
+                            foodName: parts[0].trim() || '',
+                            quantityText: parts.slice(1).join(' ').trim() || null,
+                            confidence: 0.8
                         });
                     } else {
-                        ingredients.push({ name: line });
+                        ingredients.push({
+                            foodName: line,
+                            quantityText: null,
+                            confidence: 0.7
+                        });
                     }
                 }
             }
@@ -256,27 +279,26 @@ export class GenericParser implements RecipeParser {
         const ogImage = getMetaContent(document, 'og:image');
         if (ogImage) return ogImage;
 
-        // ページ内で最初の大きな画像を探す
-        const allImages = document.querySelectorAll('img');
-        let largestImage: HTMLImageElement | null = null;
-        let largestArea = 0;
+        // よく使われる画像セレクタを試す
+        const potentialSelectors = [
+            '.recipe-image img',
+            '.recipe-main-image img',
+            '.main-image img',
+            '.hero-image img',
+            '.thumbnail img',
+            '.recipe-thumb img',
+            '.recipe-photo img',
+            'article img',
+            '.content img',
+            'main img'
+        ];
 
-        for (const img of allImages) {
-            const width = parseInt(img.getAttribute('width') || '0', 10);
-            const height = parseInt(img.getAttribute('height') || '0', 10);
-
-            if (width && height) {
-                const area = width * height;
-                if (area > largestArea) {
-                    largestArea = area;
-                    largestImage = img as HTMLImageElement;
-                }
-            } else if (!largestImage) {
-                // 寸法が明示されていない場合は最初の画像を候補とする
-                largestImage = img as HTMLImageElement;
-            }
+        for (const selector of potentialSelectors) {
+            const img = document.querySelector(selector);
+            const src = img?.getAttribute('src');
+            if (src) return src;
         }
 
-        return largestImage?.getAttribute('src') || undefined;
+        return undefined;
     }
 } 

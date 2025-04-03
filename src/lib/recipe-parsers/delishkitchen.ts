@@ -1,12 +1,14 @@
 import { RecipeParser, getMetaContent } from './parser-interface';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 export class DelishKitchenParser implements RecipeParser {
     /**
      * デリッシュキッチンのレシピから材料情報を抽出する
      */
-    extractIngredients(document: Document): { name: string; quantity?: string; unit?: string; group?: string; }[] {
-        const ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[] = [];
+    extractIngredients(document: Document): FoodInputParseResult[] {
+        const ingredients: FoodInputParseResult[] = [];
 
         try {
             console.log('デリッシュキッチンのレシピを解析中...');
@@ -33,9 +35,9 @@ export class DelishKitchenParser implements RecipeParser {
 
                 if (nameElement) {
                     ingredients.push({
-                        name: nameElement.textContent?.trim() || '',
-                        quantity: quantityElement?.textContent?.trim(),
-                        group: currentGroup || undefined
+                        foodName: nameElement.textContent?.trim() || '',
+                        quantityText: quantityElement?.textContent?.trim() || null,
+                        confidence: 0.9
                     });
                 }
             });
@@ -58,13 +60,18 @@ export class DelishKitchenParser implements RecipeParser {
                             if (text && text.length > 0) {
                                 // 「材料名：分量」形式を分割
                                 const parts = text.split(/：|:|…/);
-                                if (parts.length > 1) {
+                                if (parts.length > 1 && parts[0]) {
                                     ingredients.push({
-                                        name: parts[0].trim(),
-                                        quantity: parts[1].trim()
+                                        foodName: parts[0].trim() || '',
+                                        quantityText: parts.length > 1 && parts[1] ? parts[1].trim() || null : null,
+                                        confidence: 0.8
                                     });
                                 } else {
-                                    ingredients.push({ name: text });
+                                    ingredients.push({
+                                        foodName: text,
+                                        quantityText: null,
+                                        confidence: 0.7
+                                    });
                                 }
                             }
                         });
@@ -87,12 +94,12 @@ export class DelishKitchenParser implements RecipeParser {
             return ingredients;
         } catch (error) {
             console.error('デリッシュキッチン材料抽出エラー:', error);
-            throw new ApiError(
-                `デリッシュキッチンのレシピ解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.RECIPE_PROCESSING_ERROR,
-                'デリッシュキッチンのレシピ解析に失敗しました。サイトの仕様が変更された可能性があります。',
-                400
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `デリッシュキッチンのレシピ解析でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'デリッシュキッチンのレシピ解析に失敗しました。サイトの仕様が変更された可能性があります。',
+                originalError: error instanceof Error ? error : new Error(String(error))
+            });
         }
     }
 
@@ -101,7 +108,7 @@ export class DelishKitchenParser implements RecipeParser {
      */
     private extractIngredientsFromTables(
         document: Document,
-        ingredients: { name: string; quantity?: string; unit?: string; group?: string; }[]
+        ingredients: FoodInputParseResult[]
     ): void {
         const tables = document.querySelectorAll('table');
         for (const table of tables) {
@@ -109,13 +116,14 @@ export class DelishKitchenParser implements RecipeParser {
             if (rows.length >= 3) { // 最低3行ある表は材料テーブルの可能性が高い
                 for (const row of rows) {
                     const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const name = cells[0].textContent?.trim();
-                        const quantity = cells[1].textContent?.trim();
+                    if (cells.length >= 2 && cells[0]?.textContent && cells[1]?.textContent) {
+                        const name = cells[0].textContent.trim();
+                        const quantity = cells[1].textContent.trim() || null;
                         if (name && !name.includes('function(') && !name.includes('script')) {
                             ingredients.push({
-                                name: name,
-                                quantity: quantity
+                                foodName: name,
+                                quantityText: quantity,
+                                confidence: 0.8
                             });
                         }
                     }

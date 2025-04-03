@@ -19,7 +19,6 @@ import * as cheerio from 'cheerio';
 import { ApiAdapter } from '@/lib/api/api-adapter';
 // import { calculatePerServingNutrition } from '@/lib/nutrition/nutrition-utils';
 // import { Logger } from '@/lib/logger';
-import { sanitizeAndValidateUrl } from '@/lib/utils/url-utils';
 
 // const logger = Logger.getInstance();
 
@@ -105,11 +104,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
                 // TODO: servings はインターフェースにないので、別途取得方法を検討
                 // 例: const servings = parser.extractServings ? parser.extractServings(document) : servingsString;
 
-                ingredients = extractedIngredients.map(ing => ({
-                    foodName: ing.name,
-                    quantityText: ing.quantity || null,
-                    confidence: 0.9 // 専用パーサーは高め
-                }));
+                ingredients = extractedIngredients;
                 console.log(`[API Route] Parsed by dedicated parser: ${ingredients.length} ingredients found.`);
                 analysisSource = 'parser';
             } catch (parseError) {

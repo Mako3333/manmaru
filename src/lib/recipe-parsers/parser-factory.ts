@@ -65,6 +65,7 @@ export function getSourcePlatformName(url: string): string {
             return hostname.replace('www.', '');
         }
     } catch (error) {
+        console.error('サイト名取得エラー:', error);
         return '不明なサイト';
     }
 } 
