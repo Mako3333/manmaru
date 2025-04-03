@@ -7,6 +7,29 @@ import { FoodAnalysisResult, NutritionAdviceResult, FoodInput } from '@/types/ai
 // 例: interface RecipeParseResult { title: string; servings: string; foods: any[] }
 // 例: interface MealAnalysisResult { foods: any[]; confidence: number; error?: string }
 
+interface RecipeParseAIResult {
+    title?: string;
+    servings?: string;
+    foods: { foodName: string; quantityText: string }[];
+    // 他に必要なプロパティがあれば追加
+}
+
+interface MealAnalysisAIResult {
+    foods: { foodName: string; quantityText: string }[];
+    // 他に必要なプロパティがあれば追加
+}
+
+interface GeminiError { // 必要に応じて詳細化
+    code: string;
+    message: string;
+    details?: any;
+}
+
+interface GeminiParseRecipeResult {
+    parseResult: RecipeParseAIResult | null;
+    error: GeminiError | null;
+}
+
 export interface IAIService {
     /**
      * 食事画像から食品と栄養情報を解析
@@ -21,12 +44,14 @@ export interface IAIService {
     /**
      * レシピテキストから食品と栄養情報を解析
      */
-    analyzeRecipeText(recipeText: string): Promise<any>; // Promise<RecipeParseResult | GeminiProcessResult>;
+    analyzeRecipeText(recipeText: string): Promise<any>; // Promise<RecipeParseAIResult | GeminiProcessResult>;
 
     /**
      * URLからレシピ情報を解析
+     * @param url 解析対象のURL
+     * @param htmlContent オプショナル。事前に取得したHTMLコンテンツ。提供された場合、内部でのfetchをスキップする。
      */
-    parseRecipeFromUrl(url: string): Promise<any>; // Promise<RecipeParseResult | GeminiProcessResult>;
+    parseRecipeFromUrl(url: string, htmlContent?: string): Promise<GeminiParseRecipeResult>; // 戻り値の型を具体化
 
     /**
      * 栄養アドバイスを生成

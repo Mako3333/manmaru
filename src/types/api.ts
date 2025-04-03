@@ -19,6 +19,7 @@ export interface ApiResponse<T = unknown> extends BaseApiResponse<T> {
         processingTimeMs?: number;
         warning?: string;
         pagination?: PaginationMeta;
+        analysisSource?: 'parser' | 'ai';
     };
 }
 

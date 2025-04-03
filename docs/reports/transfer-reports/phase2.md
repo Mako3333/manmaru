@@ -77,10 +77,20 @@ _(既存の内容は変更なし)_
 *   **コード修正 (4):** `convertToStandardizedNutrition` にダミーの `pregnancySpecific` プロパティを追加（**暫定対応**）。
 *   **再テスト結果:** 全テスト成功。
 
-**3.3.3 その他の修正**
+**3.3.3 レシピ解析APIテスト (`recipe/parse/route.test.ts`) の修正プロセス**
+
+*   **初期状況:** 正常系のテスト2つがステータスコード 500 で失敗。コンソールに `TypeError: nutritionService.calculateNutritionFromNameQuantities is not a function` および `[AppError] nutrition_calculation_error` が出力。「材料がない場合」のテストも 500 エラーで失敗 (期待値は 400)。
+*   **原因特定 (1):** テストコードにおける `NutritionService` のモック設定が不十分で、`calculateNutritionFromNameQuantities` メソッドが定義されていなかった。(`image/analyze` と同様の問題)
+*   **コード修正 (1):** テストファイル (`recipe/parse/route.test.ts`) 内の `NutritionServiceFactory` のモックを修正し、`createService` が返すモックオブジェクトに `calculateNutritionFromNameQuantities` を定義。この際、`AIServiceFactory` のモック (`parseRecipeFromUrl` を返す) も含めて再整備。
+*   **再テスト結果:** 正常系テストは成功。「材料がない場合」のテストは依然として 500 エラーで失敗。コンソールに `[API Error] /api/v2/recipe/parse for https://example.com/no-ingredients: AppError [food_not_found]: レシピから材料が見つかりませんでした。` が出力された後、`[AppError] internal_server_error` がスローされていることが判明。
+*   **原因特定 (2):** APIルート (`recipe/parse/route.ts`) が材料なしケースで `AppError(ErrorCode.Nutrition.FOOD_NOT_FOUND, ...)` をスローするのは正しいが、エラーハンドリングミドルウェア (`withErrorHandling`) が `FOOD_NOT_FOUND` コードに対応する HTTP ステータスコードを解決できず、デフォルトの 500 エラーにフォールバックしていた。具体的には `src/lib/api/error-mapping.ts` の `getHttpStatusCode` 関数に `FOOD_NOT_FOUND` のマッピングがなかった。
+*   **コード修正 (2):** `src/lib/api/error-mapping.ts` の `getHttpStatusCode` 関数に `ErrorCode.Nutrition.FOOD_NOT_FOUND: 400` のマッピングを追加。(この修正は別のタイミングで行われた可能性がありますが、本テストの成功に必要な対応です)
+*   **再テスト結果:** 全テスト成功。
+
+### 3.3.4 その他の修正
 
 *   **エラーメッセージの期待値:** 複数のエラー系テストにおいて、アサーションが内部向けのエラーメッセージ (`AppError.message`) を検証していたため、API が実際に返すユーザー向けメッセージ (`AppError.userMessage`) を検証するように修正しました。
-*   **型エラー（実装時）:** 上記のコード修正プロセス中、TypeScript の型推論や型の不整合によるリンターエラーが複数発生しました（例: `extended_nutrients` の扱い、存在しないエラーコードの参照など）。これらは都度修正しました。
+*   **型エラー（実装時）:** 上記のコード修正プロセス中、TypeScript の型推論や型の不整合によるリンターエラーが複数発生しました（例: `extended_nutrients` の扱い、存在しないエラーコードの参照、`AIServiceFactory` の戻り値型など）。これらは都度修正しました。
 
 ---
 

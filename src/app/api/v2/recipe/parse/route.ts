@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandling } from '@/lib/api/middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { AppError } from '@/lib/error/types/base-error';
+import { AppError, ErrorOptions } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
@@ -11,6 +11,17 @@ import { convertToStandardizedNutrition, convertToLegacyNutrition, createStandar
 import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
 import { IAIService } from '@/lib/ai/ai-service.interface';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
+import { JSDOM } from 'jsdom';
+import { getRecipeParser } from '@/lib/recipe-parsers/parser-factory';
+import { RecipeParser } from '@/lib/recipe-parsers/parser-interface';
+import { GenericParser } from '@/lib/recipe-parsers/generic';
+import * as cheerio from 'cheerio';
+import { ApiAdapter } from '@/lib/api/api-adapter';
+// import { calculatePerServingNutrition } from '@/lib/nutrition/nutrition-utils';
+// import { Logger } from '@/lib/logger';
+import { sanitizeAndValidateUrl } from '@/lib/utils/url-utils';
+
+// const logger = Logger.getInstance();
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -24,60 +35,175 @@ const requestSchema = z.object({
 
 /**
  * レシピ解析API v2
- * レシピURLからレシピデータを解析し、栄養素を計算する
+ * ハイブリッドアプローチ: 専用パーサー優先、AIフォールバック
  */
 export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
-    // リクエストデータを取得して検証
     const requestData = await req.json();
-
     try {
-        // スキーマ検証
         const validatedData = requestSchema.parse(requestData);
-        const url = validatedData.url?.trim(); // Optional chaining
-        const text = validatedData.text?.trim(); // Optional chaining
+        let url = validatedData.url?.trim();
+        // const text = validatedData.text?.trim(); // text は現状このロジックでは未使用
 
-        // urlもtextもない場合は refine で弾かれるはずだが念のため
-        if (!url && !text) {
+        if (!url) { // ハイブリッドアプローチでは URL が必須
             throw new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
-                message: 'URLまたはテキストが必要です'
+                message: 'レシピURLが必要です'
             });
         }
 
-        // 処理時間計測開始
+        // TODO: sanitizeAndValidateUrl がないので、一時的に簡易バリデーション
+        try {
+            new URL(url); // URL形式かチェック
+        } catch (_) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '無効な形式のURLです。',
+            });
+        }
+
         const startTime = Date.now();
 
-        // AIサービス初期化
-        const aiService: IAIService = AIServiceFactory.getService(AIServiceType.GEMINI);
-
-        // レシピ解析の実行 (urlがあればurlを、なければtextを使用)
-        let analysisResult;
-        if (url) {
-            analysisResult = await aiService.parseRecipeFromUrl(url);
-        } else if (text) {
-            analysisResult = await aiService.analyzeRecipeText(text);
-        } else {
-            // この分岐には到達しないはず
-            throw new AppError({ code: ErrorCode.Base.API_ERROR, message: '解析対象の指定が無効です' });
-        }
-
-        if (analysisResult.error) {
+        // 1. HTML取得 & DOM構築
+        console.log(`[API Route] Fetching HTML for: ${url}`);
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+            },
+            signal: AbortSignal.timeout(15000), // 15秒タイムアウト
+            redirect: 'follow' // リダイレクトに従う
+        });
+        if (!response.ok) {
             throw new AppError({
-                code: ErrorCode.AI.ANALYSIS_ERROR,
-                message: 'レシピ解析に失敗しました',
-                details: {
-                    reason: analysisResult.error || 'レシピ解析中にエラーが発生しました',
-                    originalError: analysisResult.error
-                }
+                code: ErrorCode.Base.NETWORK_ERROR, // より適切なエラーコードに変更
+                message: `URLの取得に失敗しました: ${response.status} ${response.statusText}`,
+                details: { url }
             });
         }
+        const htmlContent = await response.text();
+        const dom = new JSDOM(htmlContent);
+        const document = dom.window.document;
+        console.log(`[API Route] HTML fetched and DOM created for: ${url}`);
 
-        // 解析結果から食品リストを取得
-        const ingredients = analysisResult.parseResult.foods || [];
-        const recipeTitle = analysisResult.parseResult.title || 'レシピ'; // デフォルト値フォールバック
-        const servingsString = analysisResult.parseResult.servings || '1人分'; // デフォルト値フォールバック
+        // 2. パーサー取得
+        const parser: RecipeParser = getRecipeParser(url);
+        console.log(`[API Route] Using parser: ${parser.constructor.name}`);
 
-        // servingsString から数値を取得 (1人前計算用)
+        let recipeTitle: string = 'レシピ';
+        let servingsString: string = '1人分';
+        let ingredients: FoodInputParseResult[] = [];
+        let analysisSource: 'parser' | 'ai' = 'parser'; // 解析ソースを記録
+
+        // 3. パーサー実行 or AI実行
+        if (!(parser instanceof GenericParser)) {
+            // 3a. 専用パーサーの場合
+            console.log(`[API Route] Using dedicated parser: ${parser.constructor.name}`);
+            try {
+                recipeTitle = parser.extractTitle(document) || recipeTitle;
+                const extractedIngredients = parser.extractIngredients(document);
+                // TODO: servings はインターフェースにないので、別途取得方法を検討
+                // 例: const servings = parser.extractServings ? parser.extractServings(document) : servingsString;
+
+                ingredients = extractedIngredients.map(ing => ({
+                    foodName: ing.name,
+                    quantityText: ing.quantity || null,
+                    confidence: 0.9 // 専用パーサーは高め
+                }));
+                console.log(`[API Route] Parsed by dedicated parser: ${ingredients.length} ingredients found.`);
+                analysisSource = 'parser';
+            } catch (parseError) {
+                console.error(`[API Route] Dedicated parser error, falling back to AI:`, parseError);
+                analysisSource = 'ai'; // AIフォールバックフラグ
+                // エラーが発生してもAIフォールバックに進むため、ここではエラーを投げない
+                // 必要に応じてエラー内容をログに残すか、meta情報に追加する
+            }
+        }
+
+        // 汎用パーサー(未対応サイト) または 専用パーサーエラーの場合 -> AIフォールバック
+        if (parser instanceof GenericParser || analysisSource === 'ai') {
+            console.log(`[API Route] Analyzing with AI for: ${url} (Source: ${analysisSource})`);
+            const aiService: IAIService = AIServiceFactory.getService(AIServiceType.GEMINI);
+
+            // --- HTMLクリーンアップ (cheerio) --- START
+            let cleanedHtml = htmlContent;
+            try {
+                const $ = cheerio.load(htmlContent);
+
+                // 不要な要素を削除 (例: script, style, header, footer, nav, aside)
+                // より高度なレシピ本文抽出ロジックも検討可能
+                $('script, style, header, footer, nav, aside, .ad, [class*="advertisement"], [id*="ad"], form').remove();
+
+                // 主要なレシピコンテンツが含まれていそうな要素を選択 (例)
+                // より洗練されたセレクタが必要になる場合がある
+                const mainContentSelectors = ['main', 'article', '.recipe', '#recipe', '[itemprop="recipeInstructions"]', '[class*="recipe-content"]'];
+                let mainContentHtml = '';
+                for (const selector of mainContentSelectors) {
+                    if ($(selector).length > 0) {
+                        mainContentHtml = $(selector).html() || '';
+                        // logger.debug(`[HTML Cleanup] Found main content with selector: ${selector}`);
+                        console.log(`[HTML Cleanup] Found main content with selector: ${selector}`); // logger 代替
+                        break; // 最初に見つかった主要コンテンツを使用
+                    }
+                }
+
+                if (mainContentHtml) {
+                    cleanedHtml = `<html><body>${mainContentHtml}</body></html>`;
+                    // logger.info(`[HTML Cleanup] Extracted main content for AI analysis.`);
+                    console.log(`[HTML Cleanup] Extracted main content for AI analysis.`); // logger 代替
+                } else {
+                    // 主要コンテンツが見つからない場合は、クリーンアップされた全体のHTMLを使用
+                    cleanedHtml = $.html();
+                    // logger.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`);
+                    console.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`); // logger 代替
+                }
+
+                // さらに不要な空白や改行を削除してトークン数を削減
+                cleanedHtml = cleanedHtml.replace(/\s{2,}/g, ' ').replace(/\n{2,}/g, '\n').trim();
+                // logger.debug(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`);
+                console.log(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`); // logger 代替
+
+            } catch (cleanupError) {
+                // logger.error(`[HTML Cleanup Error] Failed to clean HTML for ${url}`, cleanupError);
+                console.error(`[HTML Cleanup Error] Failed to clean HTML for ${url}`, cleanupError); // logger 代替
+                // クリーンアップに失敗しても、元のHTMLで続行する
+                cleanedHtml = htmlContent;
+            }
+            // --- HTMLクリーンアップ (cheerio) --- END
+
+            const aiResult = await aiService.parseRecipeFromUrl(url, cleanedHtml); // 引数を2つ渡す
+            if (aiResult.error || !aiResult.parseResult || aiResult.parseResult.foods.length === 0) {
+                // ErrorOptions を構築。AIからのエラーコードは固定でマッピングする。
+                const aiErrorOptions: ErrorOptions = {
+                    code: ErrorCode.AI.ANALYSIS_FAILED, // AI解析失敗として扱う
+                    message: aiResult.error?.message || 'AIによるレシピ解析に失敗しました。材料が見つからないか、形式が不正です。',
+                    details: aiResult.error?.details,
+                };
+
+                if (!aiResult.parseResult || aiResult.parseResult.foods.length === 0) {
+                    // 解析結果が不正な場合、固定メッセージでエラーを投げる
+                    throw new AppError({
+                        code: ErrorCode.AI.ANALYSIS_FAILED,
+                        message: 'AIによるレシピ解析に失敗しました。材料が見つからないか、形式が不正です。',
+                    });
+                } else {
+                    // AIサービスからエラーが返ってきた場合
+                    throw new AppError(aiErrorOptions);
+                }
+            } else {
+                recipeTitle = aiResult.parseResult.title || recipeTitle;
+                servingsString = aiResult.parseResult.servings || servingsString;
+                ingredients = aiResult.parseResult.foods.map(f => ({ // 型アサーションを追加
+                    foodName: (f as { foodName: string; quantityText: string }).foodName,
+                    quantityText: (f as { foodName: string; quantityText: string }).quantityText || null,
+                    confidence: 0.9 // AIの結果は高めに信頼
+                }));
+                console.log(`[API Route] Parsed by AI: ${ingredients.length} ingredients found.`);
+                analysisSource = 'ai';
+            }
+        }
+
+        // 4. servingsString から数値を取得 (1人前計算用) - 共通処理
         let servingsNum = 1;
         const match = servingsString.match(/\d+/);
         if (match) {
@@ -87,119 +213,81 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             }
         }
 
-        // 材料リストの検証
+        // 5. 材料リストの検証 - 共通処理
         if (ingredients.length === 0) {
             throw new AppError({
                 code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
                 message: '材料が検出されませんでした',
-                details: { reason: 'レシピから材料を検出できませんでした。別のレシピをお試しください。' }
+                details: { reason: 'レシピから材料を検出できませんでした。' + (analysisSource === 'parser' ? ' (専用パーサー使用)' : ' (AI使用)'), url }
             });
         }
 
-        // 栄養計算の実行
+        // 6. 栄養計算の実行 - 共通処理
+        console.log(`[API Route] Calculating nutrition for ${ingredients.length} ingredients...`);
         const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
         const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
-
-        // 食品名と量の配列に変換
         const nameQuantityPairs = ingredients.map((item: FoodInputParseResult) => ({
             name: item.foodName,
             quantity: item.quantityText || undefined
         })) as Array<{ name: string; quantity?: string }>;
-
-        // 材料から栄養計算を実行
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+        console.log(`[API Route] Nutrition calculation complete.`);
 
-        // レガシー形式からStandardizedMealNutrition形式に変換
+        // 7. 結果の整形と返却 - 共通処理
         const standardizedNutrition = convertToStandardizedNutrition(nutritionResult.nutrition);
 
-        // 1人前のStandardizedMealNutrition形式を作成
-        const standardizedPerServing: StandardizedMealNutrition = {
-            totalCalories: standardizedNutrition.totalCalories / servingsNum,
-            totalNutrients: standardizedNutrition.totalNutrients.map(nutrient => {
-                const newNutrient: Nutrient = {
-                    name: nutrient.name,
-                    value: nutrient.value / servingsNum,
-                    unit: nutrient.unit
-                };
-                if (nutrient.percentDailyValue !== undefined) {
-                    newNutrient.percentDailyValue = nutrient.percentDailyValue / servingsNum;
-                }
-                return newNutrient;
-            }),
-            foodItems: standardizedNutrition.foodItems.map(item => {
-                const newFoodItem = {
-                    id: item.id,
-                    name: item.name,
-                    amount: item.amount / servingsNum,
-                    unit: item.unit,
-                    nutrition: {
-                        calories: item.nutrition.calories / servingsNum,
-                        nutrients: item.nutrition.nutrients.map(nutrient => {
-                            const newNutrient: Nutrient = {
-                                name: nutrient.name,
-                                value: nutrient.value / servingsNum,
-                                unit: nutrient.unit
-                            };
-                            if (nutrient.percentDailyValue !== undefined) {
-                                newNutrient.percentDailyValue = nutrient.percentDailyValue / servingsNum;
-                            }
-                            return newNutrient;
-                        }),
-                        servingSize: item.nutrition.servingSize
-                    }
-                };
-                return newFoodItem;
-            })
-        };
+        // 1人前計算 (calculatePerServingNutrition がないので直接記述)
+        let standardizedPerServing: StandardizedMealNutrition | undefined;
+        let legacyPerServing: any | undefined;
 
-        // オプショナルプロパティを別途追加（型エラー回避のため）
-        if (standardizedNutrition.pregnancySpecific) {
-            standardizedPerServing.pregnancySpecific = {
-                folatePercentage: standardizedNutrition.pregnancySpecific.folatePercentage / servingsNum,
-                ironPercentage: standardizedNutrition.pregnancySpecific.ironPercentage / servingsNum,
-                calciumPercentage: standardizedNutrition.pregnancySpecific.calciumPercentage / servingsNum
+        if (servingsNum > 0 && standardizedNutrition) {
+            standardizedPerServing = {
+                totalCalories: standardizedNutrition.totalCalories / servingsNum,
+                totalNutrients: standardizedNutrition.totalNutrients.map(nutrient => {
+                    const newNutrient: Nutrient = {
+                        name: nutrient.name,
+                        value: nutrient.value / servingsNum,
+                        unit: nutrient.unit
+                    };
+                    if (nutrient.percentDailyValue !== undefined) {
+                        newNutrient.percentDailyValue = nutrient.percentDailyValue / servingsNum;
+                    }
+                    return newNutrient;
+                }),
+                foodItems: (standardizedNutrition.foodItems || []).map(item => ({
+                    ...item,
+                    amount: item.amount / servingsNum,
+                    nutrition: {
+                        ...item.nutrition,
+                        calories: item.nutrition.calories / servingsNum,
+                        nutrients: item.nutrition.nutrients.map(nutrient => ({
+                            ...nutrient,
+                            value: nutrient.value / servingsNum,
+                            ...(nutrient.percentDailyValue !== undefined && { percentDailyValue: nutrient.percentDailyValue / servingsNum })
+                        }))
+                    }
+                }))
             };
+            if (standardizedNutrition.pregnancySpecific) {
+                standardizedPerServing.pregnancySpecific = {
+                    folatePercentage: standardizedNutrition.pregnancySpecific.folatePercentage / servingsNum,
+                    ironPercentage: standardizedNutrition.pregnancySpecific.ironPercentage / servingsNum,
+                    calciumPercentage: standardizedNutrition.pregnancySpecific.calciumPercentage / servingsNum
+                };
+            }
+
+            // レガシー形式も計算
+            legacyPerServing = convertToLegacyNutrition(standardizedPerServing);
+        } else {
+            console.warn(`[API Route] Could not calculate per-serving nutrition for ${url} (servingsNum: ${servingsNum})`);
         }
 
-        // レガシー形式の1人前データも作成（後方互換性のため）
-        const legacyPerServing = {
-            calories: nutritionResult.nutrition.calories / servingsNum,
-            protein: nutritionResult.nutrition.protein / servingsNum,
-            iron: nutritionResult.nutrition.iron / servingsNum,
-            folic_acid: nutritionResult.nutrition.folic_acid / servingsNum,
-            calcium: nutritionResult.nutrition.calcium / servingsNum,
-            vitamin_d: nutritionResult.nutrition.vitamin_d / servingsNum,
-            confidence_score: nutritionResult.nutrition.confidence_score,
-            ...(nutritionResult.nutrition.extended_nutrients
-                ? {
-                    extended_nutrients: Object.entries(nutritionResult.nutrition.extended_nutrients).reduce(
-                        (acc, [key, value]) => {
-                            if (typeof value === 'number') {
-                                return { ...acc, [key]: value / servingsNum };
-                            } else if (typeof value === 'object' && value !== null) {
-                                return {
-                                    ...acc,
-                                    [key]: Object.entries(value).reduce(
-                                        (subAcc, [subKey, subValue]) => ({
-                                            ...subAcc,
-                                            [subKey]: (subValue as number) / servingsNum
-                                        }),
-                                        {}
-                                    )
-                                };
-                            }
-                            return acc;
-                        },
-                        {}
-                    )
-                }
-                : {})
-        };
-
-        // 結果を返却
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
             warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
+        }
+        if (analysisSource === 'ai' && ingredients.length > 0) {
+            warningMessage = (warningMessage ? warningMessage + ' ' : '') + 'AIによる解析のため、精度が低い可能性があります。';
         }
 
         return {
@@ -207,40 +295,44 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             data: {
                 recipe: {
                     title: recipeTitle,
-                    servings: servingsString, // AIからの解析結果(文字列) or デフォルト値
-                    ingredients: ingredients,
+                    servings: servingsString,
+                    ingredients: ingredients, // TODO: ingredients の型を合わせる必要あり (FoodInputParseResult ではないかも)
                     sourceUrl: url
                 },
                 nutritionResult: {
                     nutrition: standardizedNutrition,
                     reliability: nutritionResult.reliability,
                     matchResults: nutritionResult.matchResults,
-                    legacyNutrition: nutritionResult.nutrition, // 後方互換性のために保持
-                    perServing: standardizedPerServing,
-                    legacyPerServing: legacyPerServing // 後方互換性のために保持
+                    legacyNutrition: nutritionResult.nutrition,
+                    perServing: standardizedPerServing, // 計算結果をそのまま代入
+                    legacyPerServing: legacyPerServing // 計算結果をそのまま代入
                 }
             },
             meta: {
                 processingTimeMs: Date.now() - startTime,
+                analysisSource: analysisSource,
                 ...(warningMessage ? { warning: warningMessage } : {})
             }
         };
 
     } catch (error) {
-        // Zodバリデーションエラーの処理
         if (error instanceof z.ZodError) {
             throw new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '入力データが無効です',
                 details: {
-                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    reason: error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', '),
                     originalError: error
                 }
             });
         }
-
-        // その他のエラーは上位ハンドラーに委譲
-        throw error;
+        if (error instanceof AppError) throw error;
+        console.error('[API Route] Unexpected error:', error);
+        throw new AppError({
+            code: ErrorCode.Base.API_ERROR,
+            message: '予期せぬエラーが発生しました。' + (error instanceof Error ? ` (${error.message})` : ''),
+            originalError: error instanceof Error ? error : new Error(String(error))
+        });
     }
 });
 
