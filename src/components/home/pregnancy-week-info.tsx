@@ -1,16 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { format, differenceInWeeks, addWeeks } from 'date-fns';
-import { Progress } from '@/components/ui/progress';
-import { CalendarIcon } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
-import { Skeleton } from '@/components/ui/skeleton';
+
 
 interface PregnancyWeekInfoProps {
     className?: string;
@@ -45,7 +40,7 @@ const WEEK_MARKERS = [
     { week: 13, label: '13週' },
     { week: 27, label: '27週' },
     { week: 40, label: '40週' },
-];
+] as const;
 
 const PregnancyWeekInfo: React.FC<PregnancyWeekInfoProps> = ({ className, dueDate }) => {
     const [pregnancyWeek, setPregnancyWeek] = useState<number | null>(null);
@@ -121,7 +116,7 @@ const PregnancyWeekInfo: React.FC<PregnancyWeekInfoProps> = ({ className, dueDat
     const currentTrimester = getCurrentTrimester(pregnancyWeek);
     const trimesterInfo = TRIMESTER_INFO[currentTrimester as keyof typeof TRIMESTER_INFO];
     const babyInfo = getBabyGrowthInfo(pregnancyWeek);
-    const daysRemaining = calculateDaysLeft(new Date(dueDate));
+    const daysRemaining = dueDate ? calculateDaysLeft(new Date(dueDate)) : 0;
     const progressPercentage = Math.min((pregnancyWeek / 40) * 100, 100);
 
     return (
@@ -139,7 +134,7 @@ const PregnancyWeekInfo: React.FC<PregnancyWeekInfoProps> = ({ className, dueDat
                             </span>
                         </div>
                         <CardDescription className="text-[12px] text-[#6C7A7D]">
-                            <span>出産予定日: {format(new Date(dueDate), 'yyyy年MM月dd日')} (あと{daysRemaining}日)</span>
+                            <span>出産予定日: {dueDate ? format(new Date(dueDate), 'yyyy年MM月dd日') : '未設定'} (あと{daysRemaining}日)</span>
                         </CardDescription>
                     </div>
                 </div>
@@ -149,10 +144,10 @@ const PregnancyWeekInfo: React.FC<PregnancyWeekInfoProps> = ({ className, dueDat
                     <div className="relative pb-1">
                         {/* マイルストーンマーカー */}
                         <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
-                            <span style={{ marginLeft: '-2px' }}>{WEEK_MARKERS[0].label}</span>
-                            <span style={{ position: 'absolute', left: '32.5%', transform: 'translateX(-50%)' }}>{WEEK_MARKERS[1].label}</span>
-                            <span style={{ position: 'absolute', left: '67.5%', transform: 'translateX(-50%)' }}>{WEEK_MARKERS[2].label}</span>
-                            <span style={{ marginRight: '-2px' }}>{WEEK_MARKERS[3].label}</span>
+                            <span style={{ marginLeft: '-2px' }}>{WEEK_MARKERS[0]?.label}</span>
+                            <span style={{ position: 'absolute', left: '32.5%', transform: 'translateX(-50%)' }}>{WEEK_MARKERS[1]?.label}</span>
+                            <span style={{ position: 'absolute', left: '67.5%', transform: 'translateX(-50%)' }}>{WEEK_MARKERS[2]?.label}</span>
+                            <span style={{ marginRight: '-2px' }}>{WEEK_MARKERS[3]?.label}</span>
                         </div>
 
                         {/* プログレスバー */}

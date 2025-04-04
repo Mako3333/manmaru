@@ -189,8 +189,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                                     "
                                 </div>
                                 <p className="text-[15px] text-gray-700 leading-relaxed relative z-1">
-                                    {/* Linter Error Fix: NutritionAdvice 型のプロパティを参照 */}
-                                    {advice.advice_detail || advice.advice_summary || '栄養アドバイスがありません'}
+                                    {advice.advice_summary || '今日のアドバイス概要はありません。'}
                                 </p>
                             </div>
 

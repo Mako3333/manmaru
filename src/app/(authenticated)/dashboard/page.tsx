@@ -20,7 +20,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import { format, subDays, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -68,13 +68,21 @@ export default function DashboardPage() {
             folatePercentage: 0,    // 葉酸摂取割合
             ironPercentage: 0,      // 鉄分摂取割合
             calciumPercentage: 0,   // カルシウム摂取割合
+        },
+        reliability: {
+            confidence: 0,          // 信頼度を0に設定（データなし）
+            balanceScore: 0,        // バランススコアを0に設定
+            completeness: 0         // 完全性を0に設定
         }
     })
     const [nutritionProgress, setNutritionProgress] = useState<NutritionProgress | null>(null)
     const [nutritionTargets, setNutritionTargets] = useState<NutritionTargets>(DEFAULT_NUTRITION_TARGETS)
     const [nutritionScore, setNutritionScore] = useState(0)
     const router = useRouter()
-    const supabase = createClientComponentClient()
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
 
     useEffect(() => {
         const fetchData = async () => {
@@ -134,6 +142,11 @@ export default function DashboardPage() {
                             folatePercentage: 0,    // 葉酸摂取割合
                             ironPercentage: 0,      // 鉄分摂取割合
                             calciumPercentage: 0,   // カルシウム摂取割合
+                        },
+                        reliability: {
+                            confidence: 0,          // 信頼度を0に設定（データなし）
+                            balanceScore: 0,        // バランススコアを0に設定
+                            completeness: 0         // 完全性を0に設定
                         }
                     });
                     setNutritionScore(0);
@@ -208,49 +221,49 @@ export default function DashboardPage() {
         {
             name: 'カロリー',
             icon: NUTRIENT_ICONS.calories,
-            percent: nutritionProgress?.calories_percent || 0,
-            actual: nutritionProgress?.actual_calories || 0,
-            target: nutritionProgress?.target_calories || nutritionTargets.calories || 0,
+            percent: nutritionProgress?.calories_percent ?? 0,
+            actual: nutritionProgress?.actual_calories ?? 0,
+            target: nutritionProgress?.target_calories ?? nutritionTargets.calories ?? 0,
             unit: 'kcal'
         },
         {
             name: 'タンパク質',
             icon: NUTRIENT_ICONS.protein,
-            percent: nutritionProgress?.protein_percent || 0,
-            actual: nutritionProgress?.actual_protein || 0,
-            target: nutritionProgress?.target_protein || nutritionTargets.protein || 0,
+            percent: nutritionProgress?.protein_percent ?? 0,
+            actual: nutritionProgress?.actual_protein ?? 0,
+            target: nutritionProgress?.target_protein ?? nutritionTargets.protein ?? 0,
             unit: 'g'
         },
         {
             name: '鉄分',
             icon: NUTRIENT_ICONS.iron,
-            percent: nutritionProgress?.iron_percent || 0,
-            actual: nutritionProgress?.actual_iron || 0,
-            target: nutritionProgress?.target_iron || nutritionTargets.iron || 0,
+            percent: nutritionProgress?.iron_percent ?? 0,
+            actual: nutritionProgress?.actual_iron ?? 0,
+            target: nutritionProgress?.target_iron ?? nutritionTargets.iron ?? 0,
             unit: 'mg'
         },
         {
             name: '葉酸',
             icon: NUTRIENT_ICONS.folic_acid,
-            percent: nutritionProgress?.folic_acid_percent || 0,
-            actual: nutritionProgress?.actual_folic_acid || 0,
-            target: nutritionProgress?.target_folic_acid || nutritionTargets.folic_acid || 0,
+            percent: nutritionProgress?.folic_acid_percent ?? 0,
+            actual: nutritionProgress?.actual_folic_acid ?? 0,
+            target: nutritionProgress?.target_folic_acid ?? nutritionTargets.folic_acid ?? 0,
             unit: 'μg'
         },
         {
             name: 'カルシウム',
             icon: NUTRIENT_ICONS.calcium,
-            percent: nutritionProgress?.calcium_percent || 0,
-            actual: nutritionProgress?.actual_calcium || 0,
-            target: nutritionProgress?.target_calcium || nutritionTargets.calcium || 0,
+            percent: nutritionProgress?.calcium_percent ?? 0,
+            actual: nutritionProgress?.actual_calcium ?? 0,
+            target: nutritionProgress?.target_calcium ?? nutritionTargets.calcium ?? 0,
             unit: 'mg'
         },
         {
             name: 'ビタミンD',
             icon: NUTRIENT_ICONS.vitamin_d,
-            percent: nutritionProgress?.vitamin_d_percent || 0,
-            actual: nutritionProgress?.actual_vitamin_d || 0,
-            target: nutritionProgress?.target_vitamin_d || nutritionTargets.vitamin_d || 0,
+            percent: nutritionProgress?.vitamin_d_percent ?? 0,
+            actual: nutritionProgress?.actual_vitamin_d ?? 0,
+            target: nutritionProgress?.target_vitamin_d ?? nutritionTargets.vitamin_d ?? 0,
             unit: 'μg'
         }
     ];

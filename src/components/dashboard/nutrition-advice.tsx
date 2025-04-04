@@ -116,20 +116,24 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                 return; // エラーハンドリング後に関数を終了
             }
 
-            // --- response.ok の場合の処理 --- 
+            // --- response.ok の場合の処理 ---
             const responseData = await response.json();
             console.log('DetailedNutritionAdvice: 取得データ raw', responseData);
 
-            if (!responseData.success || !responseData.data) { // successフラグとdata本体の存在を確認
-                const errorMessage = responseData.error?.message || responseData.message || "APIから予期しない応答がありました";
-                throw new Error(errorMessage);
+            // ★ 修正: successフラグとdata本体の存在を確認し、失敗時は具体的なエラーを設定
+            if (!responseData.success || !responseData.data) {
+                const apiErrorMessage = responseData.error?.message || responseData.message || "APIから予期しない形式の応答がありました";
+                console.error('DetailedNutritionAdvice: API success=false or no data', responseData);
+                setState(prev => ({
+                    ...prev,
+                    loading: false,
+                    error: apiErrorMessage,
+                    advice: null,
+                }));
+                return; // ここで処理を終了
             }
 
             const actualData = responseData.data;
-
-            if (!actualData) {
-                throw new Error("APIからアドバイスデータが返されませんでした。");
-            }
 
             console.log('DetailedNutritionAdvice: 取得データ (data part)', {
                 type: actualData.advice_type,
@@ -166,7 +170,20 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
         } catch (err) {
             // fetch自体、または response.ok 後の処理でエラーが発生した場合
             console.error("詳細アドバイス取得/処理エラー:", err);
-            const errorMessageString = err instanceof Error ? err.message : "詳細アドバイスの読み込み中に予期せぬエラーが発生しました";
+
+            // ★ 修正: エラーの種類を判別し、適切なメッセージを設定
+            let errorMessageString: string;
+            // AppError は src/lib/error からインポートする必要があるが、ここでは仮定
+            // import { AppError } from "@/lib/error"; // 必要に応じて追加
+            // if (err instanceof AppError) { // AppError クラスが利用可能なら
+            //     errorMessageString = err.userMessage || err.message || "アドバイスの読み込み中にエラーが発生しました。";
+            // } else
+            if (err instanceof Error) { // 通常の Error オブジェクトの場合
+                errorMessageString = err.message;
+            } else { // その他の場合
+                errorMessageString = "詳細アドバイスの読み込み中に予期せぬエラーが発生しました";
+            }
+
             // ★ デバッグログ追加: 最終catchブロックでのsetState直前の値を確認
             console.log('[fetchDetailedAdvice] Setting error state in FINAL CATCH. Type:', typeof errorMessageString, 'Value:', errorMessageString);
             setState(prev => ({
@@ -176,8 +193,8 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                 advice: null,
             }));
 
-            toast.error("詳細アドバイスの読み込みに失敗しました");
-            setForceUpdate(false);
+            toast.error(errorMessageString); // トーストにも反映
+            setForceUpdate(false); // 強制更新フラグをリセット
         }
     };
 

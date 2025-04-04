@@ -131,6 +131,8 @@ export default function HomeClient({ user }: HomeClientProps) {
             console.log('[fetchNutritionData] Setting loading true');
             setLoading(true);
 
+
+
             const defaultProgressData: NutritionProgress = {
                 user_id: user.id,
                 meal_date: currentDate,
@@ -184,12 +186,19 @@ export default function HomeClient({ user }: HomeClientProps) {
                         folatePercentage: progressData.folic_acid_percent,
                         ironPercentage: progressData.iron_percent,
                         calciumPercentage: progressData.calcium_percent,
+                    },
+                    reliability: {
+                        confidence: data ? 0.8 : 0,
+                        balanceScore: 0,
+                        completeness: data ? 1 : 0
                     }
                 };
                 console.log('[fetchNutritionData] Formatted data for score calculation:', formattedNutritionData);
 
                 const overall_score = calculateNutritionScore(formattedNutritionData);
                 console.log('[fetchNutritionData] Calculated score:', overall_score);
+
+                formattedNutritionData.reliability.balanceScore = overall_score;
 
                 setNutritionData({
                     ...progressData,
@@ -199,7 +208,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                 const hasMealRecords = Object.entries(progressData).some(([key, value]) =>
                     key.startsWith('actual_') && typeof value === 'number' && value > 0
                 );
-                setIsMorningWithNoMeals(!hasMealRecords && new Date().getHours() < 12);
+                setIsMorningWithNoMeals(!hasMealRecords);
                 console.log('[fetchNutritionData] Success');
 
             } catch (error) {
@@ -357,7 +366,7 @@ export default function HomeClient({ user }: HomeClientProps) {
             <main className="flex-grow container mx-auto max-w-4xl px-4 pt-6 space-y-8">
 
                 {/* 1. 妊娠週数情報カード */}
-                {profile && profile.due_date && <PregnancyWeekInfo className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />}
+                {profile && profile.due_date && <PregnancyWeekInfo dueDate={profile.due_date} className="rounded-[16px] shadow-[0_4px_16px_rgba(0,0,0,0.05)]" />}
 
                 {/* 初回ユーザーオンボーディング */}
                 {isFirstTimeUser && showOnboarding && (
