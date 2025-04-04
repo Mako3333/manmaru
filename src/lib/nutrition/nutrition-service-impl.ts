@@ -1,5 +1,18 @@
 import { Food, FoodQuantity, MealFoodItem, FoodMatchResult } from '@/types/food';
-import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
+import {
+    NutritionCalculationResult,
+    NutritionData, // 一時的に残すが、最終的には削除する可能性あり
+    StandardizedMealNutrition, // 追加
+    Nutrient, // 追加
+    FoodItemNutrition, // 追加
+    NutrientUnit, // 追加
+    NutrientDeficiency
+} from '@/types/nutrition';
+import {
+    convertToStandardizedNutrition, // 追加
+    convertToLegacyNutrition, // 追加 (後方互換性用)
+    createStandardizedMealNutrition // 追加 (ファクトリ関数)
+} from './nutrition-type-utils'; // 型変換ユーティリティをインポート
 import { FoodRepository } from '@/lib/food/food-repository';
 import { FoodMatchingService } from '@/lib/food/food-matching-service';
 import { NutritionService } from './nutrition-service';
@@ -9,88 +22,6 @@ import { FoodAnalysisResult } from '@/types/ai';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 //src\lib\nutrition\nutrition-service-impl.ts
-
-/**
- * NutritionData型の標準形式を作成（互換性のためのプロパティも同時に設定）
- */
-export function createStandardNutritionData(data: Partial<NutritionData> = {}): NutritionData {
-    const result: NutritionData = {
-        // 基本栄養素
-        calories: data.calories ?? 0,
-        protein: data.protein ?? 0,
-        iron: data.iron ?? 0,
-        folic_acid: data.folic_acid ?? 0,
-        calcium: data.calcium ?? 0,
-        vitamin_d: data.vitamin_d ?? 0,
-        confidence_score: data.confidence_score ?? 0.8,
-
-        // 拡張栄養素
-        extended_nutrients: {
-            fat: data.extended_nutrients?.fat ?? data.fat ?? 0,
-            carbohydrate: data.extended_nutrients?.carbohydrate ?? data.carbohydrate ?? 0,
-            dietary_fiber: data.extended_nutrients?.dietary_fiber ?? data.dietaryFiber ?? 0,
-            sugars: data.extended_nutrients?.sugars ?? data.sugars ?? 0,
-            salt: data.extended_nutrients?.salt ?? data.salt ?? 0,
-
-            // ミネラル
-            minerals: {
-                sodium: data.extended_nutrients?.minerals?.sodium ?? data.minerals?.sodium ?? 0,
-                potassium: data.extended_nutrients?.minerals?.potassium ?? data.minerals?.potassium ?? 0,
-                magnesium: data.extended_nutrients?.minerals?.magnesium ?? data.minerals?.magnesium ?? 0,
-                phosphorus: data.extended_nutrients?.minerals?.phosphorus ?? data.minerals?.phosphorus ?? 0,
-                zinc: data.extended_nutrients?.minerals?.zinc ?? data.minerals?.zinc ?? 0,
-            },
-
-            // ビタミン
-            vitamins: {
-                vitamin_a: data.extended_nutrients?.vitamins?.vitamin_a ?? data.vitamins?.vitaminA ?? 0,
-                vitamin_b1: data.extended_nutrients?.vitamins?.vitamin_b1 ?? data.vitamins?.vitaminB1 ?? 0,
-                vitamin_b2: data.extended_nutrients?.vitamins?.vitamin_b2 ?? data.vitamins?.vitaminB2 ?? 0,
-                vitamin_b6: data.extended_nutrients?.vitamins?.vitamin_b6 ?? data.vitamins?.vitaminB6 ?? 0,
-                vitamin_b12: data.extended_nutrients?.vitamins?.vitamin_b12 ?? data.vitamins?.vitaminB12 ?? 0,
-                vitamin_c: data.extended_nutrients?.vitamins?.vitamin_c ?? data.vitamins?.vitaminC ?? 0,
-                vitamin_e: data.extended_nutrients?.vitamins?.vitamin_e ?? data.vitamins?.vitaminE ?? 0,
-                vitamin_k: data.extended_nutrients?.vitamins?.vitamin_k ?? data.vitamins?.vitaminK ?? 0,
-            }
-        },
-
-        // 互換性のためのプロパティ
-        energy: data.calories ?? data.energy ?? 0,
-        fat: data.extended_nutrients?.fat ?? data.fat ?? 0,
-        carbohydrate: data.extended_nutrients?.carbohydrate ?? data.carbohydrate ?? 0,
-        dietaryFiber: data.extended_nutrients?.dietary_fiber ?? data.dietaryFiber ?? 0,
-        sugars: data.extended_nutrients?.sugars ?? data.sugars ?? 0,
-        salt: data.extended_nutrients?.salt ?? data.salt ?? 0,
-
-        // 互換性のための構造化オブジェクト
-        minerals: {
-            sodium: data.extended_nutrients?.minerals?.sodium ?? data.minerals?.sodium ?? 0,
-            calcium: data.calcium ?? data.minerals?.calcium ?? 0,
-            iron: data.iron ?? data.minerals?.iron ?? 0,
-            potassium: data.extended_nutrients?.minerals?.potassium ?? data.minerals?.potassium ?? 0,
-            magnesium: data.extended_nutrients?.minerals?.magnesium ?? data.minerals?.magnesium ?? 0,
-            phosphorus: data.extended_nutrients?.minerals?.phosphorus ?? data.minerals?.phosphorus ?? 0,
-            zinc: data.extended_nutrients?.minerals?.zinc ?? data.minerals?.zinc ?? 0,
-        },
-
-        vitamins: {
-            vitaminA: data.extended_nutrients?.vitamins?.vitamin_a ?? data.vitamins?.vitaminA ?? 0,
-            vitaminD: data.vitamin_d ?? data.vitamins?.vitaminD ?? 0,
-            vitaminE: data.extended_nutrients?.vitamins?.vitamin_e ?? data.vitamins?.vitaminE ?? 0,
-            vitaminK: data.extended_nutrients?.vitamins?.vitamin_k ?? data.vitamins?.vitaminK ?? 0,
-            vitaminB1: data.extended_nutrients?.vitamins?.vitamin_b1 ?? data.vitamins?.vitaminB1 ?? 0,
-            vitaminB2: data.extended_nutrients?.vitamins?.vitamin_b2 ?? data.vitamins?.vitaminB2 ?? 0,
-            vitaminB6: data.extended_nutrients?.vitamins?.vitamin_b6 ?? data.vitamins?.vitaminB6 ?? 0,
-            vitaminB12: data.extended_nutrients?.vitamins?.vitamin_b12 ?? data.vitamins?.vitaminB12 ?? 0,
-            vitaminC: data.extended_nutrients?.vitamins?.vitamin_c ?? data.vitamins?.vitaminC ?? 0,
-            folicAcid: data.folic_acid ?? data.vitamins?.folicAcid ?? 0,
-        },
-
-        not_found_foods: data.not_found_foods ?? []
-    };
-
-    return result;
-}
 
 /**
  * 栄養計算サービスの実装クラス
@@ -113,51 +44,72 @@ export class NutritionServiceImpl implements NutritionService {
      * @returns 計算された栄養素データ
      */
     async calculateNutrition(foodItems: MealFoodItem[]): Promise<NutritionCalculationResult> {
-        // 信頼度の合計と栄養素の累積を初期化
         let totalConfidence = 0;
-        const totalNutrients: NutritionData = this.initializeNutrientData();
+        // initializeStandardizedNutrition を使用
+        const totalNutrition: StandardizedMealNutrition = this.initializeStandardizedNutrition();
+        const foodItemsForStandardized: StandardizedMealNutrition['foodItems'] = []; // Standardized 用の foodItems 配列
         const matchResults: FoodMatchResult[] = [];
 
-        // 各食品に対して栄養素を計算し累積する
         for (const item of foodItems) {
-            // 食品を取得
             const food = item.food;
-
-            // 単一食品の栄養素を計算
-            const { nutrition, confidence } = await this.calculateSingleFoodNutrition(
+            const { nutrition: singleFoodNutrition, confidence: singleFoodConfidence } = await this.calculateSingleFoodNutrition(
                 food,
                 item.quantity
             );
 
-            // 栄養素を累積
-            this.accumulateNutrients(totalNutrients, nutrition);
+            // 修正された accumulateNutrients を使用
+            this.accumulateNutrients(totalNutrition, singleFoodNutrition);
 
-            // 信頼度を加重平均のために加算
-            totalConfidence += confidence;
+            // TODO: 個々の食品の信頼度と量の信頼度を考慮した総合的な信頼度を計算するロジックを追加・改善
+            // 現在は calculateSingleFoodNutrition から返される confidence をそのまま使用
+            totalConfidence += singleFoodConfidence;
 
-            // マッチング結果を記録
+            // StandardizedMealNutrition の foodItems にも情報を追加
+            // 量はグラム換算後の値を設定することが望ましいが、元の単位情報も保持したい場合がある
+            // ここでは quantity parser が返す FoodQuantity をそのまま利用する方針とする
+            // servingSize は calculateSingleFoodNutrition 内で計算されたグラム量を使用する
+            const { grams } = QuantityParser.convertToGrams(item.quantity, food.name, food.category);
+            foodItemsForStandardized.push({
+                id: food.id,
+                name: food.name,
+                amount: item.quantity.value, // 元の入力量
+                unit: item.quantity.unit, // 元の入力単位
+                nutrition: {
+                    calories: singleFoodNutrition.totalCalories, // スケーリング後のカロリー
+                    nutrients: singleFoodNutrition.totalNutrients, // スケーリング後の栄養素リスト
+                    servingSize: {
+                        value: grams, // グラム換算後の量
+                        unit: 'g'
+                    }
+                },
+                confidence: singleFoodConfidence // この食品アイテムに対する信頼度
+            });
+
             matchResults.push({
                 inputName: item.originalInput || food.name,
                 matchedFood: food,
                 food: food,
-                similarity: confidence,
-                confidence,
+                similarity: singleFoodConfidence,
+                confidence: singleFoodConfidence,
                 originalInput: item.originalInput || food.name
             });
         }
 
-        // 信頼度の平均を計算
+        totalNutrition.foodItems = foodItemsForStandardized; // 計算した foodItems をセット
+
         const averageConfidence = foodItems.length > 0 ? totalConfidence / foodItems.length : 0;
 
-        // 栄養バランススコアの計算
-        const balanceScore = this.evaluateNutritionBalance(totalNutrients);
+        // バランススコアと完全性は、このメソッドではなく、最終結果を受け取った側で計算する
+        // const balanceScore = this.evaluateNutritionBalance(totalNutrition, { ... });
+        // const completeness = this.calculateCompleteness(totalNutrition);
 
         return {
-            nutrition: totalNutrients,
+            nutrition: totalNutrition,
             reliability: {
                 confidence: averageConfidence,
-                balanceScore,
-                completeness: this.calculateCompleteness(totalNutrients)
+                // balanceScore と completeness は削除
+                // balanceScore: balanceScore,
+                // completeness: completeness
             },
             matchResults
         };
@@ -209,50 +161,44 @@ export class NutritionServiceImpl implements NutritionService {
      * @param food 食品データ
      * @param quantity 量
      * @returns 計算された栄養素データと信頼度
+     * @throws {AppError(ErrorCode.Nutrition.QUANTITY_CONVERSION_ERROR)} 量の変換に失敗した場合
+     * @remarks Food 型から StandardizedMealNutrition への変換ロジックが含まれる。
+     *          将来的にはこの変換は FoodRepository 層に移譲することが望ましい。
      */
     async calculateSingleFoodNutrition(
         food: Food,
         quantity: FoodQuantity
-    ): Promise<{ nutrition: NutritionData; confidence: number }> {
-        // 量をグラムに変換
+    ): Promise<{ nutrition: StandardizedMealNutrition; confidence: number }> {
         const { grams, confidence: quantityConfidence } = QuantityParser.convertToGrams(
             quantity,
             food.name,
             food.category
         );
 
-        // 栄養素データの初期化
-        const scaledNutrition = this.initializeNutrientData();
+        // initializeStandardizedNutrition を使用
+        const scaledNutrition: StandardizedMealNutrition = this.initializeStandardizedNutrition();
 
-        // 食品の栄養素データを変換
-        if (food) {
-            // 栄養素をスケーリング
-            const ratio = grams / 100; // 100gあたりの栄養素を指定グラムに換算
+        // --- ここから Food 型から StandardizedMealNutrition への変換ロジック ---
+        // 将来的にはこのロジックは FoodRepository 層に移譲することが望ましい
+        // MVPの6栄養素のみを変換
+        scaledNutrition.totalCalories = food.calories || 0;
+        this.updateNutrient(scaledNutrition, 'protein', food.protein || 0, 'g');
+        this.updateNutrient(scaledNutrition, 'iron', food.iron || 0, 'mg');
+        this.updateNutrient(scaledNutrition, 'folic_acid', food.folic_acid || 0, 'mcg');
+        this.updateNutrient(scaledNutrition, 'calcium', food.calcium || 0, 'mg');
+        this.updateNutrient(scaledNutrition, 'vitamin_d', food.vitamin_d || 0, 'mcg');
+        // カロリーも totalNutrients 配列に反映
+        this.updateNutrient(scaledNutrition, 'calories', scaledNutrition.totalCalories, 'kcal');
+        // --- 変換ロジックここまで ---
 
-            // 各栄養素をスケーリング
-            const sourceNutrition: NutritionData = {
-                calories: food.calories || 0,
-                protein: food.protein || 0,
-                iron: food.iron || 0,
-                folic_acid: food.folic_acid || 0,
-                calcium: food.calcium || 0,
-                vitamin_d: food.vitamin_d || 0,
-                confidence_score: food.confidence || 0.8,
-                extended_nutrients: {
-                    // 追加の栄養素があれば拡張フィールドに追加
-                    // fat, carbohydrateなどがあれば追加
-                }
-            };
+        // 量に基づいてスケーリング (100gあたりから指定グラムへ)
+        const ratio = grams > 0 ? grams / 100 : 0; // グラムが0または負なら比率も0
+        // 修正された scaleNutrients を使用
+        this.scaleNutrients(scaledNutrition, ratio);
 
-            this.scaleNutrients(scaledNutrition, sourceNutrition, ratio);
-        }
-
-        // 食品栄養データの信頼度と量変換の信頼度を掛け合わせる
-        const foodConfidence = food.confidence || 0.8; // デフォルト値
-        const overallConfidence = foodConfidence * quantityConfidence;
-
-        // 信頼度を結果に設定
-        scaledNutrition.confidence_score = overallConfidence;
+        // Food 自体の信頼度と量の解析の信頼度を考慮
+        const foodConfidence = food.confidence ?? 0.8; // 食品データ自体の信頼度 (なければデフォルト)
+        const overallConfidence = Math.min(foodConfidence, quantityConfidence);
 
         return {
             nutrition: scaledNutrition,
@@ -261,409 +207,278 @@ export class NutritionServiceImpl implements NutritionService {
     }
 
     /**
-     * 栄養バランスを評価する
-     * @param nutrition 栄養素データ
-     * @returns バランススコア（0-100）
+     * 栄養バランススコアの計算（MVPの6栄養素に基づく）
+     * 各栄養素の目標充足率に基づいてスコアを算出 (0-100)
+     * @param nutrition 栄養データ
+     * @param targetValues ユーザーの現在の妊娠周期に基づいた目標値 (例: { calories: 2200, protein: 75, ... })
      */
-    evaluateNutritionBalance(nutrition: NutritionData): number {
-        // 主要栄養素の理想的な比率 (例: タンパク質:脂質:炭水化物 = 2:1:3)
-        const idealRatio = {
-            protein: 2,
-            fat: 1,
-            carbohydrate: 3
-        };
+    evaluateNutritionBalance(nutrition: StandardizedMealNutrition, targetValues: Record<string, number>): number {
+        // MVPの栄養素リスト
+        const mvpNutrientNames = ['calories', 'protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'];
 
-        const totalIdealRatio = idealRatio.protein + idealRatio.fat + idealRatio.carbohydrate;
+        let fulfillmentSum = 0;
+        let targetCount = 0;
 
-        // 実際の栄養素比率の計算
-        // 拡張栄養素から脂質と炭水化物を取得、ない場合はデフォルト値を使用
-        const fat = nutrition.extended_nutrients && typeof nutrition.extended_nutrients.fat === 'number'
-            ? nutrition.extended_nutrients.fat
-            : 0;
-
-        const carbohydrate = nutrition.extended_nutrients && typeof nutrition.extended_nutrients.carbohydrate === 'number'
-            ? nutrition.extended_nutrients.carbohydrate
-            : 0;
-
-        const totalMacroNutrients = nutrition.protein + fat + carbohydrate;
-
-        if (totalMacroNutrients === 0) {
-            return 0; // 栄養素がゼロの場合はスコアも0
+        for (const name of mvpNutrientNames) {
+            const targetValue = targetValues[name];
+            // 目標値が設定され、かつ0より大きい場合のみ評価対象とする
+            if (typeof targetValue === 'number' && targetValue > 0) {
+                const currentValue = this.getNutrientValue(nutrition, name);
+                // 充足率を計算 (最大100% = 1.0)
+                const fulfillmentRatio = Math.min(1.0, currentValue / targetValue);
+                fulfillmentSum += fulfillmentRatio;
+                targetCount++;
+            }
         }
 
-        const actualRatio = {
-            protein: nutrition.protein / totalMacroNutrients * totalIdealRatio,
-            fat: fat / totalMacroNutrients * totalIdealRatio,
-            carbohydrate: carbohydrate / totalMacroNutrients * totalIdealRatio
-        };
+        // 評価対象の栄養素がなければスコアは0
+        if (targetCount === 0) {
+            return 0;
+        }
 
-        // 理想比率と実際の比率の差異を計算
-        const proteinDiff = Math.abs(idealRatio.protein - actualRatio.protein) / idealRatio.protein;
-        const fatDiff = Math.abs(idealRatio.fat - actualRatio.fat) / idealRatio.fat;
-        const carbDiff = Math.abs(idealRatio.carbohydrate - actualRatio.carbohydrate) / idealRatio.carbohydrate;
+        // 充足率の平均を計算し、100点満点に変換
+        const averageFulfillment = fulfillmentSum / targetCount;
+        const finalScore = averageFulfillment * 100;
 
-        // 差異の平均を計算し、スコアに変換（差異が少ないほどスコアが高い）
-        const avgDiff = (proteinDiff + fatDiff + carbDiff) / 3;
-        const balanceScore = Math.max(0, Math.min(100, Math.round(100 * (1 - avgDiff))));
-
-        return balanceScore;
+        // 0-100の範囲に丸める
+        return Math.max(0, Math.min(100, Math.round(finalScore)));
     }
 
     /**
-     * 不足している栄養素を特定する
-     * @param nutrition 栄養素データ
-     * @param targetValues 目標値
-     * @returns 不足している栄養素のリスト
+     * 不足している栄養素を特定する（MVPの6栄養素に基づく）
+     * 目標値に対する充足率が閾値未満の栄養素名を返す
+     * @param nutrition 栄養データ
+     * @param targetValues 目標値 (例: { calories: 2200, protein: 75, ... })
+     * @param threshold 不足と判断する充足率の閾値 (デフォルト: 0.7)
+     * @returns 不足している栄養素の詳細情報リスト
      */
-    identifyDeficientNutrients(nutrition: NutritionData, targetValues: Partial<NutritionData>): string[] {
-        const deficientNutrients: string[] = [];
+    identifyDeficientNutrients(
+        nutrition: StandardizedMealNutrition,
+        targetValues: Record<string, number>,
+        threshold: number = 0.7 // デフォルト値を設定
+    ): NutrientDeficiency[] { // 戻り値の型を変更
+        const deficiencies: NutrientDeficiency[] = [];
 
-        // 基本栄養素をチェック
-        const basicNutrients = ['calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'];
-        for (const nutrient of basicNutrients) {
-            const key = nutrient as keyof NutritionData;
-            const target = targetValues[key];
-            if (typeof target === 'number' && typeof nutrition[key] === 'number') {
-                if (nutrition[key] < target * 0.8) {
-                    deficientNutrients.push(nutrient);
+        const mvpNutrientNames = ['calories', 'protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'];
+
+        for (const name of mvpNutrientNames) {
+            const targetValue = targetValues[name];
+            // 目標値が設定されている栄養素のみチェック
+            if (typeof targetValue === 'number' && targetValue > 0) {
+                const currentValue = this.getNutrientValue(nutrition, name);
+                const fulfillmentRatio = currentValue / targetValue;
+
+                if (fulfillmentRatio < threshold) {
+                    deficiencies.push({ // 詳細情報を格納
+                        nutrientCode: name,
+                        fulfillmentRatio,
+                        currentValue,
+                        targetValue
+                    });
                 }
             }
         }
-
-        // 拡張栄養素をチェック（もし存在する場合）
-        if (nutrition.extended_nutrients && targetValues.extended_nutrients) {
-            // トップレベルの拡張栄養素
-            for (const [nutrient, value] of Object.entries(nutrition.extended_nutrients)) {
-                if (typeof value === 'number') {
-                    const extendedTargets = targetValues.extended_nutrients as Record<string, number | Record<string, number> | undefined>;
-                    if (extendedTargets && typeof extendedTargets[nutrient] === 'number') {
-                        const target = extendedTargets[nutrient] as number;
-                        if (value < target * 0.8) {
-                            deficientNutrients.push(nutrient);
-                        }
-                    }
-                }
-            }
-
-            // ネストされたカテゴリ（例：minerals, vitamins）
-            for (const [category, nutrients] of Object.entries(nutrition.extended_nutrients)) {
-                const targetExtended = targetValues.extended_nutrients;
-                if (typeof nutrients === 'object' && nutrients !== null &&
-                    targetExtended && typeof targetExtended[category] === 'object' && targetExtended[category] !== null) {
-
-                    const targetCategory = targetExtended[category] as Record<string, number | undefined>;
-                    for (const [key, value] of Object.entries(nutrients as object)) {
-                        if (typeof value === 'number') {
-                            const target = targetCategory[key];
-                            if (typeof target === 'number' && value < target * 0.8) {
-                                deficientNutrients.push(`${category}.${key}`);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return deficientNutrients;
+        return deficiencies; // 詳細情報の配列を返す
     }
 
     /**
-     * 栄養素データの完全性を計算する（どれだけ多くの栄養素データが有効か）
-     * @private
+     * データの完全性を計算する (TODO: StandardizedMealNutrition に基づくロジックに更新)
+     * 現在は仮実装として 0.8 を返す
      */
-    private calculateCompleteness(nutrition: NutritionData): number {
-        // 重要な栄養素リスト
-        const keyNutrients = [
-            'calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'
+    private calculateCompleteness(nutrition: StandardizedMealNutrition): number {
+        // TODO: Implement completeness calculation based on StandardizedMealNutrition
+        // (e.g., check number of nutrients present, confidence of food items)
+        console.warn('calculateCompleteness is not fully implemented for StandardizedMealNutrition yet.');
+        // 仮実装：必須栄養素がいくつか存在するかで判断
+        const requiredNutrients = ['protein', 'fat', 'carbohydrate', 'iron', 'calcium', 'folic_acid'];
+        const presentCount = requiredNutrients.filter(req =>
+            nutrition.totalNutrients.some(n => n.name === req && n.value > 0)
+        ).length;
+        return presentCount / requiredNutrients.length;
+    }
+
+    /**
+     * 空の標準栄養データオブジェクトを初期化する
+     * MVPで必要な6栄養素を含む空のNutrient配列を持つオブジェクトを生成
+     */
+    private initializeStandardizedNutrition(): StandardizedMealNutrition {
+        const initialNutrients: Nutrient[] = [
+            { name: 'calories', value: 0, unit: 'kcal' },
+            { name: 'protein', value: 0, unit: 'g' },
+            { name: 'iron', value: 0, unit: 'mg' },
+            { name: 'calcium', value: 0, unit: 'mg' },
+            { name: 'folic_acid', value: 0, unit: 'mcg' },
+            { name: 'vitamin_d', value: 0, unit: 'mcg' },
         ];
-
-        // 拡張栄養素
-        const extendedNutrients = [
-            'extended_nutrients.dietary_fiber',
-            'extended_nutrients.fat',
-            'extended_nutrients.carbohydrate',
-            'extended_nutrients.vitamins.vitamin_a',
-            'extended_nutrients.vitamins.vitamin_c',
-            'extended_nutrients.minerals.sodium'
-        ];
-
-        // 有効な栄養素をカウント
-        let validCount = 0;
-        let totalCheck = keyNutrients.length;
-
-        // 基本栄養素のチェック
-        for (const nutrient of keyNutrients) {
-            const value = nutrition[nutrient as keyof NutritionData];
-            if (typeof value === 'number' && value > 0) {
-                validCount++;
-            }
-        }
-
-        // 拡張栄養素のチェック（もし存在する場合）
-        if (nutrition.extended_nutrients) {
-            totalCheck += extendedNutrients.length;
-
-            for (const path of extendedNutrients) {
-                const parts = path.split('.');
-                let current: unknown = nutrition;
-
-                // ドット表記でネストされたオブジェクトにアクセス
-                for (const part of parts) {
-                    if (current && typeof current === 'object' && part in current) {
-                        current = (current as Record<string, unknown>)[part];
-                    } else {
-                        current = undefined;
-                        break;
-                    }
-                }
-
-                if (typeof current === 'number' && current > 0) {
-                    validCount++;
-                }
-            }
-        }
-
-        return totalCheck > 0 ? validCount / totalCheck : 0;
+        return createStandardizedMealNutrition({ totalNutrients: initialNutrients });
     }
 
     /**
-     * 栄養素データを初期化する
-     * @private
+     * StandardizedMealNutrition から特定の栄養素の値を取得する
+     * @param nutrition 栄養データ
+     * @param nutrientName 取得したい栄養素の名前
+     * @returns 栄養素の値。見つからない場合は 0 を返す。
      */
-    private initializeNutrientData(): NutritionData {
-        return createStandardNutritionData();
+    private getNutrientValue(nutrition: StandardizedMealNutrition, nutrientName: string): number {
+        const nutrient = nutrition.totalNutrients.find(n => n.name === nutrientName);
+        return nutrient?.value ?? 0;
     }
 
     /**
-     * 栄養素データを累積する
-     * @param target 対象の栄養素データ
-     * @param source 加算元の栄養素データ
-     * @private
+     * StandardizedMealNutrition の totalNutrients 配列内の栄養素を更新または追加する
+     * @param nutrition 更新対象の栄養データ
+     * @param nutrientName 更新/追加する栄養素の名前
+     * @param value 設定する値
+     * @param unit 設定する単位
      */
-    private accumulateNutrients(target: NutritionData, source: NutritionData): void {
-        // 基本栄養素の累積
-        target.calories += source.calories ?? 0;
-        target.protein += source.protein ?? 0;
-        target.iron += source.iron ?? 0;
-        target.folic_acid += source.folic_acid ?? 0;
-        target.calcium += source.calcium ?? 0;
-        target.vitamin_d += source.vitamin_d ?? 0;
-
-        // 拡張栄養素の累積
-        if (source.extended_nutrients) {
-            if (!target.extended_nutrients) {
-                target.extended_nutrients = {};
-            }
-            const targetExtended = target.extended_nutrients as Record<string, number | Record<string, number | undefined> | undefined>;
-
-            // トップレベルの栄養素
-            for (const [key, value] of Object.entries(source.extended_nutrients)) {
-                if (typeof value === 'number') {
-                    targetExtended[key] = (typeof targetExtended[key] === 'number' ? targetExtended[key] as number : 0) + value;
-                } else if (typeof value === 'object' && value !== null) {
-                    // ネストされたカテゴリ（minerals, vitaminsなど）
-                    if (!targetExtended[key] || typeof targetExtended[key] !== 'object') {
-                        targetExtended[key] = {};
-                    }
-                    const targetCategory = targetExtended[key] as Record<string, number | undefined>;
-
-                    for (const [subKey, subValue] of Object.entries(value)) {
-                        if (typeof subValue === 'number') {
-                            targetCategory[subKey] = (typeof targetCategory[subKey] === 'number' ? targetCategory[subKey] as number : 0) + subValue;
-                        }
-                    }
-                }
-            }
+    private updateNutrient(nutrition: StandardizedMealNutrition, nutrientName: string, value: number, unit: NutrientUnit): void {
+        const existingNutrient = nutrition.totalNutrients.find(n => n.name === nutrientName);
+        if (existingNutrient) {
+            existingNutrient.value = value;
+            existingNutrient.unit = unit; // 単位も更新（通常は同じはずだが念のため）
+        } else {
+            nutrition.totalNutrients.push({ name: nutrientName, value, unit });
         }
     }
 
     /**
-     * 栄養素データをスケーリングする
-     * @param target 対象の栄養素データ
-     * @param source 元の栄養素データ
-     * @param ratio スケーリング比率
-     * @private
+     * 2つの標準栄養データオブジェクトの栄養素を合計する (target に source を加算)
+     * MVPの6栄養素に限定して処理
      */
-    private scaleNutrients(target: NutritionData, source: NutritionData, ratio: number): void {
-        // 基本栄養素のスケーリング
-        target.calories += (source.calories ?? 0) * ratio;
-        target.protein += (source.protein ?? 0) * ratio;
-        target.iron += (source.iron ?? 0) * ratio;
-        target.folic_acid += (source.folic_acid ?? 0) * ratio;
-        target.calcium += (source.calcium ?? 0) * ratio;
-        target.vitamin_d += (source.vitamin_d ?? 0) * ratio;
+    private accumulateNutrients(target: StandardizedMealNutrition, source: StandardizedMealNutrition): void {
+        // 1. totalCalories を加算 (これを正とする)
+        target.totalCalories += source.totalCalories;
 
-        // 拡張栄養素のスケーリング
-        if (source.extended_nutrients) {
-            if (!target.extended_nutrients) {
-                target.extended_nutrients = {};
-            }
-            const targetExtended = target.extended_nutrients as Record<string, number | Record<string, number | undefined> | undefined>;
-
-            // トップレベルの栄養素
-            for (const [key, value] of Object.entries(source.extended_nutrients)) {
-                if (typeof value === 'number') {
-                    targetExtended[key] = (typeof targetExtended[key] === 'number' ? targetExtended[key] as number : 0) + value * ratio;
-                } else if (typeof value === 'object' && value !== null) {
-                    // ネストされたカテゴリ（minerals, vitaminsなど）
-                    if (!targetExtended[key] || typeof targetExtended[key] !== 'object') {
-                        targetExtended[key] = {};
-                    }
-                    const targetCategory = targetExtended[key] as Record<string, number | undefined>;
-
-                    for (const [subKey, subValue] of Object.entries(value)) {
-                        if (typeof subValue === 'number') {
-                            targetCategory[subKey] = (typeof targetCategory[subKey] === 'number' ? targetCategory[subKey] as number : 0) + subValue * ratio;
-                        }
+        // 2. MVPの他の栄養素 (protein, iron, calcium, folic_acid, vitamin_d) を totalNutrients 配列で加算
+        const mvpOtherNutrients = ['protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'];
+        mvpOtherNutrients.forEach(name => {
+            const sourceValue = this.getNutrientValue(source, name);
+            if (sourceValue > 0) {
+                const targetNutrient = target.totalNutrients.find(n => n.name === name);
+                if (targetNutrient) {
+                    targetNutrient.value += sourceValue;
+                } else {
+                    // source から単位を取得して追加 (通常は initialize で初期化済みのはず)
+                    const sourceNutrient = source.totalNutrients.find(n => n.name === name);
+                    if (sourceNutrient) {
+                        target.totalNutrients.push({ ...sourceNutrient }); // 新しいオブジェクトとして追加
                     }
                 }
             }
+        });
+
+        // 3. totalNutrients 配列内の 'calories' を totalCalories プロパティの値に更新 (一貫性のため)
+        const targetCaloriesNutrient = target.totalNutrients.find(n => n.name === 'calories');
+        if (targetCaloriesNutrient) {
+            targetCaloriesNutrient.value = target.totalCalories;
+        } else {
+            // 配列に calories がなければ追加 (通常 initialize で初期化済み)
+            target.totalNutrients.push({ name: 'calories', value: target.totalCalories, unit: 'kcal' });
         }
     }
 
     /**
-     * AIによって解析された食品情報から、食品マッチング、量の解析、栄養価計算を行い
-     * 最終的な分析結果を生成する
+     * 標準栄養データの各栄養素を指定された比率でスケーリングする
+     * MVPの6栄養素に限定して処理
+     */
+    private scaleNutrients(target: StandardizedMealNutrition, ratio: number): void {
+        target.totalCalories *= ratio;
+        target.totalNutrients.forEach(nutrient => {
+            // MVPの6栄養素のみスケール
+            if (['calories', 'protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'].includes(nutrient.name)) {
+                nutrient.value *= ratio;
+            }
+        });
+        // foodItems のスケーリングは calculateNutrition 内で行う
+    }
+
+    /**
+     * AIレスポンスパーサーからの解析結果を処理し、栄養計算と結果強化を行う
      * @param parsedFoods AIによって解析された食品情報の配列
      * @returns 食品分析結果
      */
     async processParsedFoods(parsedFoods: FoodInputParseResult[]): Promise<FoodAnalysisResult> {
-        // 結果格納用の変数を初期化
-        const matchedItems: MealFoodItem[] = [];
-        const meta = {
-            unmatchedFoods: [] as string[],
-            lowConfidenceMatches: [] as string[],
-            errors: [] as string[]
-        };
+        const mealFoodItems: MealFoodItem[] = [];
+        const notFoundFoods: string[] = [];
+        const matchDetails: FoodMatchResult[] = [];
 
-        // 処理時間の計測開始
-        const startTime = Date.now();
-
-        // 食品名の抽出
-        const foodNames = parsedFoods.map(food => food.foodName);
-
-        // 食品マッチング (Mapが返される前提)
-        let matchMap: Map<string, FoodMatchResult | null>;
-        try {
-            matchMap = await this.foodMatchingService.matchFoods(foodNames);
-        } catch (error) {
-            throw new AppError({
-                code: ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR, // マッチングのエラーだが、DBアクセスを含むためこのコードを使用
-                message: '食品マッチング処理中にエラーが発生しました',
-                userMessage: '食品データベースの検索中に問題が発生しました',
-                details: { foodNames },
-                originalError: error instanceof Error ? error : undefined
-            });
-        }
-
-        // マッチング結果の類似度閾値
-        const SIMILARITY_THRESHOLD = 0.7;
-
-        // 結果の処理ループ
         for (const parsedFood of parsedFoods) {
             try {
-                // Mapから対応するマッチング結果を取得
-                const matchResult = matchMap.get(parsedFood.foodName);
+                const matchResult = await this.foodMatchingService.matchFood(parsedFood.foodName);
 
-                // マッチング結果の検証
-                if (!matchResult || !matchResult.food) {
-                    meta.unmatchedFoods.push(parsedFood.foodName);
-                    continue;
+                if (matchResult && matchResult.food) {
+                    const parsedQuantity = QuantityParser.parseQuantity(
+                        parsedFood.quantityText ?? undefined,
+                        matchResult.food.name,
+                        matchResult.food.category
+                    );
+
+                    mealFoodItems.push({
+                        foodId: matchResult.food.id,
+                        food: matchResult.food,
+                        quantity: parsedQuantity.quantity,
+                        confidence: matchResult.similarity * parsedQuantity.confidence * (parsedFood.confidence ?? 1.0),
+                        originalInput: parsedFood.foodName
+                    });
+                    matchDetails.push(matchResult);
+                } else {
+                    notFoundFoods.push(parsedFood.foodName);
+                    // 低信頼度マッチやマッチなしに関する警告を追加することも検討
+                    console.warn(`Food not found or matched with low confidence for input: ${parsedFood.foodName}`);
                 }
-
-                // 類似度の確認
-                if (matchResult.similarity < SIMILARITY_THRESHOLD) {
-                    meta.lowConfidenceMatches.push(parsedFood.foodName);
-                    // 低類似度でも処理は続行
-                }
-
-                // 量の解析と変換
-                // 正しいプロパティ `quantityText` を使用
-                const quantityString = parsedFood.quantityText;
-
-                // `category` は matchResult から取得 (parsedFoodには存在しない)
-                const category = matchResult.food.category || '';
-
-                const { quantity: parsedQuantity, confidence: quantityParseConfidence } = QuantityParser.parseQuantity(
-                    quantityString ?? undefined, // 修正: null の場合に undefined に変換
-                    matchResult.food.name,
-                    category
-                );
-
-                const { grams, confidence: conversionConfidence } = QuantityParser.convertToGrams(
-                    parsedQuantity,
-                    matchResult.food.name,
-                    category
-                );
-
-                // 総合的な確信度の計算（類似度、量解析確信度、グラム変換確信度の組み合わせ）
-                const combinedConfidence = Math.min(
-                    matchResult.similarity,
-                    quantityParseConfidence,
-                    conversionConfidence
-                );
-
-                // MealFoodItemの作成
-                const mealFoodItem: MealFoodItem = {
-                    foodId: matchResult.food.id,
-                    food: matchResult.food,
-                    quantity: parsedQuantity,
-                    originalInput: parsedFood.foodName,
-                    confidence: combinedConfidence
-                };
-
-                matchedItems.push(mealFoodItem);
             } catch (error) {
-                // 個別の食品処理エラーはスキップして次の食品の処理を続行
-                const foodName = parsedFood?.foodName ?? '不明な食品';
-                const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-                meta.errors.push(`${foodName}の処理中にエラー: ${errorMessage}`);
+                console.error(`Error processing parsed food ${parsedFood.foodName}:`, error);
+                notFoundFoods.push(parsedFood.foodName);
+                // 個別の食品処理エラー。ログには残すが、処理全体は続行。
+                // 全体として食品が見つからなかった場合は、後続のチェックで AppError をスローする。
+                // 必要であれば、エラーを集約して最後にまとめて報告する設計も可能。
             }
         }
 
-        // 一つもマッチングできなかった場合はエラー
-        if (matchedItems.length === 0) {
+        // 1つも有効な食品アイテムが見つからなかった場合のエラーハンドリングを追加
+        if (mealFoodItems.length === 0) {
             throw new AppError({
                 code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
-                message: '有効な食品が見つかりませんでした',
-                userMessage: '入力された食品をデータベースで見つけることができませんでした',
-                details: { unmatchedFoods: meta.unmatchedFoods }
+                message: `No valid food items could be processed from the input: ${parsedFoods.map(p => p.foodName).join(', ')}`,
+                userMessage: '入力された食品を処理できませんでした。食品名や量を確認してください。',
+                details: { parsedFoods, notFoundFoods }
             });
         }
 
-        // 栄養計算
-        let nutritionResult: NutritionCalculationResult;
-        try {
-            nutritionResult = await this.calculateNutrition(matchedItems);
-        } catch (error) {
-            throw new AppError({
-                code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
-                message: '栄養価計算中にエラーが発生しました',
-                userMessage: '栄養価の計算中に問題が発生しました',
-                details: { matchedItems: matchedItems.map(item => item.food.name) },
-                originalError: error instanceof Error ? error : undefined
-            });
-        }
+        // calculateNutrition を呼び出して StandardizedMealNutrition を取得
+        const calculationResult = await this.calculateNutrition(mealFoodItems);
+        const finalNutrition = calculationResult.nutrition;
 
-        // 処理時間の計測終了
-        const calculationTime = Date.now() - startTime;
+        // FoodAnalysisResult 形式に変換 (nutrition 部分)
+        // convertToLegacyNutrition を使用してフラットな構造を作る
+        // 注意: この変換では foodItems の情報は失われる
+        const legacyNutrition = convertToLegacyNutrition(finalNutrition);
 
-        // FoodAnalysisResultの構築
+        // FoodAnalysisResult を構築
         const result: FoodAnalysisResult = {
-            foods: matchedItems.map(item => ({
-                name: item.food.name,
-                quantity: `${item.quantity.value} ${item.quantity.unit}`,
+            foods: mealFoodItems.map(item => ({
+                name: item.originalInput || item.food.name,
+                quantity: `${item.quantity.value}${item.quantity.unit}`, // 元の形式に近い文字列で返す
                 confidence: item.confidence
             })),
             nutrition: {
-                ...nutritionResult.nutrition,
-                confidence_score: nutritionResult.reliability.confidence
+                calories: legacyNutrition.calories,
+                protein: legacyNutrition.protein,
+                iron: legacyNutrition.iron,
+                folic_acid: legacyNutrition.folic_acid,
+                calcium: legacyNutrition.calcium,
+                vitamin_d: legacyNutrition.vitamin_d,
+                confidence_score: calculationResult.reliability.confidence
             },
             meta: {
-                ...meta,
-                calculationTime: calculationTime.toString(),
-                totalItemsFound: matchedItems.length,
-                totalInputItems: parsedFoods.length
+                notFoundFoods: notFoundFoods,
+                calculationTime: 'N/A', // 必要であれば計測・設定
+                matchedFoods: matchDetails.map(md => ({
+                    original: md.originalInput,
+                    matched: md.food.name,
+                    similarity: md.similarity
+                }))
+                // 他のメタ情報も必要に応じて追加
             }
         };
 

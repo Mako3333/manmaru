@@ -375,12 +375,18 @@ export interface StandardizedMealNutrition {
         nutrition: FoodItemNutrition; // 食品ごとの栄養データ
         amount: number;              // 摂取量
         unit: string;                // 単位
+        confidence?: number;         // この食品アイテムに対する信頼度 (オプショナル)
     }[];
     // 妊婦向け特別データ
     pregnancySpecific?: {
         folatePercentage: number;    // 葉酸摂取割合
         ironPercentage: number;      // 鉄分摂取割合
         calciumPercentage: number;   // カルシウム摂取割合
+    };
+    reliability: {
+        confidence: number;      // 全体の確信度 (0.0-1.0)
+        balanceScore?: number;   // 栄養バランススコア (0-100) (オプショナルに変更)
+        completeness?: number;   // データの完全性 (0.0-1.0) (オプショナルに変更)
     };
 }
 
@@ -406,12 +412,12 @@ export interface StandardizedMealData {
  * 栄養計算結果の型定義
  */
 export interface NutritionCalculationResult {
-    nutrition: NutritionData;
+    nutrition: StandardizedMealNutrition;
     matchResults: any[]; // 食品マッチング結果
     reliability: {
         confidence: number;      // 全体の確信度 (0.0-1.0)
-        balanceScore: number;    // 栄養バランススコア (0-100)
-        completeness: number;    // データの完全性 (0.0-1.0)
+        balanceScore?: number;   // 栄養バランススコア (0-100) (オプショナルに変更)
+        completeness?: number;   // データの完全性 (0.0-1.0) (オプショナルに変更)
     };
 }
 
@@ -523,4 +529,27 @@ export interface MealNutrient {
     vitamin_d: number;
     confidence_score: number;
     created_at: string;
+}
+
+/**
+ * 不足している栄養素の詳細情報
+ */
+export interface NutrientDeficiency {
+    nutrientCode: string;      // 内部コード (例: 'iron')
+    fulfillmentRatio: number;  // 充足率 (0.0-1.0)
+    currentValue: number;      // 現在値
+    targetValue: number;       // 目標値
+}
+
+/**
+ * 栄養素計算結果
+ */
+export interface NutritionCalculationResult {
+    nutrition: StandardizedMealNutrition;
+    matchResults: any[]; // 食品マッチング結果
+    reliability: {
+        confidence: number;      // 全体の確信度 (0.0-1.0)
+        balanceScore?: number;   // 栄養バランススコア (0-100) (オプショナルに変更)
+        completeness?: number;   // データの完全性 (0.0-1.0) (オプショナルに変更)
+    };
 }

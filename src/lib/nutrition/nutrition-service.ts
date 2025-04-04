@@ -2,6 +2,7 @@ import { Food, FoodQuantity, MealFoodItem } from '@/types/food';
 import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { FoodAnalysisResult } from '@/types/ai';
+import { StandardizedMealNutrition, NutrientDeficiency } from '@/types/nutrition';
 //src\lib\nutrition\nutrition-service.ts
 /**
  * 栄養計算サービスのインターフェース
@@ -33,22 +34,28 @@ export interface NutritionService {
     calculateSingleFoodNutrition(
         food: Food,
         quantity: FoodQuantity
-    ): Promise<{ nutrition: NutritionData; confidence: number }>;
+    ): Promise<{ nutrition: StandardizedMealNutrition; confidence: number }>;
 
     /**
      * 栄養バランスを評価する
      * @param nutrition 栄養素データ
+     * @param targetValues ユーザーの現在の妊娠周期に基づいた目標値
      * @returns バランススコア（0-100）
      */
-    evaluateNutritionBalance(nutrition: NutritionData): number;
+    evaluateNutritionBalance(nutrition: StandardizedMealNutrition, targetValues: Record<string, number>): number;
 
     /**
      * 不足している栄養素を特定する
      * @param nutrition 栄養素データ
-     * @param targetValues 目標値
-     * @returns 不足している栄養素のリスト
+     * @param targetValues 目標値（標準化された形式の部分集合を想定）
+     * @param threshold 不足と判断する充足率の閾値 (デフォルト: 0.7)
+     * @returns 不足している栄養素の詳細情報リスト
      */
-    identifyDeficientNutrients(nutrition: NutritionData, targetValues: Partial<NutritionData>): string[];
+    identifyDeficientNutrients(
+        nutrition: StandardizedMealNutrition,
+        targetValues: Record<string, number>,
+        threshold?: number
+    ): NutrientDeficiency[];
 
     /**
      * AIレスポンスパーサーからの解析結果を処理し、栄養計算と結果強化を行う
