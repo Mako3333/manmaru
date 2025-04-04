@@ -62,9 +62,9 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
             setState(prev => ({ ...prev, loading: true, error: null }));
             console.log('DetailedNutritionAdvice: データ取得開始', { date, force });
 
-            let apiUrl = `/api/nutrition-advice?detail=true&date=${date}`;
+            let apiUrl = `/api/v2/nutrition-advice?type=DAILY_INITIAL&date=${date}`;
             if (force) {
-                apiUrl += '&force=true';
+                apiUrl += '&forceRegenerate=true';
             }
 
             const response = await fetch(apiUrl);
@@ -134,7 +134,7 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
             console.log('DetailedNutritionAdvice: 取得データ (data part)', {
                 type: actualData.advice_type,
                 date: actualData.advice_date,
-                hasAdvice: !!actualData.advice || !!actualData.advice_detail
+                hasAdvice: !!actualData.advice_detail || !!actualData.advice_summary
             }); // デバッグ用ログ
 
             // 3. アドバイスデータの設定
@@ -142,15 +142,15 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                 loading: false,
                 error: null,
                 advice: {
-                    content: actualData.advice?.content || actualData.advice_detail || "",
-                    recommended_foods: actualData.advice?.recommended_foods || actualData.recommended_foods || []
+                    content: actualData.advice_detail || actualData.advice_summary || "",
+                    recommended_foods: actualData.recommended_foods || []
                 }
             });
 
             // 4. 既読状態の更新
             if (actualData.id && !actualData.is_read) {
                 try {
-                    await fetch("/api/nutrition-advice", {
+                    await fetch("/api/v2/nutrition-advice", {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ id: actualData.id })

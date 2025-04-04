@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+// import { createServerComponentClient } from '@supabase/auth-helpers-nextjs' // 削除
 import { cookies } from 'next/headers'
+import { createServerClient, type CookieOptions } from '@supabase/ssr' // 追加
 
 // 認証が必要なパス
 const PROTECTED_PATHS = [
@@ -24,26 +25,50 @@ const PUBLIC_PATHS = [
 // API呼び出し関連のパス
 const API_PATHS = ['/api/']
 
+// @supabase/ssr 用の Supabase クライアント作成関数 (ヘルパー化)
+const createSupabaseMiddlewareClient = (req: NextRequest, res: NextResponse) => {
+    // cookieStore をリクエスト・レスポンスから取得・設定できるようにラップ
+    let requestCookies = '';
+    req.cookies.getAll().forEach((cookie) => {
+        requestCookies += `${cookie.name}=${cookie.value}; `;
+    });
+    const cookieStore = {
+        get: (name: string) => {
+            return req.cookies.get(name)?.value;
+        },
+        set: (name: string, value: string, options: CookieOptions) => {
+            res.cookies.set({ name, value, ...options });
+        },
+        remove: (name: string, options: CookieOptions) => {
+            res.cookies.set({ name, value: '', ...options });
+        },
+    };
+
+    return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: cookieStore,
+        }
+    );
+}
+
 export async function middleware(req: NextRequest) {
     try {
         const res = NextResponse.next()
         const pathname = req.nextUrl.pathname
 
-        // ルートパスの特別処理: ログイン状態をチェックして/homeにリダイレクト
+        // ルートパスの特別処理
         if (pathname === '/') {
-            const cookieStore = cookies();
-            const supabase = createServerComponentClient({
-                cookies: () => cookieStore
-            });
+            // const cookieStore = cookies(); // 削除
+            // const supabase = createServerComponentClient({ cookies: () => cookieStore }); // 削除
+            const supabase = createSupabaseMiddlewareClient(req, res); // @supabase/ssr 使用
             const { data: { session } } = await supabase.auth.getSession()
 
-            // ログイン済みの場合はホームページにリダイレクト
             if (session) {
                 console.log('ルートパスでログイン状態を検出: /homeにリダイレクト')
                 return NextResponse.redirect(new URL('/home', req.url))
             }
-
-            // 未ログインの場合はそのままランディングページを表示
             return res
         }
 
@@ -76,10 +101,9 @@ export async function middleware(req: NextRequest) {
         }
 
         // セッションの存在確認
-        const cookieStore = cookies();
-        const supabase = createServerComponentClient({
-            cookies: () => cookieStore
-        });
+        // const cookieStore = cookies(); // 削除
+        // const supabase = createServerComponentClient({ cookies: () => cookieStore }); // 削除
+        const supabase = createSupabaseMiddlewareClient(req, res); // @supabase/ssr 使用
         const {
             data: { session },
         } = await supabase.auth.getSession()
@@ -87,14 +111,8 @@ export async function middleware(req: NextRequest) {
         // セッションがない場合はログインページへリダイレクト
         if (!session) {
             const loginUrl = new URL('/auth/login', req.url)
-
-            // 現在のURLをコールバックURLとして設定
             loginUrl.searchParams.set('callbackUrl', pathname)
-
-            // 認証エラーメッセージをクエリパラメータとして設定
             loginUrl.searchParams.set('authError', 'login_required')
-
-            // リダイレクト
             return NextResponse.redirect(loginUrl)
         }
 

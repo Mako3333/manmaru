@@ -16,6 +16,8 @@ export enum PromptType {
     TEXT_INPUT_ANALYSIS = 'text-input-analysis',
     /** URLからのレシピ解析用 (新規追加) */
     RECIPE_URL_ANALYSIS = 'recipe-url-analysis',
+    /** 栄養Tips生成用 (3食記録後) */
+    NUTRITION_TIPS = 'nutrition-tips'
 }
 
 /**
@@ -149,21 +151,24 @@ export class PromptService {
             defaultVersion: 'v1'
         });
 
-        // レシピ推薦
+        // レシピ推薦 (一時的にコメントアウト)
+        /*
         try {
             const recipeRecommendationV1 = require('./templates/recipe-recommendation/v1');
             this.versionManager.registerPrompt({
                 id: PromptType.RECIPE_RECOMMENDATION,
                 name: 'レシピ推薦',
-                description: '妊婦向けレシピ推薦生成',
-                category: '栄養アドバイス',
+                description: 'ユーザーの過去データに基づいたレシピ推薦プロンプト',
+                category: 'レシピ',
                 versions: [recipeRecommendationV1.metadata],
-                parameters: ['pregnancyWeek', 'trimester', 'deficientNutrients', 'excludeIngredients', 'servings', 'isFirstTimeUser', 'formattedDate', 'currentSeason'],
+                parameters: ['pastNutritionData', 'deficientNutrients', 'userPreferences'], // 例
                 defaultVersion: 'v1'
             });
+            console.log('[PromptService] Recipe Recommendation prompt registered.');
         } catch (error) {
             console.error('レシピ推薦プロンプトの登録に失敗しました:', error);
         }
+        */
 
         // URLレシピ解析 (新規追加)
         try {
@@ -179,6 +184,24 @@ export class PromptService {
             });
         } catch (error) {
             console.error('URLレシピ解析プロンプトの登録に失敗しました:', error);
+        }
+
+        // 栄養Tips (3食記録後)
+        try {
+            const nutritionTipsV1 = require('./templates/nutrition-tips/v1');
+            this.versionManager.registerPrompt({
+                id: PromptType.NUTRITION_TIPS,
+                name: '栄養Tips',
+                description: '3食記録後のTips生成プロンプト',
+                category: '栄養アドバイス',
+                versions: [nutritionTipsV1.metadata],
+                // テンプレート内で使用する変数を列挙
+                parameters: ['pregnancyWeek', 'trimester', 'formattedDate', 'currentSeason', 'pastNutritionData'],
+                defaultVersion: 'v1'
+            });
+            console.log('[PromptService] Nutrition Tips prompt registered.');
+        } catch (error) {
+            console.error('栄養Tipsプロンプトの登録に失敗しました:', error);
         }
     }
 } 

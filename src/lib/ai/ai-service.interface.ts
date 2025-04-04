@@ -1,5 +1,10 @@
 // src/lib/ai/ai-service.interface.ts
-import { FoodAnalysisResult, NutritionAdviceResult, FoodInput } from '@/types/ai';
+import { PromptType } from './prompts/prompt-service';
+import {
+    NutritionAdviceResult,
+    MealAnalysisResult,
+    RecipeAnalysisResult
+} from '@/types/ai';
 // GeminiProcessResult の具体的な型は実装ファイル (gemini-service.ts) で定義されているため、
 // インターフェースでは汎用的な型か any を使用します。
 
@@ -7,57 +12,59 @@ import { FoodAnalysisResult, NutritionAdviceResult, FoodInput } from '@/types/ai
 // 例: interface RecipeParseResult { title: string; servings: string; foods: any[] }
 // 例: interface MealAnalysisResult { foods: any[]; confidence: number; error?: string }
 
-interface RecipeParseAIResult {
-    title?: string;
-    servings?: string;
-    foods: { foodName: string; quantityText: string }[];
-    // 他に必要なプロパティがあれば追加
-}
+// interface RecipeParseAIResult {
+//     title?: string;
+//     servings?: string;
+//     foods: { foodName: string; quantityText: string }[];
+//     // 他に必要なプロパティがあれば追加
+// }
 
-interface MealAnalysisAIResult {
-    foods: { foodName: string; quantityText: string }[];
-    // 他に必要なプロパティがあれば追加
-}
+// interface MealAnalysisAIResult {
+//     foods: { foodName: string; quantityText: string }[];
+//     // 他に必要なプロパティがあれば追加
+// }
 
-interface GeminiError { // 必要に応じて詳細化
-    code: string;
-    message: string;
-    details?: any;
-}
+// interface GeminiError { // 必要に応じて詳細化
+//     code: string;
+//     message: string;
+//     details?: any;
+// }
 
-interface GeminiParseRecipeResult {
-    parseResult: RecipeParseAIResult | null;
-    error: GeminiError | null;
-}
+// interface GeminiParseRecipeResult {
+//     parseResult: RecipeParseAIResult | null;
+//     error: GeminiError | null;
+// }
 
 export interface IAIService {
     /**
      * 食事画像から食品と栄養情報を解析
      */
-    analyzeMealImage(imageData: Buffer): Promise<any>; // Promise<MealAnalysisResult | GeminiProcessResult>;
+    analyzeMealImage(imageData: Buffer): Promise<MealAnalysisResult>;
 
     /**
      * テキスト入力から食品と栄養情報を解析
      */
-    analyzeMealText(text: string): Promise<any>; // Promise<MealAnalysisResult | GeminiProcessResult>;
+    analyzeMealText(text: string): Promise<MealAnalysisResult>;
 
     /**
      * レシピテキストから食品と栄養情報を解析
+     * @deprecated parseRecipeFromUrl または analyzeMealText の利用を検討
      */
-    analyzeRecipeText(recipeText: string): Promise<any>; // Promise<RecipeParseAIResult | GeminiProcessResult>;
+    analyzeRecipeText(recipeText: string): Promise<RecipeAnalysisResult>;
 
     /**
      * URLからレシピ情報を解析
      * @param url 解析対象のURL
      * @param htmlContent オプショナル。事前に取得したHTMLコンテンツ。提供された場合、内部でのfetchをスキップする。
      */
-    parseRecipeFromUrl(url: string, htmlContent?: string): Promise<GeminiParseRecipeResult>; // 戻り値の型を具体化
+    parseRecipeFromUrl(url: string, htmlContent?: string): Promise<RecipeAnalysisResult>;
 
     /**
      * 栄養アドバイスを生成
      * TODO: 引数と戻り値の型をより具体的に定義
+     * 引数に promptType: PromptType を追加
      */
-    getNutritionAdvice(params: any): Promise<NutritionAdviceResult>;
+    getNutritionAdvice(params: Record<string, any>, promptType: PromptType): Promise<NutritionAdviceResult>;
 
     // 他に AIService クラスにあったメソッドや、共通で必要なメソッドがあれば追加
     // 例: analyzeMeal?(image: string, mealType: string, trimester?: number): Promise<FoodAnalysisResult>;

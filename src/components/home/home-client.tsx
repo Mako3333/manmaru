@@ -14,7 +14,7 @@ import { AdviceCard } from './advice-card';
 import { BottomNavigation } from '../layout/bottom-navigation';
 import PregnancyWeekInfo from './pregnancy-week-info';
 import { RecommendedRecipes } from './recommended-recipes';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight, Book, X } from 'lucide-react';
@@ -62,7 +62,10 @@ interface NutritionProgress {
 
 export default function HomeClient({ user }: HomeClientProps) {
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [currentDate] = useState(getJapanDate());

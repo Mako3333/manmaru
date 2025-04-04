@@ -1,9 +1,7 @@
 //src\lib\services\meal-service.ts
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 import { validateMealData } from '@/lib/nutrition/nutrition-utils';
-import { SupabaseClient } from '@supabase/supabase-js';
 import { MealNutrient } from '@/types/nutrition';
 
 /**

@@ -1,4 +1,4 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import RecipesClient from './recipes-client';
 import { ClippedRecipe } from '@/types/recipe';
@@ -25,7 +25,19 @@ interface Recipe {
 }
 
 export default async function RecipesPage() {
-    const supabase = createServerComponentClient({ cookies });
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                }
+            }
+        }
+    );
 
     // ユーザー情報を取得
     const { data: { user } } = await supabase.auth.getUser();

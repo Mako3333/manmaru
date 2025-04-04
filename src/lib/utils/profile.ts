@@ -1,4 +1,5 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
+import type { User } from '@supabase/supabase-js'
 
 export interface Profile {
     id: string;
@@ -17,43 +18,49 @@ export interface Profile {
     dietary_restrictions?: string[];
 }
 
-export async function getProfile(userId: string): Promise<Profile | null> {
-    const supabase = createClientComponentClient()
+export async function getProfile(): Promise<Profile | null> {
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        console.error('プロフィール取得エラー: ユーザーが認証されていません')
+        return null;
+    }
 
     try {
-        console.log('プロフィール取得開始: userId =', userId)
-
-        if (!userId) {
-            console.error('プロフィール取得エラー: userIdが空です')
-            return null
-        }
+        console.log('プロフィール取得開始: userId =', user.id)
 
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
-            .eq('user_id', userId)
+            .eq('user_id', user.id)
             .single()
 
         if (error) {
             if (error.code === 'PGRST116') {
-                // データが見つからない場合は null を返す
-                console.log('プロフィールが存在しません: userId =', userId)
+                console.log('プロフィールが存在しません: userId =', user.id)
                 return null
             }
             console.error('プロフィール取得エラー:', error)
             throw error
         }
 
-        console.log('プロフィール取得成功: userId =', userId)
+        console.log('プロフィール取得成功: userId =', user.id)
         return data as Profile
     } catch (error) {
-        console.error('プロフィール取得例外:', error)
+        console.error('予期せぬプロフィール取得エラー:', error)
         return null
     }
 }
 
 export async function createProfile(userId: string, profileData: Partial<Profile>) {
-    const supabase = createClientComponentClient()
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     try {
         console.log('プロフィール作成開始: userId =', userId)
@@ -85,4 +92,29 @@ export async function createProfile(userId: string, profileData: Partial<Profile
         console.error('プロフィール作成例外:', error)
         throw error
     }
+}
+
+export async function getUserProfile(user: User): Promise<Profile | null> {
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+    if (error) {
+        if (error.code === 'PGRST116') {
+            // データが見つからない場合は null を返す
+            console.log('プロフィールが存在しません: userId =', user.id)
+            return null
+        }
+        console.error('プロフィール取得エラー:', error)
+        throw error
+    }
+
+    console.log('プロフィール取得成功: userId =', user.id)
+    return data as Profile
 }

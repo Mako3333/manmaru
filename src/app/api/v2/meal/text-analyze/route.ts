@@ -7,8 +7,9 @@ import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-par
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
+import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -43,34 +44,30 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         // 処理時間計測開始
         const startTime = Date.now();
 
+        let aiAnalysisResult: MealAnalysisResult | null = null;
+
         let foods: FoodInputParseResult[] = [];
 
         // 直接解析可能な形式を試みる
-        const parsedFoods = FoodInputParser.parseBulkInput(text);
+        foods = FoodInputParser.parseBulkInput(text);
 
-        if (parsedFoods.length > 0) {
-            // 直接パースできた場合はその結果を使用
-            foods = parsedFoods;
-        } else {
+        if (foods.length === 0) {
             // AIサービス初期化
             const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
             // テキスト解析の実行
-            const analysisResult = await aiService.analyzeMealText(text);
+            aiAnalysisResult = await aiService.analyzeMealText(text);
 
-            if (analysisResult.error) {
+            if (aiAnalysisResult.error) {
                 throw new AppError({
                     code: ErrorCode.AI.ANALYSIS_ERROR,
-                    message: 'テキスト解析に失敗しました',
-                    details: {
-                        reason: analysisResult.error || 'テキスト解析中にエラーが発生しました',
-                        originalError: analysisResult.error
-                    }
+                    message: aiAnalysisResult.error.message || 'テキスト解析に失敗しました',
+                    details: { originalError: aiAnalysisResult.error.details }
                 });
             }
 
             // 解析結果から食品リストを取得
-            foods = analysisResult.parseResult.foods || [];
+            foods = aiAnalysisResult.foods || [];
         }
 
         // 食品リストの検証
@@ -95,8 +92,9 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         // 栄養計算を実行
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
 
-        // レガシー形式からStandardizedMealNutrition形式に変換
-        const standardizedNutrition = convertToStandardizedNutrition(nutritionResult.nutrition);
+        // 標準形式とレガシー形式の栄養データを取得・生成
+        const standardizedNutrition = nutritionResult.nutrition;
+        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
 
         // 結果を返却
         let warningMessage;
@@ -115,11 +113,16 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
                     nutrition: standardizedNutrition,
                     reliability: nutritionResult.reliability,
                     matchResults: nutritionResult.matchResults,
-                    legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
-                }
+                    legacyNutrition: legacyNutrition
+                },
+                ...(aiAnalysisResult ? {
+                    recognitionConfidence: aiAnalysisResult.confidence,
+                    aiEstimatedNutrition: aiAnalysisResult.estimatedNutrition
+                } : {})
             },
             meta: {
                 processingTimeMs: Date.now() - startTime,
+                analysisSource: aiAnalysisResult ? 'ai' : 'parser',
                 ...(warningMessage ? { warning: warningMessage } : {})
             }
         };

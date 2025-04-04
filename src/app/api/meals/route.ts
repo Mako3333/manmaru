@@ -1,4 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { MealService, SaveMealRequest, SaveMealNutritionRequest } from '@/lib/services/meal-service';
@@ -9,8 +9,24 @@ import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
  * POST /api/meals
  */
 export async function POST(req: NextRequest) {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) {
+                    cookieStore.set({ name, value, ...options });
+                },
+                remove(name: string, options: CookieOptions) {
+                    cookieStore.delete({ name, ...options });
+                },
+            },
+        }
+    );
 
     try {
         // セッション確認
@@ -109,8 +125,24 @@ export async function POST(req: NextRequest) {
  * GET /api/meals?date=YYYY-MM-DD
  */
 export async function GET(req: NextRequest) {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) {
+                    cookieStore.set({ name, value, ...options });
+                },
+                remove(name: string, options: CookieOptions) {
+                    cookieStore.delete({ name, ...options });
+                },
+            },
+        }
+    );
 
     try {
         // セッション確認

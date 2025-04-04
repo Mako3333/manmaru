@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, differenceInWeeks, addWeeks } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 
 interface PregnancyWeekInfoProps {
     className?: string;
+    dueDate?: Date;
 }
 
 // 妊娠週数に応じた赤ちゃんの成長情報
@@ -32,13 +33,16 @@ const TRIMESTER_INFO = {
     3: { name: '第3期', weeks: '28-40週', description: '赤ちゃんが最終的な準備をする時期です。', color: 'bg-purple-500' },
 };
 
-export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps) {
+export default function PregnancyWeekInfo({ className, dueDate: propDueDate }: PregnancyWeekInfoProps) {
     const [profile, setProfile] = useState<any>(null);
     const [pregnancyWeek, setPregnancyWeek] = useState<number | null>(null);
-    const [dueDate, setDueDate] = useState<Date | null>(null);
+    const [dueDate, setDueDate] = useState<Date | null>(propDueDate ? propDueDate : null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const supabase = createClientComponentClient();
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     useEffect(() => {
         const fetchProfileData = async () => {

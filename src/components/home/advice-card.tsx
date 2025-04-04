@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import type { NutritionAdvice } from '@/types/nutrition';
 import { AdviceType } from '@/types/nutrition';
@@ -38,7 +38,10 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
     const [advice, setAdvice] = useState<NutritionAdvice | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
-    const supabase = createClientComponentClient();
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     // 日付が提供されていない場合は現在の日付を使用
     const currentDate = date || format(new Date(), 'yyyy-MM-dd');
@@ -49,7 +52,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
         setError(null);
         try {
             // APIエンドポイントを構築 (日付をクエリパラメータに追加)
-            const apiUrl = `/api/nutrition-advice?date=${currentDate}&detail=true`; // detail=true を追加して詳細を取得
+            const apiUrl = `/api/v2/nutrition-advice?type=DAILY_INITIAL&date=${currentDate}&detail=true`; // detail=true を追加して詳細を取得
             console.log(`[AdviceCard] Fetching advice from: ${apiUrl}`);
 
             const res = await fetch(apiUrl);

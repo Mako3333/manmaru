@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { RecipeService } from '@/lib/services/recipe-service';
 import { withAuthAndErrorHandling, createSuccessResponse } from '@/lib/api/api-handlers';
 import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 // レシピの取得
@@ -32,11 +32,25 @@ export const PATCH = withAuthAndErrorHandling(
             // レシピの存在確認
             await RecipeService.getRecipeById(id, user.id);
 
-            // Supabaseクライアント生成はサービス内で行うため、ここでは直接利用できない
-            // 代わりにRecipeServiceに更新メソッドを実装する必要があるが、
-            // 今回は例として直接実装する
-
-            const supabase = createRouteHandlerClient({ cookies });
+            // Supabaseクライアント初期化
+            const cookieStore = await cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            cookieStore.set({ name, value, ...options });
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            cookieStore.delete({ name, ...options });
+                        },
+                    },
+                }
+            );
 
             // データ更新
             const { data: updatedRecipe, error } = await supabase
@@ -76,7 +90,24 @@ export const DELETE = withAuthAndErrorHandling(
             // レシピの存在確認
             await RecipeService.getRecipeById(id, user.id);
 
-            const supabase = createRouteHandlerClient({ cookies });
+            const cookieStore = await cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            cookieStore.set({ name, value, ...options });
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            cookieStore.delete({ name, ...options });
+                        },
+                    },
+                }
+            );
 
             // レシピ削除
             const { error } = await supabase

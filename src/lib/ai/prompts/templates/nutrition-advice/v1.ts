@@ -24,7 +24,7 @@ export const template = `
 
 以下のJSON形式で回答してください：
 
-\`\`\`detail
+\`\`\`json
 {
   "advice_summary": "妊娠周期、栄養状態、季節を考慮した簡潔なアドバイスを100-150文字程度で記述してください。",
   "advice_detail": "妊娠{{pregnancyWeek}}週目の胎児の発達状況、この時期に特に重要な栄養素とその理由、{{#if deficientNutrients.length}}不足している栄養素を補うための具体的な食品例{{else}}全体的な栄養バランスを維持するための詳細なアドバイス{{/if}}、{{currentSeason}}の旬の食材を取り入れた具体的なアドバイスをマークダウン形式で構造化して、300-500文字程度で提案してください。",
@@ -51,10 +51,10 @@ export const template = `
 export default template;
 
 export const metadata = {
-    id: 'nutrition-advice',
-    version: 'v1',
-    createdAt: new Date('2025-03-06'),
-    updatedAt: new Date('2025-03-06'),
-    isActive: true,
-    changelog: '初期バージョン'
+  id: 'nutrition-advice',
+  version: 'v1',
+  createdAt: new Date('2025-03-06'),
+  updatedAt: new Date('2025-03-06'),
+  isActive: true,
+  changelog: '初期バージョン'
 }; 

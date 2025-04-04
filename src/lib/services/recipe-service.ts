@@ -1,5 +1,5 @@
 //src\lib\services\recipe-service.ts
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 import { validateUrl } from '@/lib/validation/response-validators';
@@ -10,7 +10,24 @@ export class RecipeService {
      */
     static async getRecipeById(recipeId: string, userId?: string) {
         try {
-            const supabase = createRouteHandlerClient({ cookies });
+            const cookieStore = cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            cookieStore.set({ name, value, ...options });
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            cookieStore.delete({ name, ...options });
+                        },
+                    },
+                }
+            );
 
             // レシピデータ取得
             const { data: recipe, error } = await supabase
@@ -64,7 +81,24 @@ export class RecipeService {
      */
     static async toggleFavorite(recipeId: string, userId: string) {
         try {
-            const supabase = createRouteHandlerClient({ cookies });
+            const cookieStore = cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            cookieStore.set({ name, value, ...options });
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            cookieStore.delete({ name, ...options });
+                        },
+                    },
+                }
+            );
 
             // レシピの存在確認
             await RecipeService.getRecipeById(recipeId, userId);
@@ -209,15 +243,15 @@ export class RecipeService {
             const html = await response.text();
 
             // HTMLからメタデータを抽出
-            const title = extractMetaContent(html, 'og:title') ||
-                extractMetaContent(html, 'twitter:title') ||
+            const title = (extractMetaContent(html, 'og:title') ||
+                extractMetaContent(html, 'twitter:title')) ??
                 `${platform}のレシピ`;
 
-            const imageUrl = extractMetaContent(html, 'og:image') ||
-                extractMetaContent(html, 'twitter:image');
+            const imageUrl = (extractMetaContent(html, 'og:image') ||
+                extractMetaContent(html, 'twitter:image')) ?? '';
 
-            const description = extractMetaContent(html, 'og:description') ||
-                extractMetaContent(html, 'twitter:description') ||
+            const description = (extractMetaContent(html, 'og:description') ||
+                extractMetaContent(html, 'twitter:description')) ??
                 '';
 
             // レシピデータの構築（サイトタイプによって処理が異なる）
@@ -267,20 +301,42 @@ export class RecipeService {
         limit?: number;
         includeNutrition?: boolean;
     } = {}) {
-        const { page = 1, limit = 20 } = options;
+        const { page = 1, limit = 10, includeNutrition = false } = options;
         const offset = (page - 1) * limit;
 
         try {
-            const supabase = createRouteHandlerClient({ cookies });
+            const cookieStore = cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            cookieStore.set({ name, value, ...options });
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            cookieStore.delete({ name, ...options });
+                        },
+                    },
+                }
+            );
 
-            // お気に入りレシピの取得
-            const { data: recipes, error, count } = await supabase
+            let query = supabase
                 .from('clipped_recipes')
                 .select('*', { count: 'exact' })
                 .eq('user_id', userId)
                 .eq('is_favorite', true)
                 .order('updated_at', { ascending: false })
                 .range(offset, offset + limit - 1);
+
+            if (includeNutrition) {
+                query = query.select('nutrition_per_serving');
+            }
+
+            const { data: recipes, error, count } = await query;
 
             if (error) {
                 throw new ApiError(

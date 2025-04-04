@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import { getProfile } from '@/lib/utils/profile'
 
 export default function AuthCallbackPage() {
-    const supabase = createClientComponentClient()
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
     const router = useRouter()
 
     useEffect(() => {
@@ -28,7 +31,7 @@ export default function AuthCallbackPage() {
 
                 console.log('セッション取得成功:', session.user.id)
                 // プロフィールの確認
-                const profile = await getProfile(session.user.id)
+                const profile = await getProfile()
 
                 if (!profile) {
                     // 新規ユーザーの場合はプロフィール登録ページへ

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { RecipeCard } from '@/components/recipes/recipe-card';
 import { ClippedRecipe } from '@/types/recipe';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,10 @@ export default function RecipesClient({ initialData }: RecipesClientProps) {
     const [activeTab, setActiveTab] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     // レシピをフィルタリングする関数
     const filterRecipes = useCallback(() => {

@@ -1,5 +1,6 @@
 // src/types/ai.ts
 import { FoodInputParseResult } from '@/lib/food/food-input-parser'; // Assuming this path is correct
+import { ErrorCode, AnyErrorCode } from '@/lib/error'; // ErrorCode と AnyErrorCode をインポート
 
 /**
  * AIによる食品解析結果の基本的な構造 (パーサーが返す形式)
@@ -94,11 +95,47 @@ export interface FoodAnalysisInput {
  */
 export interface NutritionAdviceResult {
     summary: string;
-    detailedAdvice?: string;
+    detailedAdvice?: string | undefined;
     recommendedFoods?: Array<{
         name: string;
         benefits: string;
-    }>;
+    }> | undefined;
+    /** デバッグ情報（オプショナル） */
+    debug?: any;
+    /** エラー情報（オプショナル） */
+    error?: { message: string; code?: AnyErrorCode; details?: any } | undefined;
+}
+
+/**
+ * IAIService.analyzeMealImage / analyzeMealText の標準的な戻り値型
+ */
+export interface MealAnalysisResult {
+    /** 解析された食品リスト */
+    foods: FoodInputParseResult[];
+    /** 全体の信頼度スコア（オプショナル） */
+    confidence?: number | undefined;
+    /** AIによる栄養素推定値（オプショナル）*/
+    estimatedNutrition?: { [key: string]: number | string } | undefined;
+    /** エラー情報（オプショナル） */
+    error?: { message: string; code?: string | undefined; details?: any } | undefined;
+    /** デバッグ情報（オプショナル） */
+    debug?: any;
+}
+
+/**
+ * IAIService.parseRecipeFromUrl の標準的な戻り値型
+ */
+export interface RecipeAnalysisResult {
+    /** レシピタイトル（オプショナル） */
+    title?: string | undefined;
+    /** 何人分か（オプショナル） */
+    servings?: string | undefined;
+    /** 解析された材料リスト */
+    ingredients: FoodInputParseResult[];
+    /** エラー情報（オプショナル） */
+    error?: { message: string; code?: string | undefined; details?: any } | undefined;
+    /** デバッグ情報（オプショナル） */
+    debug?: any;
 }
 
 /**

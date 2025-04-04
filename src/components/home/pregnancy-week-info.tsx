@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import React, { useState, useEffect } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { format, differenceInWeeks, addWeeks } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
@@ -10,9 +10,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface PregnancyWeekInfoProps {
     className?: string;
+    dueDate: string | null;
 }
 
 // 妊娠週数に応じた赤ちゃんの成長情報
@@ -45,59 +47,19 @@ const WEEK_MARKERS = [
     { week: 40, label: '40週' },
 ];
 
-export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps) {
-    const [profile, setProfile] = useState<any>(null);
+const PregnancyWeekInfo: React.FC<PregnancyWeekInfoProps> = ({ className, dueDate }) => {
     const [pregnancyWeek, setPregnancyWeek] = useState<number | null>(null);
-    const [dueDate, setDueDate] = useState<Date | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const supabase = createClientComponentClient();
+    const [loading, setLoading] = useState<boolean>(true);
 
     useEffect(() => {
-        const fetchProfileData = async () => {
-            try {
-                setLoading(true);
-
-                // セッションの有効性を確認
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) {
-                    setError('ログインが必要です');
-                    setLoading(false);
-                    return;
-                }
-
-                // プロフィール情報の取得
-                const { data, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .single();
-
-                if (profileError) {
-                    throw profileError;
-                }
-
-                setProfile(data);
-
-                // 出産予定日がある場合、妊娠週数を計算
-                if (data.due_date) {
-                    const dueDateObj = new Date(data.due_date);
-                    setDueDate(dueDateObj);
-
-                    // 共通関数を使用して妊娠週数を計算
-                    const week = calculatePregnancyWeek(data.due_date);
-                    setPregnancyWeek(week);
-                }
-            } catch (err) {
-                console.error('プロフィール取得エラー:', err);
-                setError('プロフィール情報の取得に失敗しました');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchProfileData();
-    }, [supabase]);
+        if (dueDate) {
+            const week = calculatePregnancyWeek(dueDate);
+            setPregnancyWeek(week);
+        } else {
+            setPregnancyWeek(null);
+        }
+        setLoading(false);
+    }, [dueDate]);
 
     // 現在のトライメスターを判定（共通関数を使用）
     const getCurrentTrimester = (week: number) => {
@@ -137,20 +99,7 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
         );
     }
 
-    if (error) {
-        return (
-            <Card className={`w-full shadow-md ${className}`}>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg sm:text-xl font-bold">妊娠週数情報</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-center text-red-500 py-8">{error}</div>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    if (!profile || !dueDate || pregnancyWeek === null) {
+    if (!pregnancyWeek) {
         return (
             <Card className={`w-full shadow-md ${className}`}>
                 <CardHeader className="pb-2">
@@ -172,7 +121,7 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
     const currentTrimester = getCurrentTrimester(pregnancyWeek);
     const trimesterInfo = TRIMESTER_INFO[currentTrimester as keyof typeof TRIMESTER_INFO];
     const babyInfo = getBabyGrowthInfo(pregnancyWeek);
-    const daysRemaining = calculateDaysLeft(dueDate);
+    const daysRemaining = calculateDaysLeft(new Date(dueDate));
     const progressPercentage = Math.min((pregnancyWeek / 40) * 100, 100);
 
     return (
@@ -190,7 +139,7 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
                             </span>
                         </div>
                         <CardDescription className="text-[12px] text-[#6C7A7D]">
-                            <span>出産予定日: {format(dueDate, 'yyyy年MM月dd日')} (あと{daysRemaining}日)</span>
+                            <span>出産予定日: {format(new Date(dueDate), 'yyyy年MM月dd日')} (あと{daysRemaining}日)</span>
                         </CardDescription>
                     </div>
                 </div>
@@ -284,4 +233,6 @@ export default function PregnancyWeekInfo({ className }: PregnancyWeekInfoProps)
             </CardContent>
         </Card>
     );
-} 
+};
+
+export default PregnancyWeekInfo; 

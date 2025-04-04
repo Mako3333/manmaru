@@ -7,8 +7,9 @@ import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-par
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
+import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -57,22 +58,20 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
         // AIサービス初期化
         const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
-        // 画像解析の実行 (Bufferを渡す)
-        const analysisResult = await aiService.analyzeMealImage(imageBuffer);
+        // AIによる画像解析 (戻り値の型を MealAnalysisResult に)
+        const analysisResult: MealAnalysisResult = await aiService.analyzeMealImage(imageBuffer);
 
+        // AI解析エラーのチェック
         if (analysisResult.error) {
             throw new AppError({
-                code: ErrorCode.AI.IMAGE_PROCESSING_ERROR, // 画像処理エラーコードに変更
-                message: '画像解析に失敗しました',
-                details: {
-                    reason: analysisResult.error || '画像解析中にエラーが発生しました',
-                    originalError: analysisResult.error
-                }
+                code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
+                message: analysisResult.error.message || '画像解析に失敗しました',
+                details: { originalError: analysisResult.error.details }
             });
         }
 
         // 解析結果から食品リストを取得
-        const foods = analysisResult.parseResult.foods || [];
+        const foods = analysisResult.foods || [];
 
         // 食品リストの検証
         if (foods.length === 0) {
@@ -96,8 +95,10 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
         // 栄養計算を実行
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
 
-        // レガシー形式からStandardizedMealNutrition形式に変換
-        const standardizedNutrition = convertToStandardizedNutrition(nutritionResult.nutrition);
+        // 標準形式の栄養データを取得
+        const standardizedNutrition = nutritionResult.nutrition;
+        // レガシー形式も生成 (後方互換性のため)
+        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
 
         // 結果を返却
         let warningMessage;
@@ -113,9 +114,10 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
                 nutrition: standardizedNutrition,
                 reliability: nutritionResult.reliability,
                 matchResults: nutritionResult.matchResults,
-                legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
+                legacyNutrition: legacyNutrition // 生成したレガシー形式を設定
             },
-            recognitionConfidence: analysisResult.parseResult.confidence,
+            recognitionConfidence: analysisResult.confidence, // AIの信頼度を使用
+            aiEstimatedNutrition: analysisResult.estimatedNutrition, // AI推定栄養素を追加
             ...(warningMessage ? { warning: warningMessage } : {})
         };
 
