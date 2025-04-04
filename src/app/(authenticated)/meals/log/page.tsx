@@ -1,7 +1,7 @@
 'use client'
 // ライブラリのインポート
 import { useState, useEffect, FormEvent } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
 // UIコンポーネントのインポート
@@ -91,7 +91,10 @@ export default function MealLogPage() {
 
     // ルーティング関連
     const router = useRouter()
-    const supabase = createClientComponentClient()
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
 
     // ユーザープロフィールの取得
     useEffect(() => {
@@ -427,12 +430,14 @@ export default function MealLogPage() {
             const foodText = enhancedFoods.map(food => `${food.name} ${food.quantity}`).join('、');
             const nutritionResult = await analyzeTextInput(foodText);
 
-            if (!nutritionResult.success || !nutritionResult.data || !nutritionResult.data.nutrition) {
-                throw new Error('栄養計算に失敗しました');
+            // 新しいレスポンス構造をチェック
+            if (!nutritionResult.success || !nutritionResult.data || !nutritionResult.data.nutritionResult || !nutritionResult.data.nutritionResult.nutrition) {
+                console.error('API response format error or nutrition calculation failed:', nutritionResult); // 詳細ログ
+                throw new Error('栄養計算結果の取得に失敗しました'); // エラーメッセージをより具体的に
             }
 
-            // 型安全に栄養データを取得 - StandardizedMealNutrition型を使用
-            const standardizedNutrition: StandardizedMealNutrition = nutritionResult.data.nutrition;
+            // 型安全に栄養データを取得 (ネストされたパスから取得)
+            const standardizedNutrition: StandardizedMealNutrition = nutritionResult.data.nutritionResult.nutrition;
 
             // 食品アイテムを作成
             const mealItems = enhancedFoods.map((food) => ({

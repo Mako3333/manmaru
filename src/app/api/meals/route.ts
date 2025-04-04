@@ -2,7 +2,8 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { MealService, SaveMealRequest, SaveMealNutritionRequest } from '@/lib/services/meal-service';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
 
 /**
  * 食事データを登録するAPI
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 {
                     error: 'ログインしていないか、セッションが無効です。',
-                    code: ErrorCode.AUTH_REQUIRED
+                    code: ErrorCode.Base.AUTH_ERROR
                 },
                 { status: 401 }
             );
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 {
                     error: '無効なリクエストデータです。',
-                    code: ErrorCode.DATA_VALIDATION_ERROR
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR
                 },
                 { status: 400 }
             );
@@ -97,15 +98,16 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         console.error('食事保存エラー:', error);
 
-        // ApiErrorの場合はそのメッセージとコードを使用
-        if (error instanceof ApiError) {
+        // AppErrorの場合はそのメッセージとコードを使用
+        if (error instanceof AppError) {
+            const statusCode = getStatusCodeFromAppError(error);
             return NextResponse.json(
                 {
                     error: error.userMessage || '食事データの保存中にエラーが発生しました。',
                     code: error.code,
-                    details: error.details
+                    details: process.env.NODE_ENV === 'development' ? error.details : undefined
                 },
-                { status: error.statusCode || 500 }
+                { status: statusCode }
             );
         }
 
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
             {
                 error: '食事データの保存中に予期しないエラーが発生しました。',
-                code: ErrorCode.UNKNOWN_ERROR
+                code: ErrorCode.Base.UNKNOWN_ERROR
             },
             { status: 500 }
         );
@@ -151,7 +153,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json(
                 {
                     error: 'ログインしていないか、セッションが無効です。',
-                    code: ErrorCode.AUTH_REQUIRED
+                    code: ErrorCode.Base.AUTH_ERROR
                 },
                 { status: 401 }
             );
@@ -167,7 +169,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json(
                 {
                     error: '日付パラメータ(date)が必要です。',
-                    code: ErrorCode.DATA_VALIDATION_ERROR
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR
                 },
                 { status: 400 }
             );
@@ -179,7 +181,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json(
                 {
                     error: '日付はYYYY-MM-DD形式である必要があります。',
-                    code: ErrorCode.DATA_VALIDATION_ERROR
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR
                 },
                 { status: 400 }
             );
@@ -192,15 +194,16 @@ export async function GET(req: NextRequest) {
     } catch (error) {
         console.error('食事データ取得エラー:', error);
 
-        // ApiErrorの場合はそのメッセージとコードを使用
-        if (error instanceof ApiError) {
+        // AppErrorの場合はそのメッセージとコードを使用
+        if (error instanceof AppError) {
+            const statusCode = getStatusCodeFromAppError(error);
             return NextResponse.json(
                 {
                     error: error.userMessage || '食事データの取得中にエラーが発生しました。',
                     code: error.code,
-                    details: error.details
+                    details: process.env.NODE_ENV === 'development' ? error.details : undefined
                 },
-                { status: error.statusCode || 500 }
+                { status: statusCode }
             );
         }
 
@@ -208,9 +211,19 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(
             {
                 error: '食事データの取得中に予期しないエラーが発生しました。',
-                code: ErrorCode.UNKNOWN_ERROR
+                code: ErrorCode.Base.UNKNOWN_ERROR
             },
             { status: 500 }
         );
     }
+}
+
+// ヘルパー関数: エラーコードからステータスコードを取得 (必要なら別ファイルからインポート)
+function getStatusCodeFromAppError(error: AppError): number {
+    const errorCode = error.code;
+    if (errorCode === ErrorCode.Base.AUTH_ERROR) return 401;
+    if (errorCode === ErrorCode.Base.DATA_VALIDATION_ERROR) return 400;
+    if (errorCode === ErrorCode.Base.DATA_NOT_FOUND) return 404;
+    // 必要に応じて他のエラーコードのマッピングを追加
+    return 500;
 } 

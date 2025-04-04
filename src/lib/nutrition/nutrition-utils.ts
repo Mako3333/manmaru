@@ -8,8 +8,8 @@ import {
     NutrientUnit
 } from '@/types/nutrition';
 import {
-    createStandardNutritionData
-} from './nutrition-service-impl';
+    createStandardizedMealNutrition
+} from './nutrition-type-utils';
 //src\lib\nutrition\nutrition-utils.ts
 /**
  * 既存のNutritionData型からStandardizedMealNutritionへの変換
@@ -167,6 +167,9 @@ export function convertToStandardizedNutrition(
             folatePercentage: (nutritionData.folic_acid / 400) * 100, // 400mcgを100%とする
             ironPercentage: (nutritionData.iron / 20) * 100, // 20mgを100%とする
             calciumPercentage: (nutritionData.calcium / 800) * 100 // 800mgを100%とする
+        },
+        reliability: {
+            confidence: nutritionData.confidence_score || 0.7 // デフォルト値
         }
     };
 }
@@ -201,6 +204,9 @@ export function normalizeNutritionData(
                 folatePercentage: 0,
                 ironPercentage: 0,
                 calciumPercentage: 0
+            },
+            reliability: {
+                confidence: 0.5
             }
         };
     } catch (error) {
@@ -215,6 +221,9 @@ export function normalizeNutritionData(
                 folatePercentage: 0,
                 ironPercentage: 0,
                 calciumPercentage: 0
+            },
+            reliability: {
+                confidence: 0.5
             }
         };
     }
@@ -361,7 +370,7 @@ export function safeConvertNutritionData(
 
         switch (sourceType) {
             case 'nutrient':
-                return createStandardNutritionData(sourceData);
+                return createEmptyNutritionData();
             case 'standard':
                 return convertToLegacyNutrition(sourceData);
             case 'old':
@@ -383,10 +392,17 @@ export function safeConvertNutritionData(
  * エラー時のフォールバック用の空の栄養データを作成
  */
 export function createEmptyNutritionData(): NutritionData {
-    return createStandardNutritionData({
+    return {
+        calories: 0,
+        protein: 0,
+        iron: 0,
+        folic_acid: 0,
+        calcium: 0,
+        vitamin_d: 0,
         confidence_score: 0.5,
-        not_found_foods: ['変換エラー']
-    });
+        not_found_foods: ['変換エラー'],
+        extended_nutrients: {}
+    };
 }
 
 /**
@@ -397,14 +413,15 @@ export function convertOldToNutritionData(oldData: any): NutritionData {
         throw new Error('変換元の古い栄養データがnullまたはundefined');
     }
 
-    return createStandardNutritionData({
-        calories: oldData.calories,
-        protein: oldData.protein,
-        iron: oldData.iron,
-        folic_acid: oldData.folic_acid,
-        calcium: oldData.calcium,
-        vitamin_d: oldData.vitamin_d,
-        confidence_score: oldData.confidence_score,
-        not_found_foods: oldData.notFoundFoods
-    });
+    return {
+        calories: oldData.calories || 0,
+        protein: oldData.protein || 0,
+        iron: oldData.iron || 0,
+        folic_acid: oldData.folic_acid || 0,
+        calcium: oldData.calcium || 0,
+        vitamin_d: oldData.vitamin_d || 0,
+        confidence_score: oldData.confidence_score || 0.5,
+        not_found_foods: oldData.notFoundFoods,
+        extended_nutrients: {}
+    };
 } 

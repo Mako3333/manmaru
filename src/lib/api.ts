@@ -136,8 +136,8 @@ export async function analyzeTextInput(text: string) {
             throw new Error('テキストデータが含まれていません');
         }
 
-        // 新しいv2エンドポイントを使用
-        const response = await fetch('/api/v2/food/parse', {
+        // 栄養計算を含むv2エンドポイントを使用
+        const response = await fetch('/api/v2/meal/text-analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -232,56 +232,92 @@ export async function analyzeRecipeUrl(url: string) {
 
 /**
  * API応答の構造を検証する
- * @param data API応答データ
+ * @param data API応答データ ({ success: boolean, data?: ..., error?: ... })
  * @returns 検証結果（true: 有効、false: 無効）
  */
-const validateApiResponse = (data: any): boolean => {
+const validateApiResponse = (responseData: any): boolean => {
+    // responseData は fetch().json() の結果、つまり { success: boolean, data: ..., meta: ... } または { success: false, error: ... } の形式を想定
+    if (!responseData || typeof responseData !== 'object') {
+        console.error('APIレスポンス自体が不正です');
+        return false;
+    }
+
+    // 成功応答でなければバリデーション不要（あるいはエラー内容をチェックする？）
+    if (responseData.success !== true) {
+        console.warn('API応答が成功ではありませんでした。バリデーションスキップ。', responseData);
+        // 成功応答のみを厳密にチェックする場合は true を返すか、あるいは false を返すかは設計次第
+        return true; // ここでは成功応答のみをチェック対象とする
+    }
+
+    const data = responseData?.data; // data フィールドを取得
+
     if (!data) {
-        console.error('APIレスポンスが空です');
+        console.error('APIレスポンスの data フィールドが空です', responseData);
         return false;
     }
 
-    // foods配列のチェック
+    // data.foods 配列 (FoodInputParseResult[]) のチェック
     if (!Array.isArray(data.foods)) {
-        console.error('foods配列が不正:', data.foods);
+        console.error('data.foods 配列が不正:', data.foods);
         return false;
     }
 
-    // 各食品アイテムの構造チェック
     for (const food of data.foods) {
-        if (!food.name || typeof food.name !== 'string') {
-            console.error('食品名が不正:', food);
+        // FoodInputParseResult の形式をチェック
+        if (typeof food.foodName !== 'string') { // foodName をチェック
+            console.error('foodName が不正:', food);
             return false;
         }
-
-        if (!food.quantity || typeof food.quantity !== 'string') {
-            console.error('食品量が不正:', food);
+        // quantityText は null の可能性もあるので、存在チェックは必須ではないかも
+        if (food.quantityText !== null && typeof food.quantityText !== 'string') {
+            console.error('quantityText が不正:', food);
             return false;
         }
-
         if (typeof food.confidence !== 'number') {
-            console.error('信頼度が不正:', food);
+            console.error('food.confidence が不正:', food);
             return false;
         }
-
-        // 英語の食品名をログに記録（エラーにはしない）
-        if (/^[a-zA-Z]/.test(food.name)) {
-            console.warn('英語の食品名が検出されました:', food.name);
+        // 英語名チェックは維持
+        if (/^[a-zA-Z]/.test(food.foodName)) {
+            console.warn('英語の食品名が検出されました:', food.foodName);
         }
     }
 
-    // nutrition オブジェクトのチェック
-    const nutrition = data.nutrition;
-    if (!nutrition ||
-        typeof nutrition.calories !== 'number' ||
-        typeof nutrition.protein !== 'number' ||
-        typeof nutrition.iron !== 'number' ||
-        typeof nutrition.folic_acid !== 'number' ||
-        typeof nutrition.calcium !== 'number' ||
-        typeof nutrition.vitamin_d !== 'number') {
-        console.error('nutrition構造が不正:', nutrition);
+    // data.nutritionResult.nutrition (StandardizedMealNutrition) のチェック
+    const nutritionResult = data.nutritionResult;
+    const nutrition = nutritionResult?.nutrition; // ネストされた nutrition を取得
+
+    if (!nutrition || typeof nutrition !== 'object') {
+        console.error('data.nutritionResult.nutrition オブジェクトが不正:', nutritionResult);
         return false;
     }
+
+    // StandardizedMealNutrition の基本的なプロパティをチェック
+    if (typeof nutrition.totalCalories !== 'number') {
+        console.error('nutrition.totalCalories が不正:', nutrition);
+        return false;
+    }
+    if (!Array.isArray(nutrition.totalNutrients)) {
+        console.error('nutrition.totalNutrients 配列が不正:', nutrition);
+        return false;
+    }
+    // 必要であれば totalNutrients の中身もチェック
+    // 例: 最初の要素が存在し、期待するプロパティを持つか
+    if (nutrition.totalNutrients.length > 0) {
+        const firstNutrient = nutrition.totalNutrients[0];
+        if (typeof firstNutrient?.name !== 'string' || typeof firstNutrient?.value !== 'number' || typeof firstNutrient?.unit !== 'string') {
+            console.error('nutrition.totalNutrients の要素形式が不正:', firstNutrient);
+            return false;
+        }
+    }
+    // foodItems 配列の存在チェック (任意)
+    if (nutrition.foodItems && !Array.isArray(nutrition.foodItems)) {
+        console.error('nutrition.foodItems が配列ではありません:', nutrition);
+        return false;
+    }
+
+
+    // 他に必要なチェックがあればここに追加
 
     return true;
 };

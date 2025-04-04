@@ -1,6 +1,7 @@
 //src\lib\services\meal-service.ts
 import { SupabaseClient } from '@supabase/supabase-js';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { validateMealData } from '@/lib/nutrition/nutrition-utils';
 import { MealNutrient } from '@/types/nutrition';
 
@@ -51,12 +52,12 @@ export class MealService {
             // データ検証
             const { isValid, errors } = this.validateData(mealData, nutritionData);
             if (!isValid) {
-                throw new ApiError(
-                    `入力データの検証に失敗しました: ${errors.join(', ')}`,
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    '入力データが無効です。入力内容を確認してください。',
-                    400
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: `入力データの検証に失敗しました: ${errors.join(', ')}`,
+                    userMessage: '入力データが無効です。入力内容を確認してください。',
+                    details: { validationErrors: errors }
+                });
             }
 
             // 食事データ保存
@@ -75,13 +76,13 @@ export class MealService {
                 .single();
 
             if (mealError) {
-                throw new ApiError(
-                    `食事データの保存に失敗しました: ${mealError.message}`,
-                    ErrorCode.DATA_PROCESSING_ERROR,
-                    '食事データの保存中にエラーが発生しました。',
-                    500,
-                    { details: mealError }
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                    message: `食事データの保存に失敗しました: ${mealError.message}`,
+                    userMessage: '食事データの保存中にデータベースエラーが発生しました。',
+                    originalError: mealError,
+                    details: { dbError: mealError }
+                });
             }
 
             // 栄養データ保存（データがある場合）
@@ -105,29 +106,28 @@ export class MealService {
                     // 食事データをロールバック
                     await supabase.from('meals').delete().eq('id', savedMeal.id);
 
-                    throw new ApiError(
-                        `栄養データの保存に失敗しました: ${nutrientError.message}`,
-                        ErrorCode.DATA_PROCESSING_ERROR,
-                        '栄養データの保存中にエラーが発生しました。',
-                        500,
-                        { details: nutrientError }
-                    );
+                    throw new AppError({
+                        code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                        message: `栄養データの保存に失敗しました: ${nutrientError.message}`,
+                        userMessage: '栄養データの保存中にデータベースエラーが発生しました。関連する食事記録は削除されました。',
+                        originalError: nutrientError,
+                        details: { dbError: nutrientError }
+                    });
                 }
             }
 
             return { id: savedMeal.id };
         } catch (error) {
-            // ApiErrorはそのまま再スロー
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            // その他のエラーはApiErrorにラップ
-            throw new ApiError(
-                `食事保存中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.DATA_PROCESSING_ERROR,
-                '食事データの保存中にエラーが発生しました。',
-                500,
-                { error }
-            );
+            console.error('Unexpected error in saveMealWithNutrition:', error);
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: `食事保存中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: '食事データの保存中に予期しない問題が発生しました。',
+                originalError: error instanceof Error ? error : undefined,
+                details: { originalError: error }
+            });
         }
     }
 
@@ -198,24 +198,27 @@ export class MealService {
                 .order('created_at', { ascending: false });
 
             if (mealsError) {
-                throw new ApiError(
-                    `食事データの取得に失敗しました: ${mealsError.message}`,
-                    ErrorCode.DATA_PROCESSING_ERROR,
-                    '食事データの取得中にエラーが発生しました。',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                    message: `食事データの取得に失敗しました: ${mealsError.message}`,
+                    userMessage: '食事データの取得中にデータベースエラーが発生しました。',
+                    originalError: mealsError,
+                    details: { dbError: mealsError }
+                });
             }
 
             return meals;
         } catch (error) {
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            throw new ApiError(
-                `食事データの取得中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.DATA_PROCESSING_ERROR,
-                '食事データの取得中にエラーが発生しました。',
-                500
-            );
+            console.error('Unexpected error in getMealsByDate:', error);
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: `食事データの取得中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: '食事データの取得中に予期しない問題が発生しました。',
+                originalError: error instanceof Error ? error : undefined,
+                details: { originalError: error }
+            });
         }
     }
 
@@ -241,30 +244,31 @@ export class MealService {
 
             if (fetchError) {
                 if (fetchError.code === 'PGRST116') { // データが見つからない
-                    throw new ApiError(
-                        `指定された食事データ(ID: ${mealId})が見つかりません`,
-                        ErrorCode.DATA_NOT_FOUND,
-                        '指定された食事データが見つかりません。',
-                        404
-                    );
+                    throw new AppError({
+                        code: ErrorCode.Base.DATA_NOT_FOUND,
+                        message: `指定された食事データ(ID: ${mealId})が見つかりません`,
+                        userMessage: '指定された食事データが見つかりません。',
+                        details: { mealId, dbError: fetchError }
+                    });
                 }
 
-                throw new ApiError(
-                    `食事データ取得エラー: ${fetchError.message}`,
-                    ErrorCode.DATA_PROCESSING_ERROR,
-                    '食事データの取得中にエラーが発生しました。',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                    message: `食事データ取得エラー: ${fetchError.message}`,
+                    userMessage: '食事データの取得中にデータベースエラーが発生しました。',
+                    originalError: fetchError,
+                    details: { dbError: fetchError }
+                });
             }
 
             // 権限チェック
             if (mealData.user_id !== userId) {
-                throw new ApiError(
-                    `権限エラー: ユーザー(${userId})は食事(${mealId})を削除する権限がありません`,
-                    ErrorCode.AUTH_INVALID,
-                    'この食事データを削除する権限がありません。',
-                    403
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.AUTH_ERROR,
+                    message: `権限エラー: ユーザー(${userId})は食事(${mealId})を削除する権限がありません`,
+                    userMessage: 'この食事データを削除する権限がありません。',
+                    details: { userId, mealId }
+                });
             }
 
             // 関連する栄養データを削除
@@ -285,27 +289,27 @@ export class MealService {
                 .eq('id', mealId);
 
             if (mealDeleteError) {
-                throw new ApiError(
-                    `食事データ削除エラー: ${mealDeleteError.message}`,
-                    ErrorCode.DATA_PROCESSING_ERROR,
-                    '食事データの削除中にエラーが発生しました。',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                    message: `食事データ削除エラー: ${mealDeleteError.message}`,
+                    userMessage: '食事データの削除中にデータベースエラーが発生しました。',
+                    originalError: mealDeleteError,
+                    details: { dbError: mealDeleteError }
+                });
             }
 
             return true;
         } catch (error) {
-            // ApiErrorはそのまま再スロー
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            // その他のエラーはApiErrorにラップ
-            throw new ApiError(
-                `食事削除中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.DATA_PROCESSING_ERROR,
-                '食事データの削除中にエラーが発生しました。',
-                500,
-                { error }
-            );
+            console.error('Unexpected error in deleteMeal:', error);
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: `食事削除中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: '食事データの削除中に予期しない問題が発生しました。',
+                originalError: error instanceof Error ? error : undefined,
+                details: { originalError: error }
+            });
         }
     }
 } 

@@ -1,15 +1,12 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import type { ApiResponse } from '@/types/api';
-import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { parseFoodInputText, FoodParseServiceResult } from '@/lib/food/food-parsing-service';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -19,93 +16,100 @@ const requestSchema = z.object({
 });
 
 /**
- * 食事テキスト解析API v2
- * テキスト入力から食品を認識し、栄養素を計算する
+ * 食事テキスト解析・栄養計算API v2
  */
-export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
-    // リクエストデータを取得して検証
+export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResponse> => {
+    const startTime = Date.now();
     const requestData = await req.json();
 
     try {
-        // スキーマ検証
         const validatedData = requestSchema.parse(requestData);
         const text = validatedData.text.trim();
         const mealType = validatedData.mealType || '食事';
         const trimester = validatedData.trimester;
 
-        if (!text) {
-            throw new AppError({
-                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
-                message: '空の入力テキストです',
-                details: { reason: 'テキスト入力は必須です' }
-            });
+        const parseResult = await parseFoodInputText(text);
+
+        if (parseResult.error) {
+            throw parseResult.error;
         }
 
-        // 処理時間計測開始
-        const startTime = Date.now();
+        const foods = parseResult.foods;
 
-        let aiAnalysisResult: MealAnalysisResult | null = null;
-
-        let foods: FoodInputParseResult[] = [];
-
-        // 直接解析可能な形式を試みる
-        foods = FoodInputParser.parseBulkInput(text);
-
-        if (foods.length === 0) {
-            // AIサービス初期化
-            const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
-
-            // テキスト解析の実行
-            aiAnalysisResult = await aiService.analyzeMealText(text);
-
-            if (aiAnalysisResult.error) {
-                throw new AppError({
-                    code: ErrorCode.AI.ANALYSIS_ERROR,
-                    message: aiAnalysisResult.error.message || 'テキスト解析に失敗しました',
-                    details: { originalError: aiAnalysisResult.error.details }
-                });
-            }
-
-            // 解析結果から食品リストを取得
-            foods = aiAnalysisResult.foods || [];
-        }
-
-        // 食品リストの検証
-        if (foods.length === 0) {
+        if (!foods || foods.length === 0) {
             throw new AppError({
                 code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
                 message: '食品が検出されませんでした',
-                details: { reason: 'テキストから食品を検出できませんでした。別の入力をお試しください。' }
+                userMessage: '入力テキストから食品を検出できませんでした。別の入力をお試しください。',
+                details: { reason: `Food parsing service (source: ${parseResult.analysisSource}) could not detect any food items.` }
             });
         }
 
-        // 栄養計算の実行
         const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
         const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
 
-        // 食品名と量の配列に変換
-        const nameQuantityPairs = foods.map((item) => ({
-            name: item.foodName,
-            quantity: item.quantityText || undefined
-        })) as Array<{ name: string; quantity?: string }>;
+        let nameQuantityPairs: Array<{ name: string; quantity?: string }>;
+        try {
+            nameQuantityPairs = foods.map((item) => ({
+                name: item.foodName,
+                ...(item.quantityText ? { quantity: item.quantityText } : {}),
+            }));
+        } catch (mapError) {
+            // console.error('Error mapping food results to name-quantity pairs:', mapError);
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `Error mapping food results: ${mapError instanceof Error ? mapError.message : String(mapError)}`,
+                userMessage: "解析結果の整形中に問題が発生しました。",
+                originalError: mapError instanceof Error ? mapError : undefined
+            });
+        }
 
-        // 栄養計算を実行
-        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+        let nutritionResult;
+        try {
+            // TODO: trimester などの情報を栄養計算サービスに渡す必要があれば追加
+            nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+        } catch (nutritionError) {
+            // console.error('Error during nutrition calculation:', nutritionError);
+            if (nutritionError instanceof AppError) {
+                throw nutritionError;
+            } else {
+                throw new AppError({
+                    code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                    message: `栄養計算中にエラーが発生: ${nutritionError instanceof Error ? nutritionError.message : String(nutritionError)}`,
+                    userMessage: "栄養価の計算中に問題が発生しました。",
+                    originalError: nutritionError instanceof Error ? nutritionError : undefined
+                });
+            }
+        }
 
-        // 標準形式とレガシー形式の栄養データを取得・生成
         const standardizedNutrition = nutritionResult.nutrition;
-        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
+        let legacyNutrition;
+        try {
+            legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
+        } catch (conversionError) {
+            // console.error('Error converting nutrition data to legacy format:', conversionError);
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `Error converting to legacy nutrition format: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`,
+                userMessage: '計算結果の表示形式への変換中に問題が発生しました。',
+                originalError: conversionError instanceof Error ? conversionError : undefined
+            });
+        }
 
-        // 結果を返却
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
             warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
         }
 
-        return {
+        const aiSpecificData = parseResult.analysisSource === 'ai' && parseResult.aiRawResult ? {
+            recognitionConfidence: parseResult.confidence,
+            aiEstimatedNutrition: parseResult.aiRawResult.estimatedNutrition
+        } : {};
+
+        return NextResponse.json({
             success: true,
             data: {
-                foods: nameQuantityPairs,
+                foods: foods,
                 originalText: text,
                 mealType,
                 ...(trimester ? { trimester } : {}),
@@ -115,39 +119,42 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
                     matchResults: nutritionResult.matchResults,
                     legacyNutrition: legacyNutrition
                 },
-                ...(aiAnalysisResult ? {
-                    recognitionConfidence: aiAnalysisResult.confidence,
-                    aiEstimatedNutrition: aiAnalysisResult.estimatedNutrition
-                } : {})
+                ...aiSpecificData
             },
             meta: {
                 processingTimeMs: Date.now() - startTime,
-                analysisSource: aiAnalysisResult ? 'ai' : 'parser',
+                analysisSource: parseResult.analysisSource,
                 ...(warningMessage ? { warning: warningMessage } : {})
             }
-        };
+        });
 
     } catch (error) {
-        // Zodバリデーションエラーの処理
         if (error instanceof z.ZodError) {
             throw new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '入力データが無効です',
+                userMessage: "入力内容に誤りがあります。確認してください。",
                 details: {
-                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    reason: error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', '),
                     originalError: error
                 }
             });
         }
 
-        // その他のエラーは上位ハンドラーに委譲
-        throw error;
+        if (error instanceof AppError) {
+            throw error;
+        }
+
+        // console.error('Unhandled error in /meal/text-analyze:', error); 
+        throw new AppError({
+            code: ErrorCode.Base.UNKNOWN_ERROR,
+            message: `Unhandled error in /meal/text-analyze: ${error instanceof Error ? error.message : String(error)}`,
+            userMessage: "サーバー内部で予期しない問題が発生しました。",
+            originalError: error instanceof Error ? error : undefined
+        });
     }
 });
 
-/**
- * プリフライトリクエスト対応
- */
 export const OPTIONS = withErrorHandling(async () => {
-    return { success: true, data: { message: 'OK' } };
+    return NextResponse.json({ success: true, data: { message: 'OK' } });
 }); 

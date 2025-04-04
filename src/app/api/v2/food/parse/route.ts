@@ -1,110 +1,100 @@
-import { NextRequest } from 'next/server';
-import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
+import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { validateRequestData, validateFoodTextInput } from '@/lib/utils/request-validation';
 import { FoodInputParser } from '@/lib/food/food-input-parser';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
-//src\app\api\v2\food\parse\route.ts
+import { parseFoodInputText } from '@/lib/food/food-parsing-service';
+
 /**
  * 食品テキスト解析API v2
- * テキスト入力から食品情報を解析する
+ * テキスト入力から食品情報を解析し、名前と量のペアを返す
  */
 
-// リクエストの検証スキーマ
 const requestSchema = z.object({
-    text: z.string().min(1, "テキスト入力は必須です")
+    text: z.string().min(1, "テキスト入力は必須です"),
+    // trimester はこのエンドポイントでは使用しないため削除 (必要なら残す)
+    // trimester: z.number().int().min(1).max(3).optional()
 });
 
-export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
-    // リクエストデータを取得して検証
+export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResponse> => {
+    const startTime = Date.now();
     const requestData = await req.json();
 
     try {
-        // スキーマ検証
         const validatedData = requestSchema.parse(requestData);
         const text = validatedData.text.trim();
 
-        if (!text) {
-            throw new AppError({
-                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
-                message: '空の入力テキストです',
-                details: { reason: 'テキスト入力は必須です' }
-            });
+        const parseResult = await parseFoodInputText(text);
+
+        if (parseResult.error) {
+            throw parseResult.error;
         }
 
-        // 処理時間計測開始
-        const startTime = Date.now();
+        const foods = parseResult.foods;
 
-        // AIサービス初期化
-        const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
-
-        // テキスト解析の実行
-        const analysisResult = await aiService.analyzeMealText(text);
-
-        if (analysisResult.error) {
-            throw new AppError({
-                code: ErrorCode.AI.ANALYSIS_ERROR,
-                message: 'テキスト解析に失敗しました',
-                details: {
-                    reason: analysisResult.error || 'テキスト解析中にエラーが発生しました',
-                    originalError: analysisResult.error
-                }
-            });
-        }
-
-        // 解析結果から食品リストを取得
-        const foods = analysisResult.parseResult.foods;
-
-        // 食品リストの検証
         if (!foods || foods.length === 0) {
             throw new AppError({
-                code: ErrorCode.Nutrition.FOOD_NOT_FOUND, // FOOD_RECOGNITION_ERROR は Nutrition カテゴリに移動
+                code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
                 message: '食品が検出されませんでした',
-                details: { reason: '入力テキストから食品を検出できませんでした。別の入力をお試しください。' }
+                userMessage: '入力テキストから食品を検出できませんでした。別の入力をお試しください。',
+                details: { reason: `Food parsing service (source: ${parseResult.analysisSource}) could not detect any food items.` }
             });
         }
 
-        // 名前と量のペアを生成
-        const nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(foods);
+        let nameQuantityPairs;
+        try {
+            nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(foods);
+        } catch (pairError) {
+            // console.error('Error generating name quantity pairs:', pairError); // 本番では logger を使う想定
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `Error generating name-quantity pairs: ${pairError instanceof Error ? pairError.message : String(pairError)}`,
+                userMessage: "解析結果の整形中に問題が発生しました。",
+                originalError: pairError instanceof Error ? pairError : undefined
+            });
+        }
 
-        // 成功レスポンスを返却
-        return {
+        return NextResponse.json({
             success: true,
             data: {
                 foods,
                 originalText: text,
                 parsedItems: nameQuantityPairs,
-                confidence: analysisResult.parseResult.confidence || 0.9,
-                processingTimeMs: analysisResult.processingTimeMs
+                ...(parseResult.confidence !== undefined ? { confidence: parseResult.confidence } : {}),
             },
             meta: {
-                processingTimeMs: Date.now() - startTime
+                processingTimeMs: Date.now() - startTime,
+                analysisSource: parseResult.analysisSource
             }
-        };
+        });
     } catch (error) {
-        // Zodバリデーションエラーの処理
         if (error instanceof z.ZodError) {
             throw new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '入力データが無効です',
+                userMessage: "入力内容に誤りがあります。確認してください。",
                 details: {
-                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    reason: error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', '),
                     originalError: error
                 }
             });
         }
 
-        // その他のエラーは上位ハンドラーに委譲
-        throw error;
+        if (error instanceof AppError) {
+            throw error;
+        }
+
+        // console.error('Unhandled error in /food/parse:', error); // 本番では logger を使う想定
+        throw new AppError({
+            code: ErrorCode.Base.UNKNOWN_ERROR,
+            message: `Unhandled error in /food/parse: ${error instanceof Error ? error.message : String(error)}`,
+            userMessage: "サーバー内部で予期しない問題が発生しました。",
+            originalError: error instanceof Error ? error : undefined
+        });
     }
 });
 
-/**
- * プリフライトリクエスト対応
- */
 export const OPTIONS = withErrorHandling(async () => {
-    return { success: true, data: { message: 'OK' } };
+    return NextResponse.json({ success: true, data: { message: 'OK' } });
 }); 
