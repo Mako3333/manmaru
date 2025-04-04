@@ -82,7 +82,7 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                imageData: base64Image,
+                image: base64Image,
                 mealType
             }),
         });

@@ -1,15 +1,13 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
-import { FoodInputParser } from '@/lib/food/food-input-parser';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { validateRequestData, validateImageData } from '@/lib/utils/request-validation';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import type { ApiResponse } from '@/types/api';
 import { z } from 'zod';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import type { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 /**
  * 画像解析API v2
@@ -18,17 +16,17 @@ import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-u
  */
 const requestSchema = z.object({
     image: z.string().min(1, "画像データは必須です"),
+    mealType: z.string().optional(),
 });
 
-export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => {
-    // リクエストデータを取得
+export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResponse> => {
     const requestData = await req.json();
+    const startTime = Date.now();
 
     try {
-        // リクエストデータを検証
         const validatedData = requestSchema.parse(requestData);
         const imageData = validatedData.image;
-        const startTime = Date.now();
+        const mealType = validatedData.mealType || '食事';
 
         if (!imageData || !imageData.startsWith('data:image/')) {
             throw new AppError({
@@ -37,8 +35,6 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
                 details: { reason: '画像データはbase64エンコードされた文字列である必要があります' }
             });
         }
-
-        // Base64画像データからバイナリに変換
         const base64Data = imageData.split(',')[1];
         if (!base64Data) {
             throw new AppError({
@@ -49,84 +45,116 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
         }
         const imageBuffer = Buffer.from(base64Data, 'base64');
 
-        // AIサービスを取得
         const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
-        // 画像解析を実行
         const analysisResult = await aiService.analyzeMealImage(imageBuffer);
 
-        // エラーチェック
         if (analysisResult.error) {
             throw new AppError({
                 code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
-                message: '画像解析に失敗しました',
-                details: {
-                    reason: analysisResult.error || '画像解析中にエラーが発生しました',
-                    originalError: analysisResult.error
-                }
+                message: analysisResult.error.message || '画像解析中にAIエラーが発生しました',
+                details: { originalError: analysisResult.error.details }
             });
         }
 
-        const foods = analysisResult.parseResult.foods;
-        if (!foods || foods.length === 0) {
+        const foods: FoodInputParseResult[] = analysisResult.foods || [];
+        const aiEstimatedNutrition = analysisResult.estimatedNutrition;
+
+        if (foods.length === 0) {
             throw new AppError({
                 code: ErrorCode.AI.PARSING_ERROR,
                 message: 'AI応答から食品を検出できませんでした',
-                details: { reason: `AI応答: "${analysisResult.rawResponse || '応答なし'}"` }
+                userMessage: '画像から食品を検出できませんでした。別の写真で試すか、テキストで入力してください。',
+                details: { reason: `AI response did not contain food items. Raw response might be available in service logs.` }
             });
         }
 
-        // 栄養計算サービスを取得
         const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
         const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
 
-        // 食品名と量のペアを生成
-        const nameQuantityPairs = await FoodInputParser.generateNameQuantityPairs(foods);
+        let nameQuantityPairs: Array<{ name: string; quantity?: string }>;
+        try {
+            nameQuantityPairs = foods.map((item) => ({
+                name: item.foodName,
+                ...(item.quantityText ? { quantity: item.quantityText } : {}),
+            }));
+        } catch (mapError) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `Error mapping food results: ${mapError instanceof Error ? mapError.message : String(mapError)}`,
+                userMessage: "解析結果の整形中に問題が発生しました。",
+                originalError: mapError instanceof Error ? mapError : undefined
+            });
+        }
 
-        // 栄養素を計算
-        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+        let nutritionResult;
+        try {
+            nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+        } catch (nutritionError) {
+            throw nutritionError instanceof AppError ? nutritionError : new AppError({
+                code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                message: `栄養計算中にエラーが発生: ${nutritionError instanceof Error ? nutritionError.message : String(nutritionError)}`,
+                userMessage: "栄養価の計算中に問題が発生しました。",
+                originalError: nutritionError instanceof Error ? nutritionError : undefined
+            });
+        }
 
-        // レガシー形式からStandardizedMealNutrition形式に変換
-        const standardizedNutrition = convertToStandardizedNutrition(nutritionResult.nutrition);
+        const standardizedNutrition = nutritionResult.nutrition;
+        let legacyNutrition;
+        try {
+            legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
+        } catch (conversionError) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: `Error converting to legacy nutrition format: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`,
+                userMessage: '計算結果の表示形式への変換中に問題が発生しました。',
+                originalError: conversionError instanceof Error ? conversionError : undefined
+            });
+        }
 
-        // 警告メッセージの設定
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
             warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
         }
 
-        // 結果を返却 (dataプロパティの中身だけを返す)
-        return {
-            foods: foods,
-            nutritionResult: {
-                nutrition: standardizedNutrition,
-                reliability: nutritionResult.reliability,
-                matchResults: nutritionResult.matchResults,
-                legacyNutrition: nutritionResult.nutrition // 後方互換性のために保持
+        return NextResponse.json({
+            success: true,
+            data: {
+                foods: foods,
+                originalImageProvided: true,
+                mealType: mealType,
+                nutritionResult: {
+                    nutrition: standardizedNutrition,
+                    reliability: nutritionResult.reliability,
+                    matchResults: nutritionResult.matchResults,
+                    legacyNutrition: legacyNutrition
+                },
+                recognitionConfidence: analysisResult.confidence,
+                aiEstimatedNutrition: aiEstimatedNutrition
             },
-            processingTimeMs: analysisResult.processingTimeMs // AI処理時間も返す
-        };
+            meta: {
+                processingTimeMs: Date.now() - startTime,
+                analysisSource: 'ai',
+                ...(warningMessage ? { warning: warningMessage } : {})
+            }
+        });
 
     } catch (error) {
-        // Zodバリデーションエラーの処理
         if (error instanceof z.ZodError) {
             throw new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '入力データが無効です',
                 details: {
-                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    reason: error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', '),
                     originalError: error
                 }
             });
         }
-        // AppErrorはそのままスロー
-        if (error instanceof AppError) {
-            throw error;
-        }
-        // その他の予期せぬエラー
+        if (error instanceof AppError) { throw error; }
+        console.error('Unhandled error in /image/analyze:', error);
         throw new AppError({
-            code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR, // 栄養計算中のエラーとみなす
-            message: '栄養計算中に予期せぬエラーが発生しました',
+            code: ErrorCode.Base.UNKNOWN_ERROR,
+            message: '画像解析または栄養計算中に予期せぬエラーが発生しました',
             details: { originalError: error instanceof Error ? error.message : String(error) },
             originalError: error instanceof Error ? error : undefined
         });
@@ -137,5 +165,5 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
  * プリフライトリクエスト対応
  */
 export const OPTIONS = withErrorHandling(async () => {
-    return { success: true, data: { message: 'OK' } };
+    return NextResponse.json({ success: true, data: { message: 'OK' } });
 }); 

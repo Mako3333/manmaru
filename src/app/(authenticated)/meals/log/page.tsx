@@ -23,7 +23,8 @@ import {
     prepareForApiRequest,
     convertToStandardizedNutrition
 } from '@/lib/nutrition/nutrition-utils';
-import { StandardizedMealData, StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
+import { StandardizedMealData, StandardizedMealNutrition, Nutrient, NutritionData } from '@/types/nutrition';
+import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 
 // 入力モードの型定義
@@ -39,15 +40,20 @@ interface FoodItem {
 
 // 認識データの型定義 (RecognitionEditorコンポーネントと互換性のある形式)
 interface RecognitionData {
-    foods: {
-        name: string;
-        quantity: string;
-        confidence: number;
-    }[];
-    standardizedNutrition: StandardizedMealNutrition;
+    foods: FoodInputParseResult[];
+    nutritionResult: {
+        nutrition: StandardizedMealNutrition;
+        matchResults: any[];
+        legacyNutrition: NutritionData;
+    };
+    recognitionConfidence?: number;
+    aiEstimatedNutrition?: any;
+    originalImageProvided?: boolean;
+    mealType?: string;
 }
 
 // APIからのレスポンスデータのラッパー型
+/* // This seems unused after refactoring RecognitionData
 interface ApiRecognitionResponse {
     success: boolean;
     data: {
@@ -59,6 +65,7 @@ interface ApiRecognitionResponse {
         nutrition: StandardizedMealNutrition;
     };
 }
+*/
 
 export default function MealLogPage() {
     // ユーザープロフィール関連の状態
@@ -182,7 +189,34 @@ export default function MealLogPage() {
             // APIレスポンスを認識データの形式に変換
             const formattedData: RecognitionData = {
                 foods: result.data.foods,
-                standardizedNutrition: result.data.nutrition
+                nutritionResult: {
+                    nutrition: {
+                        totalCalories: result.data.aiEstimatedNutrition.calories,
+                        totalNutrients: [
+                            { name: 'タンパク質', value: result.data.aiEstimatedNutrition.protein, unit: 'g' },
+                            { name: '鉄分', value: result.data.aiEstimatedNutrition.iron, unit: 'mg' },
+                            { name: '葉酸', value: result.data.aiEstimatedNutrition.folic_acid, unit: 'mcg' },
+                            { name: 'カルシウム', value: result.data.aiEstimatedNutrition.calcium, unit: 'mg' },
+                            { name: 'ビタミンD', value: result.data.aiEstimatedNutrition.vitamin_d, unit: 'mcg' }
+                        ],
+                        foodItems: result.data.foods.map((food: any) => ({
+                            id: crypto.randomUUID(),
+                            name: food.foodName,
+                            amount: 1,
+                            unit: food.quantityText?.split(' ')[1] || '個',
+                            nutrition: {
+                                calories: result.data.aiEstimatedNutrition.calories / result.data.foods.length,
+                                nutrients: [],
+                                servingSize: { value: 1, unit: '人前' }
+                            }
+                        })),
+                        reliability: {
+                            confidence: result.data.meta?.analysisSource === 'ai' ? 0.8 : 0.95
+                        }
+                    },
+                    matchResults: [],
+                    legacyNutrition: result.data.aiEstimatedNutrition
+                }
             };
 
             setRecognitionData(formattedData);
@@ -236,11 +270,11 @@ export default function MealLogPage() {
                 meal_date: (selectedDate ? selectedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
                 meal_type: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
                 meal_items: recognitionData.foods.map((food) => ({
-                    name: food.name,
-                    amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
-                    unit: food.quantity?.split(' ')[1] || '個',
+                    name: food.foodName,
+                    amount: parseFloat(food.quantityText?.split(' ')[0] || '1'),
+                    unit: food.quantityText?.split(' ')[1] || '個',
                 })),
-                nutrition_data: recognitionData.standardizedNutrition,
+                nutrition_data: recognitionData.nutritionResult.nutrition,
                 ...(base64Image ? { image_url: base64Image } : {})
             };
 
@@ -515,8 +549,8 @@ export default function MealLogPage() {
         if (mode === 'text' && recognitionData && recognitionData.foods.length > 0) {
             const foodsWithIds: FoodItem[] = recognitionData.foods.map((food) => ({
                 id: crypto.randomUUID(),
-                name: food.name,
-                quantity: food.quantity,
+                name: food.foodName,
+                quantity: food.quantityText || '不明',
                 confidence: food.confidence
             }));
             setFoodItems(foodsWithIds);
@@ -605,11 +639,11 @@ export default function MealLogPage() {
                         )}
 
                         {/* 認識結果エディタ */}
-                        {!analyzing && recognitionData && (
+                        {!analyzing && recognitionData?.nutritionResult?.nutrition && (
                             <div>
                                 <p className="mb-2 text-sm text-green-600">解析結果が表示されています</p>
                                 <RecognitionEditor
-                                    initialData={recognitionData.standardizedNutrition}
+                                    initialData={recognitionData.nutritionResult.nutrition}
                                     onSave={handleSaveRecognition}
                                     mealType={mealType}
                                 />
