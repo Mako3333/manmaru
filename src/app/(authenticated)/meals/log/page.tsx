@@ -246,11 +246,16 @@ export default function MealLogPage() {
     };
 
     // 認識結果の保存処理
-    const handleSaveRecognition = async () => {
-        if (!recognitionData) return;
+    const handleSaveRecognition = async (nutritionData: StandardizedMealNutrition) => {
+        console.log('handleSaveRecognition: 関数が呼び出されました', nutritionData);
+        if (!recognitionData) {
+            console.error('handleSaveRecognition: recognitionDataがnullです');
+            return;
+        }
 
         try {
             setSaving(true);
+            console.log('handleSaveRecognition: 保存処理開始');
 
             // セッションチェック
             const { data: { session } } = await supabase.auth.getSession();
@@ -263,6 +268,7 @@ export default function MealLogPage() {
                     suggestions: ['再度ログインしてください']
                 });
             }
+            console.log('handleSaveRecognition: セッション確認OK');
 
             // 標準化された食事データの準備
             const standardizedMealData: StandardizedMealData = {
@@ -274,9 +280,10 @@ export default function MealLogPage() {
                     amount: parseFloat(food.quantityText?.split(' ')[0] || '1'),
                     unit: food.quantityText?.split(' ')[1] || '個',
                 })),
-                nutrition_data: recognitionData.nutritionResult.nutrition,
+                nutrition_data: nutritionData,
                 ...(base64Image ? { image_url: base64Image } : {})
             };
+            console.log('handleSaveRecognition: 保存用データ準備完了', standardizedMealData);
 
             // データの検証
             const validation = validateMealData(standardizedMealData);
@@ -288,9 +295,11 @@ export default function MealLogPage() {
                     details: { errors: validation.errors }
                 });
             }
+            console.log('handleSaveRecognition: データ検証完了');
 
             // APIリクエスト用にデータを変換（レガシーシステムとの互換性のため）
             const mealData = prepareForApiRequest(standardizedMealData);
+            console.log('handleSaveRecognition: API用データ変換完了', mealData);
 
             // APIを使用してデータを保存（エラーハンドリング付き）
             const response = await fetch('/api/meals', {
@@ -300,6 +309,7 @@ export default function MealLogPage() {
                 },
                 body: JSON.stringify(mealData),
             });
+            console.log('handleSaveRecognition: APIリクエスト送信完了', response.status);
 
             // レスポンスのエラーチェック
             await checkApiResponse(response, '食事データの保存に失敗しました');
@@ -309,11 +319,19 @@ export default function MealLogPage() {
                 description: "栄養情報が更新されました",
                 duration: 3000,
             });
+            console.log('handleSaveRecognition: 保存成功');
 
             // ホーム画面にリダイレクト
             setTimeout(() => {
-                router.refresh();
-                router.push('/home');
+                try {
+                    console.log('リダイレクト実行中...');
+                    router.refresh();
+                    router.push('/home');  // 元の '/home' に戻す
+                } catch (redirectError) {
+                    console.error('リダイレクトエラー:', redirectError);
+                    // リダイレクトに失敗した場合はブラウザのlocation APIを使用
+                    window.location.href = '/home';
+                }
             }, 1500);
         } catch (error) {
             // 標準化されたエラーハンドリング
@@ -325,6 +343,7 @@ export default function MealLogPage() {
             });
             console.error('保存エラー:', error);
         } finally {
+            console.log('handleSaveRecognition: 処理完了');
             setSaving(false);
         }
     };
@@ -522,7 +541,16 @@ export default function MealLogPage() {
             });
 
             // ホームページにリダイレクト
-            router.push('/home');
+            setTimeout(() => {
+                try {
+                    console.log('テキスト入力からのリダイレクト実行中...');
+                    router.refresh();
+                    router.push('/home');
+                } catch (redirectError) {
+                    console.error('リダイレクトエラー:', redirectError);
+                    window.location.href = '/home';
+                }
+            }, 1500);
         } catch (error) {
             console.error('食事保存エラー:', error);
             toast.error("保存エラー", {
@@ -644,7 +672,10 @@ export default function MealLogPage() {
                                 <p className="mb-2 text-sm text-green-600">解析結果が表示されています</p>
                                 <RecognitionEditor
                                     initialData={recognitionData.nutritionResult.nutrition}
-                                    onSave={handleSaveRecognition}
+                                    onSave={(nutritionData) => {
+                                        console.log('RecognitionEditor onSave呼び出し:', nutritionData);
+                                        handleSaveRecognition(nutritionData);
+                                    }}
                                     mealType={mealType}
                                 />
                             </div>

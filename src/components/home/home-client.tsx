@@ -18,11 +18,14 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight, Book, X } from 'lucide-react';
-import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
+import { StandardizedMealNutrition, Nutrient, NutritionTarget } from '@/types/nutrition';
 import { calculateNutritionScore, DEFAULT_NUTRITION_TARGETS } from '@/lib/nutrition/nutrition-display-utils';
-import { getJapanDate } from '@/lib/date-utils';
+import { getJapanDate, calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
 import { OnboardingMessage } from './onboarding-message';
-import { MorningNutritionView } from './morning-nutrition-view';
+
+// NutritionTargets 型 (DEFAULT_NUTRITION_TARGETS の型)
+// calculateNutritionScore や NutritionSummary が期待する形式
+type NutritionTargets = typeof DEFAULT_NUTRITION_TARGETS;
 
 interface HomeClientProps {
     user: any;
@@ -69,10 +72,12 @@ export default function HomeClient({ user }: HomeClientProps) {
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [currentDate] = useState(getJapanDate());
-    const [nutritionData, setNutritionData] = useState<any>(null);
+    const [nutritionProgress, setNutritionProgress] = useState<any>(null);
+    const [standardizedNutrition, setStandardizedNutrition] = useState<StandardizedMealNutrition | null>(null);
     const [isMorningWithNoMeals, setIsMorningWithNoMeals] = useState<boolean>(false);
     const [isFirstTimeUser, setIsFirstTimeUser] = useState<boolean>(false);
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+    const [userTargets, setUserTargets] = useState<NutritionTargets>(DEFAULT_NUTRITION_TARGETS);
 
     // コンポーネントマウント時に一度だけ初回ユーザー判定
     useEffect(() => {
@@ -123,15 +128,63 @@ export default function HomeClient({ user }: HomeClientProps) {
                 setLoading(false);
                 return;
             }
-            if (profile === undefined) {
+            if (profile === null || profile === undefined) {
                 console.log('[fetchNutritionData] Profile not loaded yet, waiting...');
-                return;
+                if (profile === null) {
+                    setUserTargets(DEFAULT_NUTRITION_TARGETS);
+                    console.log('[fetchNutritionData] Profile is null, using default targets.');
+                } else {
+                    return;
+                }
+            } else {
+                try {
+                    // トライメスター計算: due_date が存在するか確認
+                    if (profile?.due_date) {
+                        const week = calculatePregnancyWeek(profile.due_date);
+                        const currentTrimester = getTrimesterNumber(week);
+
+                        console.log(`[fetchNutritionData] Fetching targets for trimester: ${currentTrimester}`);
+                        // DB から NutritionTarget 型 (id, trimester などを含む) で取得
+                        const { data: targetData, error: targetError } = await supabase
+                            .from('nutrition_targets')
+                            .select('*')
+                            .eq('trimester', currentTrimester)
+                            .maybeSingle<NutritionTarget>(); // DB の行の型
+
+                        if (targetError) {
+                            console.error('[fetchNutritionData] Error fetching targets:', targetError);
+                            setUserTargets(DEFAULT_NUTRITION_TARGETS); // エラー時はデフォルト
+                        } else if (targetData) {
+                            // DBから取得したデータ (NutritionTarget) から必要な目標値のみを抽出
+                            // して、NutritionTargets 型のオブジェクトを作成
+                            const extractedTargets: NutritionTargets = {
+                                calories: targetData.calories ?? DEFAULT_NUTRITION_TARGETS.calories,
+                                protein: targetData.protein ?? DEFAULT_NUTRITION_TARGETS.protein,
+                                iron: targetData.iron ?? DEFAULT_NUTRITION_TARGETS.iron,
+                                folic_acid: targetData.folic_acid ?? DEFAULT_NUTRITION_TARGETS.folic_acid,
+                                calcium: targetData.calcium ?? DEFAULT_NUTRITION_TARGETS.calcium,
+                                vitamin_d: targetData.vitamin_d ?? DEFAULT_NUTRITION_TARGETS.vitamin_d,
+                                // 必要に応じて他の栄養素も追加
+                            };
+                            setUserTargets(extractedTargets);
+                            console.log('[fetchNutritionData] User targets extracted and set:', extractedTargets);
+                        } else {
+                            setUserTargets(DEFAULT_NUTRITION_TARGETS); // データがない場合はデフォルト
+                            console.log('[fetchNutritionData] No specific targets found for trimester, using default.');
+                        }
+                    } else {
+                        // due_date がない場合もデフォルト目標値を使用
+                        setUserTargets(DEFAULT_NUTRITION_TARGETS);
+                        console.log('[fetchNutritionData] No due_date found in profile, using default targets.');
+                    }
+                } catch (error) {
+                    console.error('[fetchNutritionData] Error processing targets:', error);
+                    setUserTargets(DEFAULT_NUTRITION_TARGETS);
+                }
             }
 
             console.log('[fetchNutritionData] Setting loading true');
             setLoading(true);
-
-
 
             const defaultProgressData: NutritionProgress = {
                 user_id: user.id,
@@ -195,12 +248,13 @@ export default function HomeClient({ user }: HomeClientProps) {
                 };
                 console.log('[fetchNutritionData] Formatted data for score calculation:', formattedNutritionData);
 
-                const overall_score = calculateNutritionScore(formattedNutritionData);
-                console.log('[fetchNutritionData] Calculated score:', overall_score);
+                const overall_score = calculateNutritionScore(formattedNutritionData, userTargets);
+                console.log('[fetchNutritionData] Calculated score with user targets:', overall_score);
 
                 formattedNutritionData.reliability.balanceScore = overall_score;
 
-                setNutritionData({
+                setStandardizedNutrition(formattedNutritionData);
+                setNutritionProgress({
                     ...progressData,
                     overall_score
                 });
@@ -213,7 +267,8 @@ export default function HomeClient({ user }: HomeClientProps) {
 
             } catch (error) {
                 console.error('[fetchNutritionData] Error:', error);
-                setNutritionData({
+                setStandardizedNutrition(null);
+                setNutritionProgress({
                     ...defaultProgressData,
                     overall_score: 0
                 });
@@ -272,23 +327,23 @@ export default function HomeClient({ user }: HomeClientProps) {
     }
 
     // 不足している栄養素を抽出
-    const deficientNutrients = nutritionData ? [
-        { name: 'カロリー', percent: nutritionData.calories_percent, icon: '🔥', color: 'orange' },
-        { name: 'タンパク質', percent: nutritionData.protein_percent, icon: '🍖', color: 'red' },
-        { name: '鉄分', percent: nutritionData.iron_percent, icon: '⚙️', color: 'red' },
-        { name: '葉酸', percent: nutritionData.folic_acid_percent, icon: '🍃', color: 'green' },
-        { name: 'カルシウム', percent: nutritionData.calcium_percent, icon: '🦴', color: 'blue' },
-        { name: 'ビタミンD', percent: nutritionData.vitamin_d_percent, icon: '☀️', color: 'purple' }
+    const deficientNutrients = nutritionProgress ? [
+        { name: 'カロリー', percent: nutritionProgress.calories_percent, icon: '🔥', color: 'orange' },
+        { name: 'タンパク質', percent: nutritionProgress.protein_percent, icon: '🍖', color: 'red' },
+        { name: '鉄分', percent: nutritionProgress.iron_percent, icon: '⚙️', color: 'red' },
+        { name: '葉酸', percent: nutritionProgress.folic_acid_percent, icon: '🍃', color: 'green' },
+        { name: 'カルシウム', percent: nutritionProgress.calcium_percent, icon: '🦴', color: 'blue' },
+        { name: 'ビタミンD', percent: nutritionProgress.vitamin_d_percent, icon: '☀️', color: 'purple' }
     ].filter(nutrient => nutrient.percent < 70) : [];
 
     // 全ての栄養素が0%かどうかを確認
-    const allNutrientsZero = nutritionData ?
-        nutritionData.calories_percent === 0 &&
-        nutritionData.protein_percent === 0 &&
-        nutritionData.iron_percent === 0 &&
-        nutritionData.folic_acid_percent === 0 &&
-        nutritionData.calcium_percent === 0 &&
-        nutritionData.vitamin_d_percent === 0 : false;
+    const allNutrientsZero = nutritionProgress ?
+        nutritionProgress.calories_percent === 0 &&
+        nutritionProgress.protein_percent === 0 &&
+        nutritionProgress.iron_percent === 0 &&
+        nutritionProgress.folic_acid_percent === 0 &&
+        nutritionProgress.calcium_percent === 0 &&
+        nutritionProgress.vitamin_d_percent === 0 : false;
 
     // 栄養素の状態に応じた色を取得
     const getNutrientColor = (color: string) => {
@@ -305,7 +360,8 @@ export default function HomeClient({ user }: HomeClientProps) {
 
     console.log('[Render] Loading state:', loading);
     console.log('[Render] Profile state:', profile);
-    console.log('[Render] NutritionData state:', nutritionData);
+    console.log('[Render] NutritionProgress state:', nutritionProgress);
+    console.log('[Render] StandardizedNutrition state:', standardizedNutrition);
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
@@ -395,58 +451,13 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                 </div>
 
-                {/* 栄養バランス表示 */}
-                {isMorningWithNoMeals ? (
-                    profile && <MorningNutritionView profile={profile} />
-                ) : (
-                    nutritionData && (
-                        <div className="mx-0 sm:mx-4">
-                            <div className="flex justify-between items-center mb-2 px-1">
-                                <h3 className="font-semibold text-[16px] text-[#6C7A7D]">栄養バランス</h3>
-                                <a href="/dashboard" className="text-[#2E9E6C] text-[14px] font-medium">
-                                    詳細を見る
-                                </a>
-                            </div>
-                            <Card className="w-full overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.05)] rounded-[16px] border-none p-6">
-                                <div className="flex items-center mb-6">
-                                    <div className="relative mr-4">
-                                        <Progress value={nutritionData.overall_score || 0} className="absolute inset-0 w-20 h-20" indicatorClassName={getNutrientColor(nutritionData.overall_score || 0).bg} />
-                                        <div className="w-20 h-20 rounded-full border-4 border-transparent flex items-center justify-center">
-                                            <span className={`text-3xl font-bold ${getNutrientColor(nutritionData.overall_score || 0).text}`}>{nutritionData.overall_score || 0}</span>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className={`font-semibold ${getNutrientColor(nutritionData.overall_score || 0).text}`}>{getScoreMessage(nutritionData.overall_score || 0)}</p>
-                                        {!allNutrientsZero && deficientNutrients.length > 0 && (
-                                            <p className="text-sm text-gray-500 mt-1">特に {deficientNutrients.map(n => n.name).join('・')} が不足気味です</p>
-                                        )}
-                                        {allNutrientsZero && (
-                                            <p className="text-sm text-gray-500 mt-1">今日の食事記録を始めましょう！</p>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-4">
-                                    {[
-                                        { name: 'カロリー', percent: nutritionData.calories_percent, icon: '🔥', color: 'orange' },
-                                        { name: 'タンパク質', percent: nutritionData.protein_percent, icon: '🍖', color: 'red' },
-                                        { name: '鉄分', percent: nutritionData.iron_percent, icon: '⚙️', color: 'red' },
-                                        { name: '葉酸', percent: nutritionData.folic_acid_percent, icon: '🍃', color: 'green' },
-                                        { name: 'カルシウム', percent: nutritionData.calcium_percent, icon: '🦴', color: 'blue' },
-                                        { name: 'ビタミンD', percent: nutritionData.vitamin_d_percent, icon: '☀️', color: 'purple' }
-                                    ].map(nutrient => (
-                                        <div key={nutrient.name} className="text-center">
-                                            <div className={`mx-auto w-10 h-10 rounded-full ${getNutrientColor(nutrient.percent).bgLight} flex items-center justify-center mb-1 ${getNutrientColor(nutrient.percent).text}`}>
-                                                {nutrient.icon}
-                                            </div>
-                                            <p className="text-xs font-medium mb-0.5">{nutrient.name}</p>
-                                            <p className={`text-sm font-bold ${getNutrientColor(nutrient.percent).text}`}>{Math.round(nutrient.percent)}%</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        </div>
-                    )
-                )}
+                {/* 栄養バランス表示 - 統合版 */}
+                <NutritionSummary
+                    dailyNutrition={standardizedNutrition}
+                    targets={userTargets}
+                    isMorningWithNoMeals={isMorningWithNoMeals}
+                    profile={profile}
+                />
 
                 {/* 今日のアドバイスカード */}
                 <AdviceCard profile={profile} />
@@ -474,4 +485,12 @@ const getNutrientColor = (percent: number) => {
     if (percent <= 120) return { bg: 'bg-emerald-500', text: 'text-emerald-600', bgLight: 'bg-emerald-50' };
     if (percent <= 150) return { bg: 'bg-orange-500', text: 'text-orange-600', bgLight: 'bg-orange-50' };
     return { bg: 'bg-red-500', text: 'text-red-600', bgLight: 'bg-red-50' };
-}; 
+};
+
+// 栄養素のプログレスバーの色を取得する関数を最下部に追加
+function getProgressBarColor(percent: number): string {
+    if (percent < 70) return 'bg-red-500';
+    if (percent < 100) return 'bg-orange-500';
+    if (percent <= 130) return 'bg-green-500';
+    return 'bg-red-500'; // 過剰摂取
+} 

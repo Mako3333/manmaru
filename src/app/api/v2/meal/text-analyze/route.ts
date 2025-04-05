@@ -119,6 +119,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                     matchResults: nutritionResult.matchResults,
                     legacyNutrition: legacyNutrition
                 },
+                nutrition: legacyNutrition,
                 ...aiSpecificData
             },
             meta: {

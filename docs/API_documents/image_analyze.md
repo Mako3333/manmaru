@@ -1,0 +1,214 @@
+# API ドキュメント: 画像入力による食事解析・栄養計算
+
+このドキュメントは、画像入力に基づいて食事内容を解析し、栄養価を計算する API エンドポイントについて説明します。
+
+## エンドポイント
+
+`POST /api/v2/image/analyze`
+
+## 概要
+
+ユーザーが食事の写真をアップロードすると、AIが画像を解析して含まれる食品を特定し、それらの栄養価（カロリー、タンパク質、鉄など）を計算して返します。
+
+内部的には、まずAI（Gemini Vision）を使用して食品を認識し、それに基づいて栄養素を直接推定します。また、食品データベースとの照合も行います。
+
+## リクエスト
+
+### ヘッダー
+
+| 名前           | 値                 | 説明    |
+| :------------- | :----------------- | :------ |
+| `Content-Type` | `application/json` | 必須    |
+| `Authorization`| `Bearer <token>`   | 必須 (認証) |
+
+### ボディ (JSON)
+
+```json
+{
+  "image": "string (必須, Base64エンコード画像データ)",
+  "mealType": "string (任意, デフォルト: 'dinner')"
+}
+```
+
+* `image`: Base64でエンコードされた食事の画像データ。
+* `mealType`: 食事の種類（例: 'breakfast', 'lunch', 'dinner', 'snack'）。AIの認識精度を高めるために使用されます。
+
+## レスポンス (成功時: 200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "foods": [ // 解析された食品リスト (FoodInputParseResult[])
+      {
+        "foodName": "string", // 検出された食品名
+        "quantityText": "string | null", // 検出された量のテキスト (例: "1人前", "100g")、不明な場合は null
+        "confidence": "number" // 食品名の認識信頼度
+      }
+      // ... more food items
+    ],
+    "originalImageProvided": true,
+    "mealType": "string", // リクエストで送信された (またはデフォルトの) 食事タイプ
+    "nutritionResult": {
+      "nutrition": { // 計算された栄養情報 (StandardizedMealNutrition)
+        "totalCalories": "number", // 総カロリー (kcal)
+        "totalNutrients": [ // 総栄養素リスト (Nutrient[])
+          {
+            "name": "string", // 栄養素名 (例: "タンパク質", "鉄分")
+            "value": "number", // 量
+            "unit": "string" // 単位 (例: "g", "mg", "mcg")
+          }
+          // ... more nutrients
+        ],
+        "foodItems": [ // 各食品アイテムの栄養情報 (FoodItem[])
+          {
+            "id": "string", // 生成されたID
+            "name": "string", // マッチングされた食品名
+            "amount": "number", // 量
+            "unit": "string", // 単位 (例: "g", "個", "人前")
+            "nutrition": { // この食品アイテムの栄養価
+              "calories": "number",
+              "nutrients": "Nutrient[]",
+              "servingSize": { "value": "number", "unit": "string" }
+            }
+          }
+          // ... more food items
+        ],
+        "reliability": { // 栄養計算の信頼性情報
+          "confidence": "number" // 信頼度スコア (0-1)
+        }
+      },
+      "matchResults": [], // 食品マッチングの詳細結果リスト
+      "legacyNutrition": { ... } // 後方互換性のための旧形式 (NutritionData)
+    },
+    "recognitionConfidence": "number", // 画像認識全体の信頼度
+    "aiEstimatedNutrition": { // AIが直接推定した栄養価
+      "calories": "number",
+      "protein": "number",
+      "iron": "number",
+      "folic_acid": "number",
+      "calcium": "number",
+      "vitamin_d": "number",
+      // ... その他の栄養素
+    }
+  },
+  "meta": {
+    "processingTimeMs": "number", // 処理時間 (ミリ秒)
+    "analysisSource": "ai", // 画像解析ソース
+    "warning": "string | undefined" // 警告メッセージ (あれば)
+  }
+}
+```
+
+## レスポンス (エラー時)
+
+エラー発生時は `success: false` となり、`error` オブジェクトが含まれます。HTTP ステータスコードはエラーの種類に応じて 4xx または 5xx となります。
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "string", // エラーコード
+    "message": "string", // ユーザー向けのエラーメッセージ
+    "details": "any (開発時のみ)", // デバッグ用の詳細情報
+    "suggestions": "string[] | undefined" // 解決策の提案 (あれば)
+  },
+  "meta": {
+    "processingTimeMs": "number"
+  }
+}
+```
+
+**主なエラーコード:**
+
+* `ErrorCode.Base.DATA_VALIDATION_ERROR`: リクエストデータが不正（例: 画像データが空）。
+* `ErrorCode.AI.IMAGE_PROCESSING_ERROR`: 画像の解析に失敗した。
+* `ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR`: 栄養計算中にエラーが発生した。
+* `ErrorCode.AI.API_REQUEST_ERROR`: AIサービスへの接続に失敗した。
+* `ErrorCode.Base.UNKNOWN_ERROR`: その他の予期せぬサーバーエラー。
+
+## 注意事項
+
+* `data.foods` は、AIが直接認識した食品のリストであり、実際にUIに表示される食品リストの基になります。
+* `data.aiEstimatedNutrition` は、AIが直接推定した栄養価であり、表示される栄養情報の元データとして使用されます。
+* `data.nutritionResult.nutrition` は標準化された栄養情報を提供しますが、現在の実装では `aiEstimatedNutrition` の内容を整形して表示することが推奨されます。
+* 画像品質、照明条件、角度などによって認識精度が変わる場合があります。可能な限り食品が明確に見える写真を提供することが望ましいです。
+
+# 技術的負債と改善点
+
+## 1. 食品認識とマッチングの精度
+
+### 課題
+- AIによる食品認識と実際の食品データベースのマッチングに大きな乖離がある
+- 「カツ丼」が「かつお（秋獲り）」にマッチングされるなど、明らかな誤マッチが発生している
+- マッチング後の栄養値（legacyNutrition）と AI推定値（aiEstimatedNutrition）に大きな差がある
+
+### 改善案
+- 食品データベースの拡充（特に一般的な料理名の追加）
+- マッチングアルゴリズムの改善（単純な文字列類似度から、意味的なマッチングへ）
+- マッチング結果の検証ロジックの追加（明らかに誤っているマッチングを排除）
+- AIによる直接推定と食品DBによる計算の統合方法の再設計
+
+## 2. 型定義の一貫性と複雑性
+
+### 課題
+- `NutritionData` と `StandardizedMealNutrition` の二重管理
+- API応答の深いネスト構造（data.nutritionResult.nutrition など）
+- 型定義が複数ファイルに散在し、整合性維持が困難
+- `FoodItem` 型が複数の場所で微妙に異なる定義をされている
+
+### 改善案
+- 型定義の一元管理と統一
+- レガシー互換性を保ちつつ、シンプルな型構造への段階的移行
+- API応答構造のフラット化
+- コンポーネント間でのデータ受け渡し時の型変換の最小化
+
+## 3. エラーハンドリングの強化
+
+### 課題
+- エラー処理ロジックが各コンポーネントに散在
+- 一貫性のないエラーメッセージ
+- ユーザーフレンドリーなエラー回復パスの不足
+
+### 改善案
+- 集中型エラーハンドリングの実装
+- エラーコードとメッセージの標準化
+- エラー発生時の代替パスの提供（例：画像解析失敗時の手動入力へのスムーズな移行）
+
+## 4. パフォーマンスと最適化
+
+### 課題
+- 大きな画像データの送受信による遅延
+- 複数回のAPIコールによる遅延（テキスト解析→栄養計算など）
+- クライアント側での不必要な再レンダリング
+
+### 改善案
+- 画像の最適化（アップロード前のクライアント側リサイズ）
+- バックエンド処理のバッチ化とキャッシュ導入
+- React の最適化テクニック適用（useMemo、useCallback、メモ化コンポーネント）
+
+## 5. AI依存と代替手段
+
+### 課題
+- 現在、食品認識機能が外部AIサービスに強く依存している
+- AIサービスの停止やAPI変更時の対応策が不十分
+- AIの推測値をそのまま使用するリスク（栄養価の精度）
+
+### 改善案
+- フォールバックメカニズムの実装（AI使用不可時のローカル解析）
+- ローカルでの軽量モデル導入の検討
+- AIによる推定値と従来の計算方法のハイブリッドアプローチ
+- 精度検証のための継続的な品質テスト
+
+## 6. コード構造とメンテナンス性
+
+### 課題
+- 長すぎるコンポーネント（MealLogPage が800行超）
+- ビジネスロジックとUI表示の混在
+- 異なる機能（写真解析とテキスト入力）が同じコンポーネント内に混在
+
+### 改善案
+- 関心の分離によるコンポーネント分割
+- ビジネスロジックをカスタムフックとして抽出
+- 機能ごとのモジュール化
+- 統一されたアーキテクチャパターンの適用

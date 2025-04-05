@@ -233,50 +233,52 @@ export function normalizeNutritionData(
  * 標準化されたデータから従来のNutritionData形式に変換
  */
 export function convertToLegacyNutrition(standardized: StandardizedMealNutrition): NutritionData {
-    // 特定の栄養素を探す
-    const findNutrientValue = (name: string): number => {
-        const nutrient = standardized.totalNutrients.find(n =>
-            n.name === name || n.name.toLowerCase() === name.toLowerCase()
-        );
-        return nutrient?.value || 0;
+    // 特定の栄養素を探す (日本語名と英語名、大文字小文字区別なしで検索)
+    const findNutrientValue = (nameJP: string, nameEN: string): number => {
+        const nutrient = standardized.totalNutrients.find(n => {
+            const lowerCaseName = n.name.toLowerCase();
+            return lowerCaseName === nameJP.toLowerCase() || lowerCaseName === nameEN.toLowerCase();
+        });
+        // nutrient?.value が 0 の場合も考慮し、nullish coalescing (??) を使用
+        return nutrient?.value ?? 0;
     };
 
     // 基本栄養素を設定
     const result: NutritionData = {
         calories: standardized.totalCalories,
-        protein: findNutrientValue('タンパク質') || findNutrientValue('protein'),
-        iron: findNutrientValue('鉄分') || findNutrientValue('iron'),
-        folic_acid: findNutrientValue('葉酸') || findNutrientValue('folic_acid'),
-        calcium: findNutrientValue('カルシウム') || findNutrientValue('calcium'),
-        vitamin_d: findNutrientValue('ビタミンD') || findNutrientValue('vitamin_d'),
-        confidence_score: 0.9, // デフォルト値
+        protein: findNutrientValue('タンパク質', 'protein'),
+        iron: findNutrientValue('鉄分', 'iron'),
+        folic_acid: findNutrientValue('葉酸', 'folic_acid'),
+        calcium: findNutrientValue('カルシウム', 'calcium'),
+        vitamin_d: findNutrientValue('ビタミンD', 'vitamin_d'),
+        confidence_score: standardized.reliability?.confidence ?? 0.9, // nullish coalescing
         extended_nutrients: {
             // 追加の主要栄養素
-            fat: findNutrientValue('脂質') || findNutrientValue('fat'),
-            carbohydrate: findNutrientValue('炭水化物') || findNutrientValue('carbohydrate'),
-            dietary_fiber: findNutrientValue('食物繊維') || findNutrientValue('dietary_fiber'),
-            sugars: findNutrientValue('糖質') || findNutrientValue('sugars'),
-            salt: findNutrientValue('食塩相当量') || findNutrientValue('salt'),
+            fat: findNutrientValue('脂質', 'fat'),
+            carbohydrate: findNutrientValue('炭水化物', 'carbohydrate'),
+            dietary_fiber: findNutrientValue('食物繊維', 'dietary_fiber'),
+            sugars: findNutrientValue('糖質', 'sugars'),
+            salt: findNutrientValue('食塩相当量', 'salt'),
 
             // ビタミン類
             vitamins: {
-                vitamin_a: findNutrientValue('ビタミンA') || findNutrientValue('vitamin_a'),
-                vitamin_c: findNutrientValue('ビタミンC') || findNutrientValue('vitamin_c'),
-                vitamin_e: findNutrientValue('ビタミンE') || findNutrientValue('vitamin_e'),
-                vitamin_k: findNutrientValue('ビタミンK') || findNutrientValue('vitamin_k'),
-                vitamin_b1: findNutrientValue('ビタミンB1') || findNutrientValue('vitamin_b1'),
-                vitamin_b2: findNutrientValue('ビタミンB2') || findNutrientValue('vitamin_b2'),
-                vitamin_b6: findNutrientValue('ビタミンB6') || findNutrientValue('vitamin_b6'),
-                vitamin_b12: findNutrientValue('ビタミンB12') || findNutrientValue('vitamin_b12')
+                vitamin_a: findNutrientValue('ビタミンA', 'vitamin_a'),
+                vitamin_c: findNutrientValue('ビタミンC', 'vitamin_c'),
+                vitamin_e: findNutrientValue('ビタミンE', 'vitamin_e'),
+                vitamin_k: findNutrientValue('ビタミンK', 'vitamin_k'),
+                vitamin_b1: findNutrientValue('ビタミンB1', 'vitamin_b1'),
+                vitamin_b2: findNutrientValue('ビタミンB2', 'vitamin_b2'),
+                vitamin_b6: findNutrientValue('ビタミンB6', 'vitamin_b6'),
+                vitamin_b12: findNutrientValue('ビタミンB12', 'vitamin_b12')
             },
 
             // ミネラル類
             minerals: {
-                sodium: findNutrientValue('ナトリウム') || findNutrientValue('sodium'),
-                potassium: findNutrientValue('カリウム') || findNutrientValue('potassium'),
-                magnesium: findNutrientValue('マグネシウム') || findNutrientValue('magnesium'),
-                phosphorus: findNutrientValue('リン') || findNutrientValue('phosphorus'),
-                zinc: findNutrientValue('亜鉛') || findNutrientValue('zinc')
+                sodium: findNutrientValue('ナトリウム', 'sodium'),
+                potassium: findNutrientValue('カリウム', 'potassium'),
+                magnesium: findNutrientValue('マグネシウム', 'magnesium'),
+                phosphorus: findNutrientValue('リン', 'phosphorus'),
+                zinc: findNutrientValue('亜鉛', 'zinc')
             }
         }
     };
@@ -340,6 +342,14 @@ export function prepareForApiRequest(standardizedData: StandardizedMealData) {
         },
         // データベース構造に合わせて栄養データをフォーマット
         nutrition_data: legacyNutrition,
+        // 新しいAPIレスポンス構造をサポート
+        nutritionResult: {
+            nutrition: standardizedData.nutrition_data,
+            legacyNutrition: legacyNutrition,
+            reliability: {
+                confidence: legacyNutrition.confidence_score || 0.8
+            }
+        },
         // meal_nutrientsテーブル用のデータ
         nutrition: {
             calories: legacyNutrition.calories,

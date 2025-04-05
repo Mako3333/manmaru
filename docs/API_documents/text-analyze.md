@@ -146,3 +146,41 @@
 *   `data.nutritionResult.nutrition` は `StandardizedMealNutrition` 型に準拠します。詳細は `src/types/nutrition.ts` を参照してください。
 *   `data.nutritionResult.legacyNutrition` は後方互換性のために提供されており、将来的には削除される可能性があります。可能な限り `data.nutritionResult.nutrition` を使用してください。
 *   AIによる解析 (`analysisSource: 'ai'`) の場合、結果の精度は入力テキストの具体性や曖昧さに依存します。`recognitionConfidence` や `nutritionResult.reliability.confidence` を参考にしてください。
+
+
+◤◢◤◢◤◢◤◢◤◢◤◢◤◢
+
+## テキスト入力と画像入力の保存フロー
+
+1. **フロントエンド側の保存処理**:
+   - **画像入力の場合**: `src/app/(authenticated)/meals/log/page.tsx` の `handleSaveRecognition` 関数
+   - **テキスト入力の場合**: 同ファイル内の `handleSaveTextInput` 関数
+
+2. **データの加工と送信**:
+   どちらの入力方法でも、最終的にはデータを標準形式 (`StandardizedMealData`) に変換し、`/api/meals` エンドポイントに POST リクエストを送信します：
+
+   ```typescript
+   // APIリクエスト用にデータを変換（レガシーシステムとの互換性のため）
+   const mealData = prepareForApiRequest(standardizedMealData);
+
+   // APIを使用してデータを保存
+   const response = await fetch('/api/meals', {
+       method: 'POST',
+       headers: {
+           'Content-Type': 'application/json',
+       },
+       body: JSON.stringify(mealData),
+   });
+   ```
+
+3. **バックエンド側の処理**:
+   実際のデータベース保存処理は `src/app/api/meals/route.ts` で行われています。ここで:
+   - Supabase (PostgreSQL) への実際の保存処理
+   - `meals` テーブルと `meal_nutrients` テーブルへのデータ挿入
+   - 必要に応じて画像の保存処理
+
+4. **データ構造**:
+   - `meals` テーブル: 食事の基本情報（日時、タイプ、画像URL等）
+   - `meal_nutrients` テーブル: 栄養素の詳細値
+   - `meal_items` テーブル: 食品アイテムの詳細（任意選択）
+

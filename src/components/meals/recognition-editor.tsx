@@ -130,6 +130,7 @@ export function RecognitionEditor({
 
     // 保存処理
     const handleSave = async () => {
+        console.log('RecognitionEditor: handleSave関数が呼び出されました');
         setSaving(true);
         try {
             // バリデーションチェック
@@ -146,6 +147,8 @@ export function RecognitionEditor({
             setErrors(newErrors);
 
             if (hasErrors) {
+                console.log('RecognitionEditor: バリデーションエラーがあります', newErrors);
+                setSaving(false);
                 return; // エラーがある場合は保存しない
             }
 
@@ -174,73 +177,23 @@ export function RecognitionEditor({
                 foodItems: updatedFoodItems
             };
 
-            // レガシーシステムとの互換性のために変換
-            const legacyNutrition = convertToLegacyNutrition(updatedNutrition);
+            console.log('RecognitionEditor: 親コンポーネントのonSave関数を呼び出します', updatedNutrition);
 
-            // saveMealWithNutrients APIを使用して、meals と meal_nutrients の両方に保存
-            const response = await fetch('/api/meals', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    meal_type: mealType,
-                    meal_date: mealDate || new Date().toISOString().split('T')[0],
-                    photo_url: photoUrl,
-                    // データベース構造に合わせてフォーマットする
-                    food_description: {
-                        items: foods.map(food => ({
-                            name: food.name,
-                            quantity: food.quantity,
-                            confidence: food.confidence
-                        }))
-                    },
-                    // データベース構造に合わせて栄養データをフォーマット
-                    nutrition_data: updatedNutrition,
-                    // 後方互換性のためにレガシーフォーマットも含める
-                    nutrition: {
-                        calories: legacyNutrition.calories,
-                        protein: legacyNutrition.protein,
-                        iron: legacyNutrition.iron,
-                        folic_acid: legacyNutrition.folic_acid,
-                        calcium: legacyNutrition.calcium,
-                        vitamin_d: legacyNutrition.vitamin_d || 0,
-                        confidence_score: legacyNutrition.confidence_score
-                    },
-                    servings: 1
-                }),
-            });
+            // 保存開始を通知
+            toast.loading("保存中...", { id: "save-meal", description: "データを処理しています" });
 
-            if (!response.ok) {
-                // レスポンスのエラー内容を詳細に取得
-                const errorData = await response.json();
-                console.error('食事保存APIレスポンス:', errorData);
-                throw new Error(errorData.error || '食事の保存に失敗しました');
-            }
+            // 親コンポーネントのonSave関数を呼び出す
+            onSave(updatedNutrition);
 
-            const result = await response.json();
-            console.log('食事保存成功:', result);
-
-            // 成功時のトースト通知
-            toast.success("食事を記録しました", {
-                description: "栄養情報が更新されました",
-                duration: 3000,
-            });
-
-            // リダイレクト処理
-            setTimeout(() => {
-                router.refresh();
-                router.push('/home');
-            }, 1500); // 1.5秒遅延
+            // 注意: この時点ではまだ保存が完了していない可能性がある
+            // 親コンポーネントが処理を完了するため、ここでsetSaving(false)は行わない
         } catch (error) {
-            console.error('食事保存エラーの詳細:', error);
-            setError(error instanceof Error ? error.message : '食事の保存に失敗しました');
-
-            // エラー時のトースト通知
-            toast.error("保存に失敗しました", {
-                description: error instanceof Error ? error.message : "もう一度お試しください",
+            console.error('保存処理中にエラーが発生しました:', error);
+            setError(error instanceof Error ? error.message : '保存処理に失敗しました');
+            toast.error("エラーが発生しました", {
+                description: error instanceof Error ? error.message : '保存処理に失敗しました',
+                id: "save-meal"
             });
-        } finally {
             setSaving(false);
         }
     };
