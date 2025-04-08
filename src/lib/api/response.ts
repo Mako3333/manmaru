@@ -1,6 +1,8 @@
-import { AppError } from '../error/types/base-error';
-import { ErrorCode } from '../error/codes/error-codes';
+import { z } from 'zod';
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { NextResponse } from 'next/server';
+import { StandardizedMealNutrition } from '@/types/nutrition';
 
 /**
  * APIレスポンスのメタデータ

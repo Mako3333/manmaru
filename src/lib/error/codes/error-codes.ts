@@ -21,6 +21,8 @@ export const ErrorCode = {
         FOOD_MATCH_LOW_CONFIDENCE: 'food_match_low_confidence',
         FOOD_REPOSITORY_ERROR: 'food_repository_error',
         INVALID_FOOD_DATA: 'invalid_food_data',
+        MULTIPLE_FOODS_FOUND: 'multiple_foods_found',
+        FOOD_MATCHING_ERROR: 'food_matching_error',
 
         // 量解析関連
         QUANTITY_PARSE_ERROR: 'quantity_parse_error',
@@ -102,6 +104,8 @@ export const DEFAULT_ERROR_MESSAGES: Record<AnyErrorCode, string> = {
     food_match_low_confidence: '食品の一致度が低いです。',
     food_repository_error: '食品データベースへのアクセス中にエラーが発生しました。',
     invalid_food_data: '食品データが無効です。',
+    multiple_foods_found: '複数の食品候補が見つかりました。絞り込んでください。',
+    food_matching_error: '食品情報の取得中にエラーが発生しました。',
     quantity_parse_error: '食品量の解析に失敗しました。',
     invalid_quantity: '無効な量が指定されました。',
     nutrition_calculation_error: '栄養計算中にエラーが発生しました。',

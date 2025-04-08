@@ -1,5 +1,9 @@
 import { GeminiService } from './services/gemini-service';
-import { IAIService } from './ai-service.interface';
+// import { parseCookies } from 'nookies'; // 削除済み
+import { type IAIService } from './ai-service.interface';
+// import { OpenAIChatService } from './openai-chat-service'; // 削除
+import { AppError } from '@/lib/error/types/base-error';
+import { ErrorCode } from '@/lib/error/codes/error-codes';
 
 /**
  * AI種類
@@ -18,7 +22,7 @@ export class AIServiceFactory {
 
     /**
      * AIサービスのインスタンスを取得
-     * 戻り値を IAIService に変更
+     * デフォルトは Gemini
      */
     static getService(type: AIServiceType = AIServiceType.GEMINI): IAIService {
         if (!this.instances.has(type)) {
@@ -30,21 +34,22 @@ export class AIServiceFactory {
                 case AIServiceType.MOCK:
                     // TODO: モックサービスの実装 (IAIService を実装する)
                     // instance = new MockAIService();
-                    throw new Error('モックサービスは未実装です');
+                    throw new AppError({ code: ErrorCode.Base.UNKNOWN_ERROR, message: 'モックサービスは未実装です' });
                 default:
-                    throw new Error(`未知のAIサービスタイプ: ${type}`);
+                    // 未知のタイプが指定された場合、エラーを投げるか、デフォルト（Gemini）にフォールバックする
+                    // ここではエラーを投げる
+                    console.error(`Unknown AI service type requested: ${type}`);
+                    throw new AppError({ code: ErrorCode.Base.DATA_VALIDATION_ERROR, message: `未知のAIサービスタイプ: ${type}` });
             }
             this.instances.set(type, instance);
         }
 
-        // getの戻り値は IAIService | undefined なので non-null assertion を使う
-        // または、上のロジックで必ず set されるので型アサーションでも可
         return this.instances.get(type)!;
     }
 
     /**
      * インスタンスを強制的に再作成
-     * 戻り値を IAIService に変更
+     * デフォルトは Gemini
      */
     static recreateService(type: AIServiceType = AIServiceType.GEMINI, config?: any): IAIService {
         let instance: IAIService;
@@ -55,12 +60,18 @@ export class AIServiceFactory {
             case AIServiceType.MOCK:
                 // TODO: モックサービスの実装 (IAIService を実装する)
                 // instance = new MockAIService(config);
-                throw new Error('モックサービスは未実装です');
+                throw new AppError({ code: ErrorCode.Base.UNKNOWN_ERROR, message: 'モックサービスは未実装です' });
             default:
-                throw new Error(`未知のAIサービスタイプ: ${type}`);
+                console.error(`Unknown AI service type requested for recreation: ${type}`);
+                throw new AppError({ code: ErrorCode.Base.DATA_VALIDATION_ERROR, message: `未知のAIサービスタイプ: ${type}` });
         }
         this.instances.set(type, instance);
 
         return instance;
+    }
+
+    // テスト用に instances マップをクリアするメソッド (必要であれば)
+    static clearInstancesForTesting(): void {
+        this.instances.clear();
     }
 } 
