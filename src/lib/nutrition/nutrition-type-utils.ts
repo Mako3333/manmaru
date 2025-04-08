@@ -417,14 +417,31 @@ export function convertToLegacyNutrition(standardizedData: StandardizedMealNutri
  * @param standardizedData 標準化された栄養データ
  * @returns データベース保存用のNutritionData形式
  */
-export function convertToDbNutritionFormat(standardizedData: StandardizedMealNutrition): NutritionData {
+export function convertToDbNutritionFormat(standardizedData: StandardizedMealNutrition | undefined | null): NutritionData {
+    // 入力データのバリデーション
+    if (!standardizedData) {
+        console.warn('convertToDbNutritionFormat: 栄養データがnullまたはundefinedです');
+        return createEmptyNutritionData();
+    }
+
+    if (!standardizedData.totalNutrients || !Array.isArray(standardizedData.totalNutrients)) {
+        console.warn('convertToDbNutritionFormat: totalNutrientsが不正な形式です', standardizedData);
+        return createEmptyNutritionData();
+    }
+
     // 特定の栄養素を探す (日本語名と英語名、大文字小文字区別なしで検索)
     const findNutrientValue = (nameJP: string, nameEN: string): number => {
-        const nutrient = standardizedData.totalNutrients.find(n => {
-            const lowerCaseName = n.name.toLowerCase();
-            return lowerCaseName === nameJP.toLowerCase() || lowerCaseName === nameEN.toLowerCase();
-        });
-        return nutrient?.value ?? 0;
+        try {
+            const nutrient = standardizedData.totalNutrients.find(n => {
+                if (!n || !n.name) return false;
+                const lowerCaseName = n.name.toLowerCase();
+                return lowerCaseName === nameJP.toLowerCase() || lowerCaseName === nameEN.toLowerCase();
+            });
+            return nutrient?.value ?? 0;
+        } catch (error) {
+            console.error(`栄養素「${nameJP}/${nameEN}」の検索中にエラー:`, error);
+            return 0;
+        }
     };
 
     // 信頼度スコアの設定 (0の場合はデフォルト値を設定)
@@ -435,7 +452,7 @@ export function convertToDbNutritionFormat(standardizedData: StandardizedMealNut
 
     // 基本栄養素を設定
     const result: NutritionData = {
-        calories: standardizedData.totalCalories,
+        calories: standardizedData.totalCalories || 0,
         protein: findNutrientValue('タンパク質', 'protein'),
         iron: findNutrientValue('鉄分', 'iron'),
         folic_acid: findNutrientValue('葉酸', 'folic_acid'),

@@ -481,16 +481,36 @@ export default function MealLogPage() {
 
             // 食品テキストを生成して新APIで栄養計算
             const foodText = enhancedFoods.map(food => `${food.name} ${food.quantity}`).join('、');
+            console.log('食品テキスト送信:', foodText);
             const nutritionResult = await analyzeTextInput(foodText);
+            console.log('API応答:', JSON.stringify(nutritionResult, null, 2));
 
             // 新しいレスポンス構造をチェック
-            if (!nutritionResult.success || !nutritionResult.data || !nutritionResult.data.nutritionResult || !nutritionResult.data.nutritionResult.nutrition) {
-                console.error('API response format error or nutrition calculation failed:', nutritionResult); // 詳細ログ
-                throw new Error('栄養計算結果の取得に失敗しました'); // エラーメッセージをより具体的に
+            if (!nutritionResult.success || !nutritionResult.data || !nutritionResult.data.nutritionResult) {
+                console.error('API応答形式エラー（データ構造）:', nutritionResult);
+                throw new Error('栄養計算結果の取得に失敗しました: データ構造不正');
+            }
+
+            if (!nutritionResult.data.nutritionResult.nutrition) {
+                console.error('API応答形式エラー（nutrition欠落）:', nutritionResult.data.nutritionResult);
+                throw new Error('栄養計算結果の取得に失敗しました: nutrition欠落');
             }
 
             // 型安全に栄養データを取得 (ネストされたパスから取得)
             const standardizedNutrition: StandardizedMealNutrition = nutritionResult.data.nutritionResult.nutrition;
+
+            // 栄養データの整合性チェック
+            console.log('取得した栄養データ:', standardizedNutrition);
+            if (!standardizedNutrition.totalNutrients || !Array.isArray(standardizedNutrition.totalNutrients)) {
+                console.error('栄養データ形式エラー（totalNutrients不正）:', standardizedNutrition);
+                throw new Error('不正な栄養データ形式: totalNutrientsが配列ではありません');
+            }
+
+            if (typeof standardizedNutrition.totalCalories !== 'number') {
+                console.warn('栄養データ形式警告（totalCalories不正）:', standardizedNutrition.totalCalories);
+                // 0で初期化（エラーにはしない）
+                standardizedNutrition.totalCalories = 0;
+            }
 
             // 食品アイテムを作成
             const mealItems = enhancedFoods.map((food) => ({
@@ -521,7 +541,9 @@ export default function MealLogPage() {
             }
 
             // APIリクエスト用にデータを変換
+            console.log('APIリクエスト変換前の食事データ:', standardizedMealData);
             const mealData = prepareForApiRequest(standardizedMealData);
+            console.log('APIリクエスト変換後の食事データ:', mealData);
 
             // APIを使用してデータを保存
             const response = await fetch('/api/meals', {

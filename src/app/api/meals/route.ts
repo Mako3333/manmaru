@@ -4,6 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MealService, SaveMealRequest, SaveMealNutritionRequest } from '@/lib/services/meal-service';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+
+// SaveMealRequest の型定義をオーバーライド（nutrition_dataをオプショナルに）
+interface UpdatedSaveMealRequest extends Omit<SaveMealRequest, 'nutrition_data'> {
+    nutrition_data?: StandardizedMealNutrition; // nutrition_dataをオプショナルに変更
+}
 
 /**
  * 食事データを登録するAPI
@@ -56,21 +63,39 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 食事データ構築
-        const mealData: SaveMealRequest = {
+        // 食事データ構築 (UpdateSaveMealRequestを使用)
+        const mealData: UpdatedSaveMealRequest = {
             user_id: userId,
             meal_type: requestData.meal_type,
             meal_date: requestData.meal_date,
             photo_url: requestData.photo_url,
             food_description: requestData.food_description,
-            nutrition_data: requestData.nutrition_data,
+            // nutrition_data は後で設定
             servings: requestData.servings || 1
         };
 
-        // 栄養データの構築（存在する場合）
-        let nutritionData: SaveMealNutritionRequest | undefined;
+        // リクエストの nutrition_data (旧形式) を StandardizedMealNutrition に変換
+        let standardizedNutritionData: StandardizedMealNutrition | undefined = undefined;
+        if (requestData.nutrition_data) {
+            try {
+                standardizedNutritionData = convertToStandardizedNutrition(requestData.nutrition_data as NutritionData);
+            } catch (conversionError) {
+                console.error('POST /api/meals: 旧形式の栄養データをStandardizedに変換中にエラー:', conversionError);
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                    message: 'リクエスト内の栄養データの形式変換に失敗しました',
+                    originalError: conversionError instanceof Error ? conversionError : undefined,
+                    details: { requestNutritionData: requestData.nutrition_data }
+                });
+            }
+        }
+        // mealData に変換後のデータを設定
+        // mealData.nutrition_data = standardizedNutritionData; // 直接代入は型エラーの可能性
+
+        // 栄養データの構築（meal_nutrients テーブル用）
+        let nutritionDataForMealNutrients: SaveMealNutritionRequest | undefined;
         if (requestData.nutrition) {
-            nutritionData = {
+            nutritionDataForMealNutrients = {
                 calories: parseFloat(requestData.nutrition.calories || '0'),
                 protein: parseFloat(requestData.nutrition.protein || '0'),
                 iron: parseFloat(requestData.nutrition.iron || '0'),
@@ -81,11 +106,25 @@ export async function POST(req: NextRequest) {
             };
         }
 
-        // MealServiceを使用して食事データを保存
+        // SaveMealRequest型に合わせる
+        const dataToSave: SaveMealRequest = {
+            // mealDataから必須プロパティをコピー
+            user_id: mealData.user_id,
+            meal_type: mealData.meal_type,
+            meal_date: mealData.meal_date,
+            // food_description と servings はデフォルト値を設定
+            food_description: mealData.food_description ?? '',
+            servings: mealData.servings ?? 1,
+            // photo_url が存在する場合のみ含める
+            ...(mealData.photo_url && { photo_url: mealData.photo_url }),
+            // nutrition_data が undefined でない場合のみ含める
+            ...(standardizedNutritionData && { nutrition_data: standardizedNutritionData }),
+        };
+
         const result = await MealService.saveMealWithNutrition(
             supabase,
-            mealData,
-            nutritionData
+            dataToSave, // SaveMealRequest型に合わせたデータを渡す
+            nutritionDataForMealNutrients
         );
 
         return NextResponse.json(
@@ -96,25 +135,33 @@ export async function POST(req: NextRequest) {
             { status: 201 }
         );
     } catch (error) {
-        console.error('食事保存エラー:', error);
-
-        // AppErrorの場合はそのメッセージとコードを使用
         if (error instanceof AppError) {
-            const statusCode = getStatusCodeFromAppError(error);
+            // AppErrorのstatusCodeプロパティがないため、適切なステータスコードを決定するロジックが必要
+            // ここでは例として、認証エラーなら401、バリデーションエラーなら400、それ以外は500とする
+            let statusCode = 500;
+            if (error.code === ErrorCode.Base.AUTH_ERROR) {
+                statusCode = 401;
+            } else if (error.code === ErrorCode.Base.DATA_VALIDATION_ERROR) {
+                statusCode = 400;
+            } else if (error.code === ErrorCode.Base.DATA_PROCESSING_ERROR) {
+                statusCode = 500; // または422 (Unprocessable Entity) など
+            }
+
             return NextResponse.json(
                 {
-                    error: error.userMessage || '食事データの保存中にエラーが発生しました。',
+                    error: error.userMessage || 'エラーが発生しました。',
                     code: error.code,
+                    // 開発環境でのみ詳細を表示するなどの考慮を追加しても良い
                     details: process.env.NODE_ENV === 'development' ? error.details : undefined
                 },
                 { status: statusCode }
             );
         }
 
-        // その他のエラー
+        console.error('POST /api/meals Unhandled Error:', error);
         return NextResponse.json(
             {
-                error: '食事データの保存中に予期しないエラーが発生しました。',
+                error: '予期せぬエラーが発生しました。',
                 code: ErrorCode.Base.UNKNOWN_ERROR
             },
             { status: 500 }

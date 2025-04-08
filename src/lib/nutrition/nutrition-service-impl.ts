@@ -180,16 +180,29 @@ export class NutritionServiceImpl implements NutritionService {
         const scaledNutrition: StandardizedMealNutrition = this.initializeStandardizedNutrition();
 
         // --- ここから Food 型から StandardizedMealNutrition への変換ロジック ---
-        // 将来的にはこのロジックは FoodRepository 層に移譲することが望ましい
-        // MVPの6栄養素のみを変換
-        scaledNutrition.totalCalories = food.calories || 0;
-        this.updateNutrient(scaledNutrition, 'protein', food.protein || 0, 'g');
-        this.updateNutrient(scaledNutrition, 'iron', food.iron || 0, 'mg');
-        this.updateNutrient(scaledNutrition, 'folic_acid', food.folic_acid || 0, 'mcg');
-        this.updateNutrient(scaledNutrition, 'calcium', food.calcium || 0, 'mg');
-        this.updateNutrient(scaledNutrition, 'vitamin_d', food.vitamin_d || 0, 'mcg');
-        // カロリーも totalNutrients 配列に反映
-        this.updateNutrient(scaledNutrition, 'calories', scaledNutrition.totalCalories, 'kcal');
+        // Foodオブジェクトの全ての栄養素関連プロパティをコピーする
+        for (const key in food) {
+            if (Object.prototype.hasOwnProperty.call(food, key)) {
+                const value = (food as any)[key];
+                // 数値型のプロパティで、かつ0以上の値を栄養素とみなす（id, confidenceなどを除く）
+                // TODO: より堅牢な栄養素判定ロジック（例: 栄養素名のリストと比較）を検討
+                if (typeof value === 'number' && value >= 0 && !['id', 'confidence', 'servingSize', 'servingUnit', 'categoryId', 'datasourceId'].includes(key)) {
+                    // 単位を推測（仮実装、Food型定義に単位情報を持たせるべき）
+                    let unit: NutrientUnit = 'g'; // デフォルトはグラム
+                    if (key === 'calories') unit = 'kcal';
+                    else if (key === 'iron' || key === 'calcium' || key === 'sodium' || key === 'potassium' || key === 'zinc' || key === 'manganese' || key === 'copper') unit = 'mg';
+                    else if (key === 'folic_acid' || key === 'vitamin_d' || key === 'vitamin_b12' || key === 'vitamin_a' || key === 'vitamin_k' || key === 'biotin' || key === 'iodine' || key === 'selenium') unit = 'mcg';
+                    else if (key === 'vitamin_e' || key === 'niacin' || key === 'pantothenic_acid' || key === 'vitamin_b6' || key === 'vitamin_c') unit = 'mg'; // α-TEなども考慮が必要だが一旦mg
+
+                    // totalCaloriesも更新
+                    if (key === 'calories') {
+                        scaledNutrition.totalCalories = value;
+                    }
+                    // updateNutrientを呼び出してtotalNutrients配列に追加
+                    this.updateNutrient(scaledNutrition, key, value, unit);
+                }
+            }
+        }
         // --- 変換ロジックここまで ---
 
         // 量に基づいてスケーリング (100gあたりから指定グラムへ)
@@ -306,14 +319,8 @@ export class NutritionServiceImpl implements NutritionService {
      * MVPで必要な6栄養素を含む空のNutrient配列を持つオブジェクトを生成
      */
     private initializeStandardizedNutrition(): StandardizedMealNutrition {
-        const initialNutrients: Nutrient[] = [
-            { name: 'calories', value: 0, unit: 'kcal' },
-            { name: 'protein', value: 0, unit: 'g' },
-            { name: 'iron', value: 0, unit: 'mg' },
-            { name: 'calcium', value: 0, unit: 'mg' },
-            { name: 'folic_acid', value: 0, unit: 'mcg' },
-            { name: 'vitamin_d', value: 0, unit: 'mcg' },
-        ];
+        // 全ての栄養素を処理対象とするため、初期配列は空にする
+        const initialNutrients: Nutrient[] = [];
         return createStandardizedMealNutrition({ totalNutrients: initialNutrients });
     }
 
@@ -375,24 +382,22 @@ export class NutritionServiceImpl implements NutritionService {
      * MVPの6栄養素に限定して処理
      */
     private accumulateNutrients(target: StandardizedMealNutrition, source: StandardizedMealNutrition): void {
-        // 1. totalCalories を加算 (これを正とする)
+        // 1. totalCalories を加算
         target.totalCalories += source.totalCalories;
 
-        // 2. MVPの他の栄養素 (protein, iron, calcium, folic_acid, vitamin_d) を totalNutrients 配列で加算
-        const mvpOtherNutrients = ['protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'];
-        mvpOtherNutrients.forEach(name => {
-            const sourceValue = this.getNutrientValue(source, name);
-            if (sourceValue > 0) {
-                const targetNutrient = target.totalNutrients.find(n => n.name === name);
-                if (targetNutrient) {
-                    targetNutrient.value += sourceValue;
-                } else {
-                    // source から単位を取得して追加 (通常は initialize で初期化済みのはず)
-                    const sourceNutrient = source.totalNutrients.find(n => n.name === name);
-                    if (sourceNutrient) {
-                        target.totalNutrients.push({ ...sourceNutrient }); // 新しいオブジェクトとして追加
-                    }
-                }
+        // 2. source の totalNutrients 配列内のすべての栄養素を target に加算
+        source.totalNutrients.forEach(sourceNutrient => {
+            // 'calories' は totalCalories で加算済みなのでスキップ
+            if (sourceNutrient.name === 'calories') return;
+
+            const targetNutrient = target.totalNutrients.find(n => n.name === sourceNutrient.name);
+            if (targetNutrient) {
+                // 同じ栄養素が target に存在すれば値を加算
+                targetNutrient.value += sourceNutrient.value;
+                // 単位が異なるケースは基本的に考慮しない（DB側での統一を前提とする）
+            } else {
+                // target に存在しなければ、新しいオブジェクトとして追加
+                target.totalNutrients.push({ ...sourceNutrient });
             }
         });
 
@@ -401,22 +406,20 @@ export class NutritionServiceImpl implements NutritionService {
         if (targetCaloriesNutrient) {
             targetCaloriesNutrient.value = target.totalCalories;
         } else {
-            // 配列に calories がなければ追加 (通常 initialize で初期化済み)
+            // 配列に calories がなければ追加
             target.totalNutrients.push({ name: 'calories', value: target.totalCalories, unit: 'kcal' });
         }
     }
 
     /**
      * 標準栄養データの各栄養素を指定された比率でスケーリングする
-     * MVPの6栄養素に限定して処理
+     * totalCalories と totalNutrients 内のすべての栄養素を処理
      */
     private scaleNutrients(target: StandardizedMealNutrition, ratio: number): void {
         target.totalCalories *= ratio;
         target.totalNutrients.forEach(nutrient => {
-            // MVPの6栄養素のみスケール
-            if (['calories', 'protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'].includes(nutrient.name)) {
-                nutrient.value *= ratio;
-            }
+            // すべての栄養素をスケール
+            nutrient.value *= ratio;
         });
         // foodItems のスケーリングは calculateNutrition 内で行う
     }
