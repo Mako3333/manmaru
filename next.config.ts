@@ -1,17 +1,14 @@
 import type { NextConfig } from "next";
 
-const withPWA = require("next-pwa")({
-  dest: "public",
-  register: true,
-  skipWaiting: true,
-});
+// const withPWA = require("next-pwa")({
+//   dest: "public",
+//   register: true,
+//   skipWaiting: true,
+// });
 
 /** @type {import('next').NextConfig} */
-const nextConfig: NextConfig = withPWA({
+const nextConfig: NextConfig = /* withPWA( */{
   reactStrictMode: true,
-  dev: {
-    turbopack: false,
-  },
   experimental: {
     turbo: {
       rules: {},
@@ -39,6 +36,6 @@ const nextConfig: NextConfig = withPWA({
       "placehold.jp"
     ],
   },
-});
+}/* ) */;
 
 module.exports = nextConfig;
