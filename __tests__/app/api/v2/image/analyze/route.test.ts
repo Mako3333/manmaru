@@ -34,7 +34,7 @@ describe('画像分析API v2のテスト', () => {
         confidence_score: 0.9
     };
     const nutrientsList: Nutrient[] = [
-        { name: 'エネルギー', value: 320, unit: 'kcal' }, { name: 'たんぱく質', value: 15, unit: 'g' },
+        { name: 'エネルギー', value: 320, unit: 'kcal' }, { name: 'タンパク質', value: 15, unit: 'g' },
         { name: '脂質', value: 10, unit: 'g' }, { name: '炭水化物', value: 45, unit: 'g' },
         { name: '鉄', value: 2.5, unit: 'mg' }, { name: '葉酸', value: 100, unit: 'mcg' },
         { name: 'カルシウム', value: 50, unit: 'mg' }, { name: 'ビタミンD', value: 3, unit: 'mcg' },
@@ -63,33 +63,29 @@ describe('画像分析API v2のテスト', () => {
     });
 
     it('有効な画像データで正常なレスポンスを返すこと', async () => {
-        // AIサービスが食品リストを返すようにモック
+        // AIサービスが食品リストを返すようにモック (ルートハンドラが期待する形式に修正)
         const mockAIService = {
             analyzeMealImage: jest.fn().mockResolvedValue({
-                parseResult: {
-                    foods: [
-                        { foodName: '解析された食品1', quantityText: '100g', confidence: 0.9 },
-                        { foodName: '解析された食品2', quantityText: '50g', confidence: 0.8 }
-                    ],
-                    confidence: 0.85 // Overall confidence from AI
-                },
+                foods: [ // parseResult のネストを解除
+                    { foodName: '解析された食品1', quantityText: '100g', confidence: 0.9 },
+                    { foodName: '解析された食品2', quantityText: '50g', confidence: 0.8 }
+                ],
+                confidence: 0.85, // 全体の信頼度
+                estimatedNutrition: null, // 必要ならモックデータ追加
                 error: null
             })
         };
         (AIServiceFactory.getService as jest.Mock).mockReturnValue(mockAIService);
 
-        // NutritionServiceのモックを設定
+        // NutritionServiceのモックを設定 (StandardizedMealNutrition を返すように修正)
         const mockNutritionService = {
             calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
-                nutrition: mockLegacyNutrition, // This is the legacy data
+                nutrition: mockStandardNutrition, // ★ StandardizedMealNutrition を返す
                 reliability: { confidence: 0.9, balanceScore: 75, completeness: 0.95 },
                 matchResults: [
                     { foodName: '解析された食品1', matchedFood: { id: 'db-1', name: '食品DBの食品1' } },
                     { foodName: '解析された食品2', matchedFood: { id: 'db-2', name: '食品DBの食品2' } }
                 ],
-                // The route handler uses convertToStandardizedNutrition(nutritionResult.nutrition)
-                // So, the mock only needs to provide the legacy `nutrition` object.
-                // standardizedNutrition: mockStandardNutrition // This might not be directly used by route
             })
         };
         const mockNutritionServiceFactory = {
@@ -132,25 +128,23 @@ describe('画像分析API v2のテスト', () => {
     });
 
     it('後方互換性のためのlegacyNutritionフィールドが含まれていること', async () => {
-        // AIサービスが食品リストを返すようにモック
+        // AIサービスが食品リストを返すようにモック (ルートハンドラが期待する形式に修正)
         const mockAIService = {
             analyzeMealImage: jest.fn().mockResolvedValue({
-                parseResult: {
-                    foods: [{ foodName: '解析された食品1', quantityText: '100g' }],
-                    confidence: 0.85
-                },
+                foods: [{ foodName: '解析された食品1', quantityText: '100g' }], // parseResult のネストを解除
+                confidence: 0.85,
+                estimatedNutrition: null,
                 error: null
             })
         };
         (AIServiceFactory.getService as jest.Mock).mockReturnValue(mockAIService);
 
-        // NutritionServiceのモックを設定
+        // NutritionServiceのモックを設定 (StandardizedMealNutrition を返すように修正)
         const mockNutritionService = {
             calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
-                nutrition: mockLegacyNutrition, // Provide the legacy data
+                nutrition: mockStandardNutrition, // ★ StandardizedMealNutrition を返す
                 reliability: { confidence: 0.85, balanceScore: 70, completeness: 0.9 },
                 matchResults: [{ foodName: '解析された食品1', matchedFood: { id: 'db-1', name: '食品DBの食品1' } }],
-                // standardizedNutrition: mockStandardNutrition // Not directly used by route
             })
         };
         const mockNutritionServiceFactory = {

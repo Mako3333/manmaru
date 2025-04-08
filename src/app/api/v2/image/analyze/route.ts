@@ -127,7 +127,6 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                     nutrition: standardizedNutrition,
                     reliability: nutritionResult.reliability,
                     matchResults: nutritionResult.matchResults,
-                    legacyNutrition: legacyNutrition
                 },
                 recognitionConfidence: analysisResult.confidence,
                 aiEstimatedNutrition: aiEstimatedNutrition

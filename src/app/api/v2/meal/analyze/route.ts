@@ -9,7 +9,8 @@ import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
 import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { createSuccessResponse } from '@/lib/api/response';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -98,13 +99,17 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
         // 標準形式の栄養データを取得
         const standardizedNutrition = nutritionResult.nutrition;
 
+        // 後方互換性のために legacyNutrition も生成
+        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
+
         // 結果を返却
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
             warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
         }
 
-        return {
+        // レスポンスデータを構築
+        const responseData = {
             foods: nameQuantityPairs,
             mealType,
             ...(trimester ? { trimester } : {}),
@@ -115,8 +120,17 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
             },
             recognitionConfidence: analysisResult.confidence, // AIの信頼度を使用
             aiEstimatedNutrition: analysisResult.estimatedNutrition, // AI推定栄養素を追加
+        };
+
+        // メタデータを構築
+        const meta = {
+            processingTimeMs: Date.now() - startTime,
+            analysisSource: 'ai',
             ...(warningMessage ? { warning: warningMessage } : {})
         };
+
+        // createSuccessResponse を使って NextResponse を返す
+        return createSuccessResponse(responseData, meta);
 
     } catch (error) {
         // Zodバリデーションエラーの処理

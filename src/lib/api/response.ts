@@ -104,6 +104,7 @@ export function getHttpStatusCode(code: string): number {
         case ErrorCode.Nutrition.INVALID_QUANTITY:
         case ErrorCode.Nutrition.QUANTITY_PARSE_ERROR:
         case ErrorCode.AI.ANALYSIS_FAILED:
+        case ErrorCode.File.INVALID_IMAGE:
             return 400; // Bad Request
 
         // 401系エラー
@@ -134,7 +135,6 @@ export function getHttpStatusCode(code: string): number {
         case ErrorCode.AI.IMAGE_PROCESSING_ERROR:
         case ErrorCode.File.UPLOAD_ERROR:
         case ErrorCode.File.PROCESSING_ERROR:
-        case ErrorCode.File.INVALID_IMAGE:
             return 500; // Internal Server Error
 
         default:

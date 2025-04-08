@@ -1,5 +1,15 @@
 import { ErrorCode, AnyErrorCode } from '@/lib/error';
 import type { ApiResponse, ApiState, SuccessResponse, ErrorResponse } from './api';
+import type {
+    NutritionData as ImportedNutritionData,
+    // NutritionReliability, // Removed import
+    // RecognizedFood, // Removed import
+    StandardizedMealNutrition,
+    NutritionAdvice // Assuming NutritionAdvice is in nutrition.ts or another specific file
+} from '@/types/nutrition'; // Adjust path if needed
+// If MealAnalysisResult and RecipeAnalysisResult are defined elsewhere, import them too
+// import type { MealAnalysisResult } from '@/types/meal'; // Example
+// import type { RecipeAnalysisResult } from '@/types/recipe'; // Example
 
 export type { ApiResponse, ApiState, SuccessResponse, ErrorResponse };
 
@@ -71,77 +81,49 @@ export interface PaginationMeta {
     totalItems: number;
 }
 
-// 栄養素の信頼性情報インターフェース
+// Restore local definition for NutritionReliability
 export interface NutritionReliability {
     confidence: number;
     balanceScore?: number;
     completeness: number;
 }
 
-// 栄養素データインターフェース
-export interface NutritionData {
-    calories: number;
-    protein: number;
-    iron: number;
-    folic_acid: number;
-    calcium: number;
-    vitamin_d: number;
-    extended_nutrients?: {
-        fat: number;
-        carbohydrate: number;
-        [key: string]: number;
-    };
-}
+// NutritionData is imported, remove local definition
+// export interface NutritionData { ... }
 
-// 食品認識結果インターフェース
+// Restore local definition for RecognizedFood
 export interface RecognizedFood {
     name: string;
     quantity: string;
     confidence: number;
 }
 
-// 栄養計算結果インターフェース
+// NutritionResult uses imported types and restored local types
 export interface NutritionResult {
-    nutrition: import('@/types/nutrition').StandardizedMealNutrition;
-    reliability: NutritionReliability;
+    nutrition: StandardizedMealNutrition; // Use imported type directly
+    reliability: NutritionReliability; // Use restored local type
     matchResults?: any[];
 }
 
-// 食事解析結果インターフェース
+// MealAnalysisResult uses restored local RecognizedFood and updated NutritionResult
 export interface MealAnalysisResult {
-    foods: RecognizedFood[];
+    foods: RecognizedFood[]; // Use restored local type
     nutritionResult: NutritionResult;
     processingTimeMs?: number;
 }
 
-// レシピ解析結果インターフェース
+// RecipeAnalysisResult uses restored local RecognizedFood and updated NutritionResult
 export interface RecipeAnalysisResult {
     recipe: {
         title: string;
         servings: number;
-        ingredients: RecognizedFood[];
+        ingredients: RecognizedFood[]; // Use restored local type
     };
     nutritionResult: NutritionResult;
 }
 
-// 栄養アドバイスインターフェース
-export interface NutritionAdvice {
-    advice: {
-        summary: string;
-        details: {
-            nutrient: string;
-            status: string;
-            recommendation: string;
-            importance: string;
-        }[];
-        weekInfo: {
-            week: number;
-            keyNutrients: string[];
-            developmentStage: string;
-        };
-    };
-    timestamp: string;
-}
+// NutritionAdvice is imported, remove local definition
+// export interface NutritionAdvice { ... }
 
 // リクエスト用インターフェース
 export interface MealAnalysisRequest {

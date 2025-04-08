@@ -16,7 +16,6 @@ import { Trash2, Plus, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { StandardizedMealNutrition, Nutrient } from "@/types/nutrition";
-import { convertToLegacyNutrition } from "@/lib/nutrition/nutrition-utils";
 
 // 食品アイテムの型定義（内部状態用）
 interface FoodItem {

@@ -7,8 +7,12 @@ import { AppError, ErrorOptions } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { RecipeAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition, createStandardizedMealNutrition } from '@/lib/nutrition/nutrition-type-utils';
-import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
+import {
+    convertToStandardizedNutrition,
+    createStandardizedMealNutrition,
+    convertToLegacyNutrition
+} from '@/lib/nutrition/nutrition-type-utils';
+import { StandardizedMealNutrition, Nutrient, NutritionData } from '@/types/nutrition';
 import { IAIService } from '@/lib/ai/ai-service.interface';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { JSDOM } from 'jsdom';
@@ -177,7 +181,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
 
             recipeTitle = aiResult.title || recipeTitle;
             servingsString = aiResult.servings || servingsString;
-            ingredients = aiResult.ingredients || []; // ingredients を使用
+            ingredients = aiResult.ingredients || []; // RecipeAnalysisResult型のプロパティに合わせる
             console.log(`[API Route] Parsed by AI: ${ingredients.length} ingredients found.`);
             analysisSource = 'ai';
         }
@@ -212,13 +216,45 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
         console.log(`[API Route] Nutrition calculation complete.`);
 
-        // 7. 結果の整形と返却 - 共通処理
-        const standardizedNutrition = nutritionResult.nutrition;
-        let standardizedPerServing: StandardizedMealNutrition | undefined;
+        // 7. 結果の整形と返却 - StandardizedMealNutrition に統一
+        // NutritionService からの結果を Standardized に変換
+        // すでに StandardizedMealNutrition 型の場合はそのまま使用
+        let standardizedNutrition: StandardizedMealNutrition;
 
-        if (servingsNum > 0 && standardizedNutrition) {
-            // 1人前計算ロジック (省略のためコメントアウト)
-            // standardizedPerServing = { ... };
+        if (nutritionResult.nutrition && 'totalCalories' in nutritionResult.nutrition) {
+            // すでに StandardizedMealNutrition 型の場合（テスト環境など）
+            standardizedNutrition = nutritionResult.nutrition as StandardizedMealNutrition;
+        } else {
+            // Legacy 形式から変換が必要な場合
+            const originalNutritionData = nutritionResult.nutrition as unknown as NutritionData;
+            standardizedNutrition = convertToStandardizedNutrition(originalNutritionData);
+        }
+
+        // 1人前計算ロジック (StandardizedMealNutrition ベース)
+        // servingsNum が 1 以下なら元の値をそのまま使用、1より大きい場合のみ割り算を実行
+        let standardizedPerServing: StandardizedMealNutrition;
+
+        if (servingsNum > 1 && standardizedNutrition) {
+            // 2人分以上の場合は割り算して1人前を計算
+            standardizedPerServing = JSON.parse(JSON.stringify(standardizedNutrition)); // Deep copy
+
+            // standardizedPerServing が存在する前提で計算
+            if (standardizedPerServing) {
+                standardizedPerServing.totalCalories /= servingsNum;
+                standardizedPerServing.totalNutrients = standardizedPerServing.totalNutrients.map(nutrient => ({
+                    ...nutrient,
+                    value: nutrient.value / servingsNum
+                }));
+                // 妊娠期特有の % なども割る必要があるか要検討だが、一旦主要栄養素のみ対応
+                if (standardizedPerServing.pregnancySpecific) {
+                    standardizedPerServing.pregnancySpecific.folatePercentage /= servingsNum;
+                    standardizedPerServing.pregnancySpecific.ironPercentage /= servingsNum;
+                    standardizedPerServing.pregnancySpecific.calciumPercentage /= servingsNum;
+                }
+            }
+        } else {
+            // 1人分以下の場合は元の値をそのまま使用
+            standardizedPerServing = JSON.parse(JSON.stringify(standardizedNutrition));
         }
 
         let warningMessage;
@@ -240,6 +276,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 },
                 nutritionResult: {
                     nutrition: standardizedNutrition,
+                    perServing: standardizedPerServing,
                     reliability: nutritionResult.reliability,
                     matchResults: nutritionResult.matchResults
                 }

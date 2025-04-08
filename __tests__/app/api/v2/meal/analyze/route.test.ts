@@ -70,7 +70,11 @@ describe('食事分析API v2のテスト', () => {
         // StandardizedMealNutrition型に合わせたテストデータ
         const mockStandardNutrition: StandardizedMealNutrition = {
             totalCalories: 320,
-            totalNutrients: nutrientsList,
+            totalNutrients: [
+                { name: 'エネルギー', value: 320, unit: 'kcal' },
+                { name: 'タンパク質', value: 15, unit: 'g' },
+                { name: '鉄分', value: 2, unit: 'mg' }
+            ],
             foodItems: [
                 {
                     id: '1',
@@ -110,7 +114,7 @@ describe('食事分析API v2のテスト', () => {
         // NutritionServiceのモック
         const mockNutritionService = {
             calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
-                nutrition: mockLegacyNutrition,
+                nutrition: mockStandardNutrition,
                 reliability: {
                     confidence: 0.9,
                     balanceScore: 75,
@@ -120,7 +124,6 @@ describe('食事分析API v2のテスト', () => {
                     { foodName: 'ごはん', matchedFood: { id: '1', name: 'ごはん（精白米）' } },
                     { foodName: '味噌汁', matchedFood: { id: '2', name: '味噌汁' } }
                 ],
-                standardizedNutrition: mockStandardNutrition
             })
         };
 
@@ -165,7 +168,7 @@ describe('食事分析API v2のテスト', () => {
         // 特定の栄養素が含まれているかチェック
         const nutrients = responseData.data.nutritionResult.nutrition.totalNutrients;
         expect(nutrients.some((n: Nutrient) => n.name === 'エネルギー')).toBe(true);
-        expect(nutrients.some((n: Nutrient) => n.name === '鉄')).toBe(true);
+        expect(nutrients.some((n: Nutrient) => n.name === '鉄分')).toBe(true);
 
         // 妊婦向け情報が含まれているか
         expect(responseData.data.nutritionResult.nutrition.pregnancySpecific).toBeDefined();
@@ -187,7 +190,9 @@ describe('食事分析API v2のテスト', () => {
         const mockStandardNutrition: StandardizedMealNutrition = {
             totalCalories: 320,
             totalNutrients: [
-                { name: 'エネルギー', value: 320, unit: 'kcal' }
+                { name: 'エネルギー', value: 320, unit: 'kcal' },
+                { name: 'タンパク質', value: 15, unit: 'g' },
+                { name: '鉄分', value: 2, unit: 'mg' }
             ],
             foodItems: [],
             pregnancySpecific: {
@@ -205,8 +210,7 @@ describe('食事分析API v2のテスト', () => {
         // モックサービスの設定
         const mockNutritionService = {
             calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
-                nutrition: mockLegacyNutrition,
-                standardizedNutrition: mockStandardNutrition,
+                nutrition: mockStandardNutrition,
                 reliability: {
                     confidence: 0.9,
                     balanceScore: 75,
@@ -248,16 +252,7 @@ describe('食事分析API v2のテスト', () => {
             totalCalories: 0,
             totalNutrients: [],
             foodItems: [],
-            pregnancySpecific: {
-                folatePercentage: 0,
-                ironPercentage: 0,
-                calciumPercentage: 0
-            },
-            reliability: {
-                confidence: 0.5,
-                balanceScore: 0,
-                completeness: 0.5
-            }
+            reliability: { confidence: 0.5 }
         };
 
         const emptyLegacyNutrition: NutritionData = {
@@ -273,13 +268,8 @@ describe('食事分析API v2のテスト', () => {
         // モックサービスの設定
         const mockNutritionService = {
             calculateNutritionFromNameQuantities: jest.fn().mockResolvedValue({
-                nutrition: emptyLegacyNutrition,
-                standardizedNutrition: emptyStandardNutrition,
-                reliability: {
-                    confidence: 0.5,
-                    balanceScore: 0,
-                    completeness: 0.5
-                },
+                nutrition: emptyStandardNutrition,
+                reliability: { confidence: 0.5 },
                 matchResults: []
             })
         };
