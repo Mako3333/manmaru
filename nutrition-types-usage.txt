@@ -1,0 +1,276 @@
+
+src\app\(authenticated)\dashboard\page.tsx:9: *   - 現在の NutritionData インターフェースを、ドキュメント「栄養データ型標準化ガイドライン」に従って
+src\app\(authenticated)\dashboard\page.tsx:117:    const [nutritionData, setNutritionData] = useState<StandardizedMealNutrition | null>(null); // 初期値を null に変更
+src\app\(authenticated)\dashboard\page.tsx:184:                    //     setNutritionData(standardizedNutrition);
+src\app\(authenticated)\dashboard\page.tsx:188:                    //     setNutritionData(null);
+src\app\(authenticated)\dashboard\page.tsx:195:                    setNutritionData(null); // 標準化データも null
+src\app\(authenticated)\dashboard\page.tsx:202:                setNutritionData(null);
+src\app\(authenticated)\meals\log\page.tsx:21:    normalizeNutritionData,
+src\app\(authenticated)\meals\log\page.tsx:26:import { StandardizedMealData, StandardizedMealNutrition, Nutrient, NutritionData } from '@/types/nutrition';
+src\app\(authenticated)\meals\log\page.tsx:47:        legacyNutrition: NutritionData;
+src\app\(authenticated)\meals\log\page.tsx:249:    const handleSaveRecognition = async (nutritionData: StandardizedMealNutrition) => {
+src\app\(authenticated)\meals\log\page.tsx:250:        console.log('handleSaveRecognition: 関数が呼び出されました', nutritionData);
+src\app\(authenticated)\meals\log\page.tsx:283:                nutrition_data: nutritionData,
+src\app\(authenticated)\meals\log\page.tsx:675:                                    onSave={(nutritionData) => {
+src\app\(authenticated)\meals\log\page.tsx:676:                                        console.log('RecognitionEditor onSave呼び出し:', nutritionData);
+src\app\(authenticated)\meals\log\page.tsx:677:                                        handleSaveRecognition(nutritionData);
+src\app\(authenticated)\recipes\clip\recipe-clip-client.tsx:88:                // convertToStandardizedNutrition は NutritionData (古い型) を期待するため、型アサーション
+src\app\(authenticated)\recipes\clip\recipe-clip-client.tsx:152:                                // 変換関数は NutritionData (古い型) を期待する可能性
+src\app\api\meals\range\route.ts:5:interface NutrientData {
+src\app\api\meals\range\route.ts:15:    nutrients: Record<string, NutrientData>;
+src\app\api\meals\route.ts:71:        let nutritionData: SaveMealNutritionRequest | undefined;
+src\app\api\meals\route.ts:73:            nutritionData = {
+src\app\api\meals\route.ts:88:            nutritionData
+src\app\api\update-nutrition-log\route.ts:52:        const nutritionData = {
+src\app\api\update-nutrition-log\route.ts:64:                .update({ nutrition_data: nutritionData })
+src\app\api\update-nutrition-log\route.ts:73:                    nutrition_data: nutritionData
+src\app\api\v2\nutrition-advice\route.ts:13:    getPastNutritionData,
+src\app\api\v2\nutrition-advice\route.ts:202:    const pastNutritionData = await getPastNutritionData(supabase, user.id);
+src\app\api\v2\nutrition-advice\route.ts:205:    const deficientNutrients = identifyDeficientNutrients(pastNutritionData);
+src\app\api\v2\nutrition-advice\route.ts:222:        pastNutritionData
+src\components\dashboard\nutrition-chart.tsx:77:    const [nutritionData, setNutritionData] = useState<any[]>([]);
+src\components\dashboard\nutrition-chart.tsx:83:        const fetchNutritionData = async () => {
+src\components\dashboard\nutrition-chart.tsx:167:                setNutritionData(chartData);
+src\components\dashboard\nutrition-chart.tsx:187:        fetchNutritionData();
+src\components\dashboard\nutrition-chart.tsx:216:                            data={normalizeData(nutritionData)}
+src\components\dashboard\nutrition-chart.tsx:228:                                    const item = nutritionData[index];
+src\components\dashboard\nutrition-chart.tsx:246:                                {nutritionData.map((entry, index) => (
+src\components\home\home-client.tsx:40:// NutritionData の型定義を NutritionProgress に変更するか、Supabase の型を直接使う
+src\components\home\home-client.tsx:124:        const fetchNutritionData = async () => {
+src\components\home\home-client.tsx:125:            console.log('[fetchNutritionData] Start');
+src\components\home\home-client.tsx:127:                console.log('[fetchNutritionData] No user, skipping');
+src\components\home\home-client.tsx:132:                console.log('[fetchNutritionData] Profile not loaded yet, waiting...');
+src\components\home\home-client.tsx:135:                    console.log('[fetchNutritionData] Profile is null, using default targets.');
+src\components\home\home-client.tsx:146:                        console.log(`[fetchNutritionData] Fetching targets for trimester: ${currentTrimester}`);
+src\components\home\home-client.tsx:155:                            console.error('[fetchNutritionData] Error fetching targets:', targetError);
+src\components\home\home-client.tsx:170:                            console.log('[fetchNutritionData] User targets extracted and set:', extractedTargets);
+src\components\home\home-client.tsx:173:                            console.log('[fetchNutritionData] No specific targets found for trimester, using default.');
+src\components\home\home-client.tsx:178:                        console.log('[fetchNutritionData] No due_date found in profile, using default targets.');
+src\components\home\home-client.tsx:181:                    console.error('[fetchNutritionData] Error processing targets:', error);
+src\components\home\home-client.tsx:186:            console.log('[fetchNutritionData] Setting loading true');
+src\components\home\home-client.tsx:213:                console.log(`[fetchNutritionData] Fetching data for date: ${currentDate}`);
+src\components\home\home-client.tsx:224:                console.log('[fetchNutritionData] DB response data:', data);
+src\components\home\home-client.tsx:228:                const formattedNutritionData: StandardizedMealNutrition = {
+src\components\home\home-client.tsx:249:                console.log('[fetchNutritionData] Formatted data for score calculation:', formattedNutritionData);
+src\components\home\home-client.tsx:251:                const overall_score = calculateNutritionScore(formattedNutritionData, userTargets);
+src\components\home\home-client.tsx:252:                console.log('[fetchNutritionData] Calculated score with user targets:', overall_score);
+src\components\home\home-client.tsx:254:                formattedNutritionData.reliability.balanceScore = overall_score;
+src\components\home\home-client.tsx:256:                setStandardizedNutrition(formattedNutritionData);
+src\components\home\home-client.tsx:266:                console.log('[fetchNutritionData] Success');
+src\components\home\home-client.tsx:269:                console.error('[fetchNutritionData] Error:', error);
+src\components\home\home-client.tsx:277:                console.log('[fetchNutritionData] Setting loading false');
+src\components\home\home-client.tsx:279:                console.log('[fetchNutritionData] End');
+src\components\home\home-client.tsx:284:            fetchNutritionData();
+src\components\meals\enhanced-recognition-editor.tsx:19:import { NutritionSummary, NutrientData } from "@/components/nutrition/nutrition-summary";
+src\components\meals\enhanced-recognition-editor.tsx:64:    const [nutrients, setNutrients] = useState<NutrientData[]>([]);
+src\components\meals\enhanced-recognition-editor.tsx:84:        // 栄養素データをNutrientDataの形式に変換
+src\components\meals\enhanced-recognition-editor.tsx:85:        const nutrientItems: NutrientData[] = [
+src\components\nutrition\nutrition-summary.tsx:4:export interface NutrientData {
+src\components\nutrition\nutrition-summary.tsx:19:    nutrients: NutrientData[];
+src\components\nutrition\NutritionDataDisplay.tsx:5:interface NutritionDataDisplayProps {
+src\components\nutrition\NutritionDataDisplay.tsx:6:    nutritionData: StandardizedMealNutrition;
+src\components\nutrition\NutritionDataDisplay.tsx:94:export function NutritionDataDisplay({ nutritionData, className }: NutritionDataDisplayProps) {
+src\components\nutrition\NutritionDataDisplay.tsx:96:    const sortedNutrients = sortNutrients(nutritionData.totalNutrients);
+src\components\nutrition\NutritionDataDisplay.tsx:99:    const pregnancyData = nutritionData.pregnancySpecific || {
+src\components\nutrition\NutritionDataDisplay.tsx:116:                            <span>{Math.round(nutritionData.totalCalories)} kcal</span>
+src\hooks\useNutrition.ts:8:import { NutritionProgress, NutritionTarget, BasicNutritionData } from '@/types/nutrition';
+src\lib\ai\prompts\templates\nutrition-advice\v1.ts:15:{{#if pastNutritionData.length}}
+src\lib\ai\prompts\templates\nutrition-advice\v1.ts:17:{{#each pastNutritionData}}
+src\lib\ai\prompts\templates\nutrition-tips\v1.ts:10:{{#if pastNutritionData.length}}
+src\lib\ai\prompts\templates\nutrition-tips\v1.ts:12:{{#each pastNutritionData}}
+src\lib\ai\prompts\prompt-service.ts:66:        pastNutritionData?: Array<{
+src\lib\ai\prompts\prompt-service.ts:82:            hasPastData: !!context.pastNutritionData && context.pastNutritionData.length > 0,
+src\lib\ai\prompts\prompt-service.ts:83:            pastDataCount: context.pastNutritionData?.length || 0
+src\lib\ai\prompts\prompt-service.ts:164:                parameters: ['pastNutritionData', 'deficientNutrients', 'userPreferences'], // 例
+src\lib\ai\prompts\prompt-service.ts:199:                parameters: ['pregnancyWeek', 'trimester', 'formattedDate', 'currentSeason', 'pastNutritionData'],
+src\lib\api\api-adapter.ts:3:import { NutritionData, StandardizedMealNutrition } from '@/types/nutrition';
+src\lib\api\api-adapter.ts:70:     * @param nutritionData 任意の形式の栄養データ
+src\lib\api\api-adapter.ts:73:    static convertToStandardNutrition(nutritionData: any): NutritionData {
+src\lib\api\api-adapter.ts:74:        const data = nutritionData || {};
+src\lib\api\api-adapter.ts:120:     * @param nutritionData NutritionData形式の栄養データ
+src\lib\api\api-adapter.ts:123:    static convertToStandardizedNutritionFormat(nutritionData: NutritionData): StandardizedMealNutrition {
+src\lib\api\api-adapter.ts:124:        return convertToStandardizedNutrition(nutritionData);
+src\lib\api\api-adapter.ts:130:     * @returns NutritionData形式の栄養データ
+src\lib\api\api-adapter.ts:132:    static convertToLegacyNutritionFormat(standardizedData: StandardizedMealNutrition): NutritionData {
+src\lib\api\api-adapter.ts:163:        const nutritionData = nutritionResultData?.nutrition || legacyAnalysisResponse.nutrition;
+src\lib\api\api-adapter.ts:181:        let legacyNutritionDataForResponse: NutritionData | null = null;
+src\lib\api\api-adapter.ts:183:        if (nutritionData) {
+src\lib\api\api-adapter.ts:184:            // まず、どんな形式でも NutritionData (旧標準) に変換しようと試みる
+src\lib\api\api-adapter.ts:185:            const intermediateLegacyNutrition = ApiAdapter.convertToStandardNutrition(nutritionData);
+src\lib\api\api-adapter.ts:186:            // 次に、NutritionData から StandardizedMealNutrition (新標準) へ変換
+src\lib\api\api-adapter.ts:189:            legacyNutritionDataForResponse = nutritionData; // 元の形式を保持するのが望ましい場合がある
+src\lib\api\api-adapter.ts:190:            // もし元のnutritionDataが標準形式に近ければそちらを使う、なければ中間生成したものを保持
+src\lib\api\api-adapter.ts:191:            if (typeof legacyNutritionDataForResponse !== 'object' || legacyNutritionDataForResponse === null) {
+src\lib\api\api-adapter.ts:192:                legacyNutritionDataForResponse = intermediateLegacyNutrition;
+src\lib\api\api-adapter.ts:209:                    legacyNutrition: legacyNutritionDataForResponse,
+src\lib\api\nutrition-advice-helpers.ts:36:export async function getPastNutritionData(supabase: SupabaseClient, userId: string, days: number = 3): Promise<PastNutritionRecord[]> {
+src\lib\error\types\nutrition-errors.ts:110:export class MissingNutritionDataError extends AppError {
+src\lib\nutrition\nutrition-display-utils.ts:6:import { StandardizedMealNutrition, Nutrient, NutritionProgress } from '@/types/nutrition'; // LegacyNutritionData の代わりに NutritionProgress をインポート
+src\lib\nutrition\nutrition-display-utils.ts:9:// export interface NutritionData { // ← コメントアウトまたは削除検討
+src\lib\nutrition\nutrition-display-utils.ts:30:// src/types/nutrition.ts の NutritionData を利用するか、必要なら Display 用の型を別途定義
+src\lib\nutrition\nutrition-display-utils.ts:31:import type { NutritionData as LegacyNutritionData } from '@/types/nutrition'; // 必要に応じて元の型も参照
+src\lib\nutrition\nutrition-service-impl.ts:4:    NutritionData, // 一時的に残すが、最終的には削除する可能性あり
+src\lib\nutrition\nutrition-service.ts:2:import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
+src\lib\nutrition\nutrition-type-utils.ts:3: * このファイルには、NutritionDataとStandardizedMealNutritionの相互変換や
+src\lib\nutrition\nutrition-type-utils.ts:8:    NutritionData,
+src\lib\nutrition\nutrition-type-utils.ts:19: * JSONデータからNutritionData型へパース
+src\lib\nutrition\nutrition-type-utils.ts:21:export function parseNutritionFromJson(jsonData: any): NutritionData {
+src\lib\nutrition\nutrition-type-utils.ts:40:        return createEmptyNutritionData();
+src\lib\nutrition\nutrition-type-utils.ts:45: * NutritionDataをJSONに変換
+src\lib\nutrition\nutrition-type-utils.ts:47:export function serializeNutritionToJson(data: NutritionData): any {
+src\lib\nutrition\nutrition-type-utils.ts:69:    data: NutritionData,
+src\lib\nutrition\nutrition-type-utils.ts:126: * 空のNutritionDataを作成
+src\lib\nutrition\nutrition-type-utils.ts:128:export function createEmptyNutritionData(): NutritionData {
+src\lib\nutrition\nutrition-type-utils.ts:142: * @param data 部分的なStandardizedMealNutritionデータまたはNutritionData
+src\lib\nutrition\nutrition-type-utils.ts:146:    data?: Partial<StandardizedMealNutrition> | NutritionData
+src\lib\nutrition\nutrition-type-utils.ts:160:    // NutritionDataが渡された場合はStandardizedMealNutritionに変換
+src\lib\nutrition\nutrition-type-utils.ts:162:        return convertToStandardizedNutrition(data as NutritionData);
+src\lib\nutrition\nutrition-type-utils.ts:183:// 栄養素名と NutritionData のキー、単位のマッピング
+src\lib\nutrition\nutrition-type-utils.ts:186:    key: keyof NutritionData | keyof NonNullable<NutritionData['extended_nutrients']>;
+src\lib\nutrition\nutrition-type-utils.ts:207: * NutritionDataをStandardizedMealNutritionに変換
+src\lib\nutrition\nutrition-type-utils.ts:209:export function convertToStandardizedNutrition(nutritionData: NutritionData): StandardizedMealNutrition {
+src\lib\nutrition\nutrition-type-utils.ts:214:        const getValue = (key: keyof NutritionData | keyof NonNullable<NutritionData['extended_nutrients']>): number => {
+src\lib\nutrition\nutrition-type-utils.ts:217:            if (key in nutritionData) {
+src\lib\nutrition\nutrition-type-utils.ts:218:                val = nutritionData[key as keyof NutritionData];
+src\lib\nutrition\nutrition-type-utils.ts:220:            } else if (nutritionData.extended_nutrients && key in nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:221:                val = nutritionData.extended_nutrients[key as keyof typeof nutritionData.extended_nutrients];
+src\lib\nutrition\nutrition-type-utils.ts:250:        console.error('Error converting NutritionData to StandardizedMealNutrition:', error);
+src\lib\nutrition\nutrition-type-utils.ts:254:            details: { sourceData: nutritionData, originalError: error instanceof Error ? error.message : String(error) },
+src\lib\nutrition\nutrition-type-utils.ts:261: * StandardizedMealNutritionをNutritionDataに変換（後方互換性のため）
+src\lib\nutrition\nutrition-type-utils.ts:263:export function convertToLegacyNutrition(standardizedData: StandardizedMealNutrition): NutritionData {
+src\lib\nutrition\nutrition-type-utils.ts:265:        // 基本のNutritionDataを初期化
+src\lib\nutrition\nutrition-type-utils.ts:266:        const nutritionData: NutritionData = {
+src\lib\nutrition\nutrition-type-utils.ts:278:        if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:279:            nutritionData.extended_nutrients.minerals = {};
+src\lib\nutrition\nutrition-type-utils.ts:280:            nutritionData.extended_nutrients.vitamins = {};
+src\lib\nutrition\nutrition-type-utils.ts:287:                    nutritionData.protein = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:290:                    nutritionData.iron = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:293:                    nutritionData.folic_acid = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:296:                    nutritionData.calcium = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:299:                    nutritionData.vitamin_d = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:302:                    if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:303:                        nutritionData.extended_nutrients.fat = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:304:                        nutritionData.fat = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:308:                    if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:309:                        nutritionData.extended_nutrients.carbohydrate = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:310:                        nutritionData.carbohydrate = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:314:                    if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:315:                        nutritionData.extended_nutrients.dietary_fiber = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:316:                        nutritionData.dietaryFiber = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:320:                    if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:321:                        nutritionData.extended_nutrients.salt = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:322:                        nutritionData.salt = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:326:                    if (nutritionData.extended_nutrients?.minerals) {
+src\lib\nutrition\nutrition-type-utils.ts:327:                        nutritionData.extended_nutrients.minerals.sodium = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:328:                        if (!nutritionData.minerals) nutritionData.minerals = {};
+src\lib\nutrition\nutrition-type-utils.ts:329:                        nutritionData.minerals.sodium = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:333:                    if (nutritionData.extended_nutrients?.minerals) {
+src\lib\nutrition\nutrition-type-utils.ts:334:                        nutritionData.extended_nutrients.minerals.potassium = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:335:                        if (!nutritionData.minerals) nutritionData.minerals = {};
+src\lib\nutrition\nutrition-type-utils.ts:336:                        nutritionData.minerals.potassium = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:340:                    if (nutritionData.extended_nutrients?.minerals) {
+src\lib\nutrition\nutrition-type-utils.ts:341:                        nutritionData.extended_nutrients.minerals.magnesium = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:342:                        if (!nutritionData.minerals) nutritionData.minerals = {};
+src\lib\nutrition\nutrition-type-utils.ts:343:                        nutritionData.minerals.magnesium = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:347:                    if (nutritionData.extended_nutrients?.minerals) {
+src\lib\nutrition\nutrition-type-utils.ts:348:                        nutritionData.extended_nutrients.minerals.phosphorus = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:349:                        if (!nutritionData.minerals) nutritionData.minerals = {};
+src\lib\nutrition\nutrition-type-utils.ts:350:                        nutritionData.minerals.phosphorus = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:354:                    if (nutritionData.extended_nutrients?.minerals) {
+src\lib\nutrition\nutrition-type-utils.ts:355:                        nutritionData.extended_nutrients.minerals.zinc = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:356:                        if (!nutritionData.minerals) nutritionData.minerals = {};
+src\lib\nutrition\nutrition-type-utils.ts:357:                        nutritionData.minerals.zinc = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:362:                    if (nutritionData.extended_nutrients?.vitamins) {
+src\lib\nutrition\nutrition-type-utils.ts:363:                        nutritionData.extended_nutrients.vitamins.vitamin_a = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:364:                        if (!nutritionData.vitamins) nutritionData.vitamins = {};
+src\lib\nutrition\nutrition-type-utils.ts:365:                        nutritionData.vitamins.vitaminA = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:369:                    if (nutritionData.extended_nutrients?.vitamins) {
+src\lib\nutrition\nutrition-type-utils.ts:370:                        nutritionData.extended_nutrients.vitamins.vitamin_b1 = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:371:                        if (!nutritionData.vitamins) nutritionData.vitamins = {};
+src\lib\nutrition\nutrition-type-utils.ts:372:                        nutritionData.vitamins.vitaminB1 = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:376:                    if (nutritionData.extended_nutrients?.vitamins) {
+src\lib\nutrition\nutrition-type-utils.ts:377:                        nutritionData.extended_nutrients.vitamins.vitamin_b2 = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:378:                        if (!nutritionData.vitamins) nutritionData.vitamins = {};
+src\lib\nutrition\nutrition-type-utils.ts:379:                        nutritionData.vitamins.vitaminB2 = nutrient.value; // 互換性のため
+src\lib\nutrition\nutrition-type-utils.ts:385:                    if (nutrient.name.includes('ビタミン') && nutritionData.extended_nutrients?.vitamins) {
+src\lib\nutrition\nutrition-type-utils.ts:387:                        nutritionData.extended_nutrients.vitamins[key] = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:388:                    } else if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-type-utils.ts:391:                        nutritionData.extended_nutrients[key] = nutrient.value;
+src\lib\nutrition\nutrition-type-utils.ts:397:        nutritionData.energy = standardizedData.totalCalories;
+src\lib\nutrition\nutrition-type-utils.ts:399:        return nutritionData;
+src\lib\nutrition\nutrition-type-utils.ts:402:        return createEmptyNutritionData();
+src\lib\nutrition\nutrition-utils.ts:6:    NutritionData,
+src\lib\nutrition\nutrition-utils.ts:15: * 既存のNutritionData型からStandardizedMealNutritionへの変換
+src\lib\nutrition\nutrition-utils.ts:18:    nutritionData: NutritionData,
+src\lib\nutrition\nutrition-utils.ts:25:            value: nutritionData.protein,
+src\lib\nutrition\nutrition-utils.ts:30:            value: nutritionData.iron,
+src\lib\nutrition\nutrition-utils.ts:35:            value: nutritionData.folic_acid,
+src\lib\nutrition\nutrition-utils.ts:40:            value: nutritionData.calcium,
+src\lib\nutrition\nutrition-utils.ts:45:            value: nutritionData.vitamin_d,
+src\lib\nutrition\nutrition-utils.ts:51:    if (nutritionData.extended_nutrients) {
+src\lib\nutrition\nutrition-utils.ts:53:        if (typeof nutritionData.extended_nutrients.fat === 'number') {
+src\lib\nutrition\nutrition-utils.ts:56:                value: nutritionData.extended_nutrients.fat,
+src\lib\nutrition\nutrition-utils.ts:61:        if (typeof nutritionData.extended_nutrients.carbohydrate === 'number') {
+src\lib\nutrition\nutrition-utils.ts:64:                value: nutritionData.extended_nutrients.carbohydrate,
+src\lib\nutrition\nutrition-utils.ts:69:        if (typeof nutritionData.extended_nutrients.dietary_fiber === 'number') {
+src\lib\nutrition\nutrition-utils.ts:72:                value: nutritionData.extended_nutrients.dietary_fiber,
+src\lib\nutrition\nutrition-utils.ts:78:        if (nutritionData.extended_nutrients.minerals) {
+src\lib\nutrition\nutrition-utils.ts:79:            const minerals = nutritionData.extended_nutrients.minerals;
+src\lib\nutrition\nutrition-utils.ts:108:        if (nutritionData.extended_nutrients.vitamins) {
+src\lib\nutrition\nutrition-utils.ts:109:            const vitamins = nutritionData.extended_nutrients.vitamins;
+src\lib\nutrition\nutrition-utils.ts:152:                calories: nutritionData.calories / foodItems.length, // 単純に分割
+src\lib\nutrition\nutrition-utils.ts:163:        totalCalories: nutritionData.calories,
+src\lib\nutrition\nutrition-utils.ts:167:            folatePercentage: (nutritionData.folic_acid / 400) * 100, // 400mcgを100%とする
+src\lib\nutrition\nutrition-utils.ts:168:            ironPercentage: (nutritionData.iron / 20) * 100, // 20mgを100%とする
+src\lib\nutrition\nutrition-utils.ts:169:            calciumPercentage: (nutritionData.calcium / 800) * 100 // 800mgを100%とする
+src\lib\nutrition\nutrition-utils.ts:172:            confidence: nutritionData.confidence_score || 0.7 // デフォルト値
+src\lib\nutrition\nutrition-utils.ts:180:export function normalizeNutritionData(
+src\lib\nutrition\nutrition-utils.ts:233: * 標準化されたデータから従来のNutritionData形式に変換
+src\lib\nutrition\nutrition-utils.ts:235:export function convertToLegacyNutrition(standardized: StandardizedMealNutrition): NutritionData {
+src\lib\nutrition\nutrition-utils.ts:247:    const result: NutritionData = {
+src\lib\nutrition\nutrition-utils.ts:372:export function safeConvertNutritionData(
+src\lib\nutrition\nutrition-utils.ts:375:): NutritionData {
+src\lib\nutrition\nutrition-utils.ts:383:                return createEmptyNutritionData();
+src\lib\nutrition\nutrition-utils.ts:387:                return convertOldToNutritionData(sourceData);
+src\lib\nutrition\nutrition-utils.ts:397:        return createEmptyNutritionData();
+src\lib\nutrition\nutrition-utils.ts:404:export function createEmptyNutritionData(): NutritionData {
+src\lib\nutrition\nutrition-utils.ts:421:export function convertOldToNutritionData(oldData: any): NutritionData {
+src\lib\services\meal-service.ts:43:     * @param nutritionData 栄養データ（省略可）
+src\lib\services\meal-service.ts:49:        nutritionData?: SaveMealNutritionRequest
+src\lib\services\meal-service.ts:53:            const { isValid, errors } = this.validateData(mealData, nutritionData);
+src\lib\services\meal-service.ts:89:            if (nutritionData && savedMeal) {
+src\lib\services\meal-service.ts:94:                        calories: nutritionData.calories,
+src\lib\services\meal-service.ts:95:                        protein: nutritionData.protein,
+src\lib\services\meal-service.ts:96:                        iron: nutritionData.iron,
+src\lib\services\meal-service.ts:97:                        folic_acid: nutritionData.folic_acid,
+src\lib\services\meal-service.ts:98:                        calcium: nutritionData.calcium,
+src\lib\services\meal-service.ts:99:                        vitamin_d: nutritionData.vitamin_d || 0,
+src\lib\services\meal-service.ts:100:                        confidence_score: nutritionData.confidence_score || 0.8
+src\lib\services\meal-service.ts:137:     * @param nutritionData 
+src\lib\services\meal-service.ts:142:        nutritionData?: SaveMealNutritionRequest
+src\lib\services\meal-service.ts:152:        if (nutritionData) {
+src\lib\services\meal-service.ts:153:            if (typeof nutritionData.calories !== 'number' || nutritionData.calories < 0) {
+src\lib\services\meal-service.ts:156:            if (typeof nutritionData.protein !== 'number' || nutritionData.protein < 0) {
+src\lib\services\meal-service.ts:159:            if (typeof nutritionData.iron !== 'number' || nutritionData.iron < 0) {
+src\lib\services\meal-service.ts:162:            if (typeof nutritionData.folic_acid !== 'number' || nutritionData.folic_acid < 0) {
+src\lib\services\meal-service.ts:165:            if (typeof nutritionData.calcium !== 'number' || nutritionData.calcium < 0) {
+src\lib\supabase\client.ts:3:    NutritionData,
+src\lib\supabase\client.ts:4:    BasicNutritionData,
+src\lib\supabase\client.ts:112:        const sanitizedNutrition: NutritionData = {
+src\lib\supabase\client.ts:289:            const total_nutrition: BasicNutritionData = {
+src\lib\supabase\client.ts:457:    logData: NutritionData,
+src\lib\validation\response-validators.ts:72:export function validateNutritionData(nutrition: any): boolean {
+src\types\api\endpoints.ts:2:import { NutritionData, NutritionCalculationResult } from '@/types/nutrition';
+src\types\api\endpoints.ts:95:        nutrition: NutritionData;
+src\types\api-interfaces.ts:82:export interface NutritionData {
+src\types\api-interfaces.ts:108:    legacyNutrition?: NutritionData; // 後方互換性のために残す
+src\types\meal.ts:1:import { BasicNutritionData, NutritionData, FoodItem, MealType, FoodCategory } from './nutrition';
+src\types\meal.ts:13:    nutrition_data: NutritionData;
+src\types\meal.ts:27:    nutrition: NutritionData;
+src\types\meal.ts:55:    total_nutrition: BasicNutritionData;
+src\types\nutrition.ts:7:export interface BasicNutritionData {
+src\types\nutrition.ts:21:export interface NutritionData {
+src\types\nutrition.ts:73:    // 互換性のためのプロパティ（旧NutrientData型互換）
+src\types\nutrition.ts:143:    nutrition_data: NutritionData;
+src\types\recipe.ts:36:// export interface NutritionData { ... }
+
