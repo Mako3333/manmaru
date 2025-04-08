@@ -86,10 +86,10 @@ export interface RecipeUrlClipResponse {
     nutrition_per_serving: StandardizedMealNutrition;
     caution_foods?: string[];
     caution_level?: 'low' | 'medium' | 'high';
-    content_id?: string;
+    content_id: string | undefined;
     is_social_media?: boolean;
     description?: string;
-    use_placeholder?: boolean;
+    use_placeholder?: boolean | undefined;
 }
 
 // レシピ編集フォームデータ型

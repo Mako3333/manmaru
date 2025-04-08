@@ -68,8 +68,8 @@ export const createImageContent = (base64Data: string): {
         if (base64Data.startsWith('data:')) {
             const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
             if (matches && matches.length === 3) {
-                mimeType = matches[1];
-                data = matches[2]; // プレフィックスを除いたBase64データ
+                mimeType = matches[1]!;
+                data = matches[2]!; // プレフィックスを除いたBase64データ
             }
         }
 

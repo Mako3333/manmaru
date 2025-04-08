@@ -130,7 +130,7 @@ export const FoodListEditor: React.FC<FoodListEditorProps> = ({
                         onClose={() => setIsModalOpen(false)}
                         food={editingFood}
                         onUpdate={editingFood.id ? handleUpdateFood : handleConfirmAddFood}
-                        onDelete={editingFood.id ? handleDeleteFood : undefined}
+                        {...(editingFood.id && { onDelete: handleDeleteFood })}
                     />
                 )}
             </div>
@@ -215,7 +215,7 @@ export const FoodListEditor: React.FC<FoodListEditorProps> = ({
                     onClose={() => setIsModalOpen(false)}
                     food={editingFood}
                     onUpdate={editingFood.id ? handleUpdateFood : handleConfirmAddFood}
-                    onDelete={editingFood.id ? handleDeleteFood : undefined}
+                    {...(editingFood.id && { onDelete: handleDeleteFood })}
                 />
             )}
         </div>

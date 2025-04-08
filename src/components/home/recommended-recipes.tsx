@@ -135,7 +135,15 @@ export function RecommendedRecipes() {
     };
 
     // 画像要素の生成（条件分岐を考慮）
-    const renderImage = (recipe: Recipe) => {
+    const renderImage = (recipe: Recipe | undefined) => {
+        if (!recipe) {
+            return (
+                <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                    <span className="text-gray-400 text-4xl">?</span>
+                </div>
+            );
+        }
+
         if (recipe.image_url && !recipe.use_placeholder) {
             return (
                 <Image
@@ -180,6 +188,19 @@ export function RecommendedRecipes() {
     if (status === 'few_clips') {
         const recipe = recipes[0];
 
+        if (!recipe) {
+            return (
+                <div className="space-y-2">
+                    <h2 className="text-xl font-medium">おすすめレシピ</h2>
+                    <Card className="bg-yellow-50 border-yellow-200">
+                        <CardContent className="p-6">
+                            <p className="text-yellow-700 text-sm">表示できるレシピがありません。</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
+        }
+
         return (
             <div className="space-y-2">
                 <h2 className="text-xl font-medium">おすすめレシピ</h2>
@@ -223,22 +244,24 @@ export function RecommendedRecipes() {
     const renderRecipeGrid = () => (
         <div className="grid grid-cols-2 gap-4">
             {recipes.map((recipe) => (
-                <Card key={recipe.id} className="overflow-hidden">
-                    <div className="relative aspect-video">
-                        {renderImage(recipe)}
-                    </div>
-                    <CardContent className="p-3">
-                        <h3 className="font-medium text-sm mb-2 line-clamp-2">{recipe.title}</h3>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full mt-2 text-xs"
-                            onClick={() => router.push(`/recipes/${recipe.id}`)}
-                        >
-                            詳細
-                        </Button>
-                    </CardContent>
-                </Card>
+                recipe ? (
+                    <Card key={recipe.id} className="overflow-hidden">
+                        <div className="relative aspect-video">
+                            {renderImage(recipe)}
+                        </div>
+                        <CardContent className="p-3">
+                            <h3 className="font-medium text-sm mb-2 line-clamp-2">{recipe.title}</h3>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full mt-2 text-xs"
+                                onClick={() => router.push(`/recipes/${recipe.id}`)}
+                            >
+                                詳細
+                            </Button>
+                        </CardContent>
+                    </Card>
+                ) : null
             ))}
         </div>
     );

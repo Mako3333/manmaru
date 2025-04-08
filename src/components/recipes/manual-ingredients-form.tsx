@@ -52,7 +52,7 @@ export const ManualIngredientsForm: React.FC<ManualIngredientsFormProps> = ({
         const newIngredients = [...ingredients];
         const currentIngredient = newIngredients[index];
         if (currentIngredient) {
-            // nameプロパティは元の値を保持する
+            // nameプロパティは元の値を保持する。quantityだけ更新。
             newIngredients[index] = { ...currentIngredient, quantity };
             onChange(newIngredients);
         }

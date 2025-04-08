@@ -38,11 +38,10 @@ export default function RecipeClipClient() {
     const [error, setError] = useState<string | null>(null);
     const [step, setStep] = useState<'url' | 'confirm' | 'success'>('url');
     const [parsedRecipe, setParsedRecipe] = useState<RecipeUrlClipResponse | null>(null);
-    const [editedRecipe, setEditedRecipe] = useState<
-        Omit<RecipeUrlClipResponse, 'nutrition_per_serving'> &
-        { nutrition_per_serving: StandardizedMealNutrition; recipe_type?: string; is_social_media?: boolean; content_id?: string; use_placeholder?: boolean; }
-        | null
-    >(null);
+    const [editedRecipe, setEditedRecipe] = useState<(
+        RecipeUrlClipResponse &
+        { recipe_type?: string; }
+    ) | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [usePlaceholder, setUsePlaceholder] = useState<boolean>(true);
     const [servings, setServings] = useState<number>(2); // デフォルト人数：2人前
@@ -101,8 +100,9 @@ export default function RecipeClipClient() {
             setParsedRecipe(parsedData); // 元のレスポンスも保持
             setEditedRecipe({
                 ...parsedData,
-                nutrition_per_serving: standardizedNutrition, // 変換後のデータをセット
+                nutrition_per_serving: standardizedNutrition,
                 recipe_type: 'main_dish', // デフォルト値
+                // content_id, is_social_media, use_placeholder は parsedData から引き継がれる
             });
 
             // ソーシャルメディアの場合はプレースホルダーをデフォルトに
@@ -158,7 +158,12 @@ export default function RecipeClipClient() {
                                 const standardizedNutrition = convertToStandardizedNutrition(calculatedNutrition as any, tempFoodItems as any);
 
                                 // 栄養素データを更新
-                                editedRecipe.nutrition_per_serving = standardizedNutrition;
+                                if (editedRecipe) {
+                                    setEditedRecipe({
+                                        ...editedRecipe,
+                                        nutrition_per_serving: standardizedNutrition
+                                    });
+                                }
                             }
                         }
                     }
@@ -242,9 +247,10 @@ export default function RecipeClipClient() {
         if (editedRecipe) {
             setEditedRecipe({
                 ...editedRecipe,
-                image_url: imageData
+                image_url: imageData,
+                use_placeholder: false // 画像が設定されたらプレースホルダーはfalseに
             });
-            setUsePlaceholder(false);
+            // setUsePlaceholder(false); // setEditedRecipeで更新するので不要
         }
     };
 

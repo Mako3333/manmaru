@@ -138,6 +138,20 @@ export function createEmptyNutritionData(): NutritionData {
 }
 
 /**
+ * 空のStandardizedMealNutritionを作成
+ */
+export function createEmptyStandardizedNutrition(): StandardizedMealNutrition {
+    return {
+        totalCalories: 0,
+        totalNutrients: [],
+        foodItems: [],
+        reliability: {
+            confidence: 0.8
+        }
+    };
+}
+
+/**
  * 標準化された栄養データ型を生成するファクトリ関数
  * @param data 部分的なStandardizedMealNutritionデータまたはNutritionData
  * @returns 完全なStandardizedMealNutrition

@@ -22,14 +22,13 @@ export function validateRequestData<T>(
     if (!data) {
         return {
             valid: false,
-            error: new AppError(
-                'リクエストデータが空です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                'リクエストデータが提供されていません',
-                {},
-                'warning',
-                ['データを入力してください']
-            )
+            error: new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'リクエストデータが空です',
+                userMessage: 'リクエストデータが提供されていません',
+                severity: 'warning',
+                suggestions: ['データを入力してください']
+            })
         };
     }
 
@@ -59,14 +58,14 @@ export function validateFoodItems(data: any): ValidationResult<{ foodItems: Arra
     if (!data.foodItems || !Array.isArray(data.foodItems) || data.foodItems.length === 0) {
         return {
             valid: false,
-            error: new AppError(
-                '食品アイテムが無効です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                '食品リストが提供されていないか無効です',
-                { providedData: data },
-                'warning',
-                ['少なくとも1つの食品アイテムを指定してください']
-            )
+            error: new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '食品アイテムが無効です',
+                userMessage: '食品リストが提供されていないか無効です',
+                details: { providedData: data },
+                severity: 'warning',
+                suggestions: ['少なくとも1つの食品アイテムを指定してください']
+            })
         };
     }
 
@@ -75,28 +74,28 @@ export function validateFoodItems(data: any): ValidationResult<{ foodItems: Arra
         if (!item || typeof item !== 'object' || !item.name || typeof item.name !== 'string') {
             return {
                 valid: false,
-                error: new AppError(
-                    '食品アイテムの形式が無効です',
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    '食品アイテムには名前が必要です',
-                    { invalidItem: item },
-                    'warning',
-                    ['すべての食品に名前を指定してください']
-                )
+                error: new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: '食品アイテムの形式が無効です',
+                    userMessage: '食品アイテムには名前が必要です',
+                    details: { invalidItem: item },
+                    severity: 'warning',
+                    suggestions: ['すべての食品に名前を指定してください']
+                })
             };
         }
 
         if (item.quantity !== undefined && typeof item.quantity !== 'string') {
             return {
                 valid: false,
-                error: new AppError(
-                    '食品量の形式が無効です',
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    '食品量は文字列で指定してください',
-                    { invalidItem: item },
-                    'warning',
-                    ['数量は「100g」や「1個」などのテキスト形式で指定してください']
-                )
+                error: new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: '食品量の形式が無効です',
+                    userMessage: '食品量は文字列で指定してください',
+                    details: { invalidItem: item },
+                    severity: 'warning',
+                    suggestions: ['数量は「100g」や「1個」などのテキスト形式で指定してください']
+                })
             };
         }
     }
@@ -114,14 +113,14 @@ export function validateFoodTextInput(data: any): ValidationResult<{ text: strin
     if (!data.text || typeof data.text !== 'string' || data.text.trim() === '') {
         return {
             valid: false,
-            error: new AppError(
-                '食品テキスト入力が無効です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                '食品テキストが提供されていないか無効です',
-                { providedText: data.text },
-                'warning',
-                ['食品の説明を入力してください']
-            )
+            error: new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '食品テキスト入力が無効です',
+                userMessage: '食品テキストが提供されていないか無効です',
+                details: { providedText: data.text },
+                severity: 'warning',
+                suggestions: ['食品の説明を入力してください']
+            })
         };
     }
 
@@ -138,14 +137,13 @@ export function validateImageData(data: any): ValidationResult<{ imageData: stri
     if (!data.imageData || typeof data.imageData !== 'string' || !data.imageData.startsWith('data:image/')) {
         return {
             valid: false,
-            error: new AppError(
-                '画像データが無効です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                '有効な画像データが提供されていません',
-                {},
-                'warning',
-                ['Base64エンコードされた画像を提供してください']
-            )
+            error: new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '画像データが無効です',
+                userMessage: '有効な画像データが提供されていません',
+                severity: 'warning',
+                suggestions: ['Base64エンコードされた画像を提供してください']
+            })
         };
     }
 

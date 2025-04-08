@@ -12,7 +12,7 @@ export class RecipeService {
      */
     static async getRecipeById(recipeId: string, userId?: string) {
         try {
-            const cookieStore = cookies();
+            const cookieStore = await cookies();
             const supabase = createServerClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -98,7 +98,7 @@ export class RecipeService {
      */
     static async toggleFavorite(recipeId: string, userId: string) {
         try {
-            const cookieStore = cookies();
+            const cookieStore = await cookies();
             const supabase = createServerClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -244,15 +244,13 @@ export class RecipeService {
 
             // コンテンツIDがない場合はエラー（ソーシャルの場合のみ）
             if ((platform === 'instagram' || platform === 'tiktok') && !contentId) {
-                throw new AppError(
-                    'URLからコンテンツIDを抽出できませんでした',
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    '正しいSNS投稿URLを入力してください',
-                    {},
-                    'error',
-                    [],
-                    400
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: 'URLからコンテンツIDを抽出できませんでした',
+                    userMessage: '正しいSNS投稿URLを入力してください',
+                    details: { url },
+                    severity: 'error'
+                });
             }
 
             // OGPデータの取得
@@ -261,27 +259,23 @@ export class RecipeService {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 },
             }).catch(error => {
-                throw new AppError(
-                    `URLからのデータ取得エラー: ${error.message}`,
-                    ErrorCode.API_REQUEST_FAILED,
-                    'URLからデータを取得できませんでした',
-                    {},
-                    'error',
-                    [],
-                    400
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.NETWORK_ERROR,
+                    message: `URLからのデータ取得エラー: ${error.message}`,
+                    userMessage: 'URLからデータを取得できませんでした',
+                    details: { error },
+                    severity: 'error'
+                });
             });
 
             if (!response || !response.ok) {
-                throw new AppError(
-                    `URLからのデータ取得に失敗しました (${response?.status || 'Unknown'})`,
-                    ErrorCode.API_REQUEST_FAILED,
-                    'URLからデータを取得できませんでした',
-                    {},
-                    'error',
-                    [],
-                    400
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.NETWORK_ERROR,
+                    message: `URLからのデータ取得に失敗しました (${response?.status || 'Unknown'})`,
+                    userMessage: 'URLからデータを取得できませんでした',
+                    details: { status: response?.status },
+                    severity: 'error'
+                });
             }
 
             const html = await response.text();
@@ -350,7 +344,7 @@ export class RecipeService {
         const offset = (page - 1) * limit;
 
         try {
-            const cookieStore = cookies();
+            const cookieStore = await cookies();
             const supabase = createServerClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -369,30 +363,33 @@ export class RecipeService {
                 }
             );
 
+            // Supabaseクエリを構築
+            let selectColumns = '*'; // デフォルトは全カラム
+            if (includeNutrition) {
+                selectColumns = '*'; // 全カラム取得
+            } else {
+                // nutrition_per_serving を除外するロジックが必要な場合はここで具体的なカラムを指定
+                selectColumns = 'id, user_id, title, image_url, source_url, source_platform, content_id, recipe_type, ingredients, caution_foods, caution_level, is_favorite, servings, clipped_at, last_used_at, created_at, updated_at, is_social_media, use_placeholder';
+            }
+
             let query = supabase
                 .from('clipped_recipes')
-                .select('*', { count: 'exact' })
+                .select(selectColumns, { count: 'exact' })
                 .eq('user_id', userId)
                 .eq('is_favorite', true)
                 .order('updated_at', { ascending: false })
                 .range(offset, offset + limit - 1);
 
-            if (includeNutrition) {
-                query = query.select('nutrition_per_serving');
-            }
-
             const { data: recipes, error, count } = await query;
 
             if (error) {
-                throw new AppError(
-                    `お気に入りレシピ取得エラー: ${error.message}`,
-                    ErrorCode.API_ERROR,
-                    'お気に入りレシピの取得中にエラーが発生しました',
-                    {},
-                    'error',
-                    [],
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `お気に入りレシピ取得エラー: ${error.message}`,
+                    userMessage: 'お気に入りレシピの取得中にエラーが発生しました',
+                    details: error,
+                    severity: 'error'
+                });
             }
 
             return {
@@ -407,15 +404,13 @@ export class RecipeService {
         } catch (error) {
             if (error instanceof AppError) throw error;
 
-            throw new AppError(
-                `お気に入りレシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.API_ERROR,
-                'お気に入りレシピの取得中にエラーが発生しました',
-                {},
-                'error',
-                [],
-                500
-            );
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: `お気に入りレシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'お気に入りレシピの取得中にエラーが発生しました',
+                details: error,
+                severity: 'error'
+            });
         }
     }
 }
@@ -426,7 +421,7 @@ export class RecipeService {
 function extractMetaContent(html: string, name: string): string | null {
     const regex = new RegExp(`<meta[^>]*(?:property|name)=["']${name}["'][^>]*content=["']([^"']+)["']|<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${name}["']`, 'i');
     const match = html.match(regex);
-    return match ? match[1] || match[2] : null;
+    return match ? (match[1] || match[2] || null) : null;
 }
 
 /**
