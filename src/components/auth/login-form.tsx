@@ -8,8 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'react-hot-toast'
-import { AuthError, ErrorCode } from '@/lib/errors/app-errors'
-import { handleError } from '@/lib/errors/error-handler'
+import { AppError, ErrorCode, handleError, AnyErrorCode } from '@/lib/error'
 
 export function LoginForm() {
     const router = useRouter()
@@ -38,9 +37,7 @@ export function LoginForm() {
 
         const registered = searchParams.get('registered')
         if (registered === 'true') {
-            toast.success('登録が完了しました', {
-                description: 'メールアドレスとパスワードでログインしてください',
-            })
+            toast.success('登録が完了しました。メールアドレスとパスワードでログインしてください。')
         }
     }, [searchParams])
 
@@ -52,44 +49,49 @@ export function LoginForm() {
         try {
             // 入力検証
             if (!email || !password) {
-                throw new AuthError(
-                    'メールアドレスとパスワードを入力してください',
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    '必要な情報が入力されていません',
-                    { email: !email, password: !password }
-                )
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: 'メールアドレスとパスワードを入力してください',
+                    userMessage: 'メールアドレスとパスワードを入力してください'
+                });
             }
 
+            // supabaseでログイン
             const { error: authError } = await supabase.auth.signInWithPassword({
                 email,
-                password,
-            })
+                password
+            });
 
             if (authError) {
-                // Supabaseエラーを変換
-                let code = ErrorCode.AUTH_INVALID
-                let message = 'ログイン情報が正しくありません'
-                let suggestions = ['メールアドレスとパスワードを確認してください']
+                let code: AnyErrorCode = ErrorCode.Base.AUTH_ERROR;
+                let message = 'ログインに失敗しました';
+                let suggestions = ['メールアドレスとパスワードを確認してください'];
 
-                if (authError.message.includes('not found') || authError.message.includes('Invalid login')) {
-                    code = ErrorCode.AUTH_INVALID
-                    message = 'メールアドレスまたはパスワードが正しくありません'
-                } else if (authError.message.includes('too many requests')) {
-                    code = ErrorCode.RATE_LIMIT_EXCEEDED
-                    message = 'ログイン試行回数が多すぎます'
-                    suggestions = ['しばらく経ってからもう一度お試しください']
+                if (authError.message.includes('credentials')) {
+                    message = 'メールアドレスまたはパスワードが正しくありません';
                 }
 
-                throw new AuthError(message, code, undefined, authError, suggestions, authError)
+                if (authError.message.includes('rate limit')) {
+                    // Resourceカテゴリのレート制限エラーを参照
+                    code = ErrorCode.Resource.RATE_LIMIT_EXCEEDED;
+                    message = 'ログイン試行回数が多すぎます';
+                    suggestions = ['しばらく時間をおいてから再試行してください'];
+                }
+
+                throw new AppError({
+                    code: code,
+                    message: message,
+                    userMessage: message,
+                    suggestions: suggestions,
+                    originalError: authError
+                });
             }
 
             // コールバックURL（リダイレクト先）の取得
             const callbackUrl = searchParams.get('callbackUrl') || '/home'
 
             // 成功メッセージ
-            toast.success('ログインに成功しました', {
-                description: 'ホーム画面に移動します',
-            })
+            toast.success('ログインに成功しました。ホーム画面に移動します。')
 
             // リダイレクト
             router.push(callbackUrl)
@@ -105,7 +107,7 @@ export function LoginForm() {
 
             // フォームのエラーメッセージを設定
             setError(
-                err instanceof AuthError
+                err instanceof AppError
                     ? err.userMessage
                     : 'ログインに失敗しました。メールアドレスとパスワードを確認してください。'
             )

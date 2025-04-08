@@ -27,10 +27,16 @@ describe('レシピ解析API v2のテスト', () => {
         folic_acid: 80, calcium: 50, vitamin_d: 2, confidence_score: 0.85
     };
     const mockStandardNutrition: StandardizedMealNutrition = {
-        totalCalories: 450,
-        totalNutrients: [{ name: 'エネルギー', value: 450, unit: 'kcal' }],
-        foodItems: [], // レシピ解析では foodItems は空になることが多い
-        pregnancySpecific: { folatePercentage: 20, ironPercentage: 10, calciumPercentage: 5 }
+        totalCalories: 320, totalNutrients: [
+            { name: 'エネルギー', value: 320, unit: 'kcal' }
+        ],
+        foodItems: [],
+        pregnancySpecific: { folatePercentage: 25, ironPercentage: 15, calciumPercentage: 5 },
+        reliability: {
+            confidence: 0.9,
+            balanceScore: 75,
+            completeness: 0.9
+        }
     };
     // 1人前データ (例)
     const mockLegacyPerServing: NutritionData = {
@@ -38,10 +44,16 @@ describe('レシピ解析API v2のテスト', () => {
         folic_acid: 40, calcium: 25, vitamin_d: 1, confidence_score: 0.85
     };
     const mockStandardPerServing: StandardizedMealNutrition = {
-        totalCalories: 225,
-        totalNutrients: [{ name: 'エネルギー', value: 225, unit: 'kcal' }],
+        totalCalories: 320, totalNutrients: [
+            { name: 'エネルギー', value: 320, unit: 'kcal' }
+        ],
         foodItems: [],
-        pregnancySpecific: { folatePercentage: 10, ironPercentage: 5, calciumPercentage: 2.5 }
+        pregnancySpecific: { folatePercentage: 25, ironPercentage: 15, calciumPercentage: 5 },
+        reliability: {
+            confidence: 0.9,
+            balanceScore: 75,
+            completeness: 0.9
+        }
     };
 
     beforeEach(() => {

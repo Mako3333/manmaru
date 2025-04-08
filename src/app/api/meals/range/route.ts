@@ -145,6 +145,7 @@ export async function GET(request: Request) {
             (meals as SupabaseMeal[]).forEach(meal => {
                 const date = meal.meal_date;
 
+                // そのmealDateに関するデータがなければ初期化
                 if (!dailySummaries[date]) {
                     dailySummaries[date] = {
                         date,
@@ -161,8 +162,22 @@ export async function GET(request: Request) {
                     const nutrientName = mealNutrient.nutrients?.name || `nutrient_${nutrientId}`;
                     const amount = mealNutrient.amount * (meal.servings || 1);
 
-                    if (!dailySummaries[date].nutrients[nutrientName]) {
-                        dailySummaries[date].nutrients[nutrientName] = {
+                    // そのmealDateに関するデータがなければ初期化
+                    if (!dailySummaries[date]) {
+                        dailySummaries[date] = {
+                            date,
+                            meals: 0,
+                            nutrients: {}
+                        };
+                    }
+
+                    // 栄養素データがなければ初期化
+                    if (!dailySummaries[date]?.nutrients) {
+                        dailySummaries[date]!.nutrients = {};
+                    }
+
+                    if (!dailySummaries[date]?.nutrients[nutrientName]) {
+                        dailySummaries[date]!.nutrients[nutrientName] = {
                             id: nutrientId,
                             name: nutrientName,
                             unit: mealNutrient.nutrients?.unit || '',
@@ -170,7 +185,10 @@ export async function GET(request: Request) {
                         };
                     }
 
-                    dailySummaries[date].nutrients[nutrientName].total += amount;
+                    // 栄養素を合計に追加
+                    if (dailySummaries[date]?.nutrients[nutrientName]) {
+                        dailySummaries[date]!.nutrients[nutrientName].total += amount;
+                    }
                 });
             });
 

@@ -23,7 +23,12 @@ const createEmptyStandardizedNutrition = (): StandardizedMealNutrition => ({
     pregnancySpecific: {
         folatePercentage: 0,
         ironPercentage: 0,
-        calciumPercentage: 0,
+        calciumPercentage: 0
+    },
+    reliability: {
+        confidence: 0.5,
+        balanceScore: 0,
+        completeness: 0.5
     }
 });
 

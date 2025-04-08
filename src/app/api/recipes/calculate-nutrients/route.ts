@@ -1,75 +1,70 @@
 //src\app\api\recipes\calculate-nutrients\route.ts
-import { NextResponse } from 'next/server';
-import { RecipeIngredient } from '@/types/recipe';
-import { AIService } from '@/lib/ai/ai-service.interface';
-import { withAuthAndErrorHandling, createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { NextResponse, NextRequest } from 'next/server';
+import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
+import { IAIService } from '@/lib/ai/ai-service.interface';
+import { withErrorHandling } from '@/lib/api/middleware';
+import { createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
+import { AppError, ErrorCode } from '@/lib/error';
+import { FoodRepositoryFactory } from '@/lib/food/food-repository-factory';
 
-interface CalculateNutrientsRequest {
-    ingredients: RecipeIngredient[];
-    servings: number;
-}
+export const POST = withErrorHandling(
+    async (req: NextRequest) => {
+        // リクエスト本文を解析してデータ取得
+        const requestData = await validateRequestData<{
+            ingredients: { name: string; quantity: string }[];
+            servings?: number;
+        }>(req, ['ingredients']);
 
-export const POST = withAuthAndErrorHandling(
-    async (req, { user }) => {
-        // リクエストを検証
-        const { ingredients, servings } = await validateRequestData<CalculateNutrientsRequest>(
-            req,
-            ['ingredients', 'servings']
-        );
+        const { ingredients, servings = 1 } = requestData;
 
-        // 追加の検証
-        if (!Array.isArray(ingredients) || ingredients.length === 0) {
-            throw new ApiError(
-                '材料データが空または無効です',
-                ErrorCode.DATA_VALIDATION_ERROR,
-                '材料データが必要です',
-                400
-            );
+        if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '材料リストが空です',
+                userMessage: '少なくとも1つの材料が必要です'
+            });
         }
 
-        if (servings <= 0) {
-            throw new ApiError(
-                `無効なサービング数: ${servings}`,
-                ErrorCode.DATA_VALIDATION_ERROR,
-                '有効な人数を指定してください',
-                400
-            );
-        }
-
-        // AIServiceのフォーマットに変換
-        const foodInputs = ingredients.map(ingredient => ({
-            name: ingredient.name,
-            quantity: ingredient.quantity
+        // 名前と量のペアのリストを作成
+        const nameQuantityPairs = ingredients.map(item => ({
+            name: item.name,
+            quantity: item.quantity
         }));
 
-        try {
-            // AIServiceを使用して栄養素を計算
-            const aiService = AIService.getInstance();
-            const nutritionResult = await aiService.analyzeTextInput(foodInputs);
+        // 栄養計算サービスのインスタンスを取得
+        const nutritionService = NutritionServiceFactory.getInstance().createService(
+            FoodRepositoryFactory.getRepository()
+        );
 
-            // サービング数に応じて栄養素を1人前に変換
-            const nutritionPerServing = {
-                calories: nutritionResult.nutrition.calories / servings,
-                protein: nutritionResult.nutrition.protein / servings,
-                iron: nutritionResult.nutrition.iron / servings,
-                folic_acid: nutritionResult.nutrition.folic_acid / servings,
-                calcium: nutritionResult.nutrition.calcium / servings,
-                vitamin_d: nutritionResult.nutrition.vitamin_d ? nutritionResult.nutrition.vitamin_d / servings : 0
-            };
+        // 栄養計算実行
+        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
 
-            return NextResponse.json(createSuccessResponse({
-                nutrition_per_serving: nutritionPerServing,
-                meta: nutritionResult.meta
-            }));
-        } catch (aiError) {
-            throw new ApiError(
-                `栄養計算AI処理エラー: ${aiError instanceof Error ? aiError.message : String(aiError)}`,
-                ErrorCode.NUTRITION_CALCULATION_ERROR,
-                '栄養素の計算に失敗しました。入力内容を確認してください。',
-                500,
-                { originalError: aiError }
-            );
-        }
+        // 栄養データはすでに StandardizedMealNutrition 型なので変換は不要
+        const standardizedNutrition = nutritionResult.nutrition;
+
+        // 1人前あたりの栄養素計算（servings > 1 の場合）
+        const perServingNutrition = servings > 1
+            ? {
+                // servingsで割って1人前のデータを計算
+                ...standardizedNutrition,
+                totalCalories: standardizedNutrition.totalCalories / servings,
+                totalNutrients: standardizedNutrition.totalNutrients.map(nutrient => ({
+                    ...nutrient,
+                    value: nutrient.value / servings
+                }))
+            }
+            : undefined;
+
+        return NextResponse.json(createSuccessResponse({
+            nutritionResult: {
+                nutrition: standardizedNutrition,
+                legacyNutrition: nutritionResult.nutrition,
+                matchResults: nutritionResult.matchResults,
+                reliability: nutritionResult.reliability,
+                // 1人前データ（オプション）
+                perServing: perServingNutrition,
+                legacyPerServing: perServingNutrition ? nutritionResult.nutrition : undefined
+            }
+        }));
     }
 ); 

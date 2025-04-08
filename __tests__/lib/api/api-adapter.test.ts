@@ -44,9 +44,9 @@ describe('APIアダプターのテスト', () => {
 
     // テスト用StandardizedMealNutrition
     const sampleStandardizedNutrition: StandardizedMealNutrition = {
-        totalCalories: 500,
+        totalCalories: 320,
         totalNutrients: [
-            { name: 'タンパク質', value: 20, unit: 'g' },
+            { name: 'タンパク質', value: 15, unit: 'g' },
             { name: '脂質', value: 15, unit: 'g' },
             { name: '炭水化物', value: 60, unit: 'g' },
             { name: '鉄分', value: 2.5, unit: 'mg' },
@@ -76,14 +76,8 @@ describe('APIアダプターのテスト', () => {
                 name: 'ごはん',
                 nutrition: {
                     calories: 200,
-                    nutrients: [
-                        { name: 'タンパク質', value: 5, unit: 'g' },
-                        { name: '炭水化物', value: 40, unit: 'g' }
-                    ],
-                    servingSize: {
-                        value: 100,
-                        unit: 'g'
-                    }
+                    nutrients: [],
+                    servingSize: { value: 100, unit: 'g' }
                 },
                 amount: 150,
                 unit: 'g'
@@ -107,9 +101,14 @@ describe('APIアダプターのテスト', () => {
             }
         ],
         pregnancySpecific: {
-            folatePercentage: 30,
-            ironPercentage: 25,
-            calciumPercentage: 20
+            folatePercentage: 25,
+            ironPercentage: 15,
+            calciumPercentage: 5
+        },
+        reliability: {
+            confidence: 0.9,
+            balanceScore: 75,
+            completeness: 0.95
         }
     };
 
@@ -179,10 +178,10 @@ describe('APIアダプターのテスト', () => {
 
             expect(result).toEqual(sampleStandardizedNutrition);
 
-            expect(result.totalCalories).toBe(500);
+            expect(result.totalCalories).toBe(320);
             const proteinNutrient = result.totalNutrients.find((n: Nutrient) => n.name === 'タンパク質');
             expect(proteinNutrient).toBeDefined();
-            expect(proteinNutrient?.value).toBe(20);
+            expect(proteinNutrient?.value).toBe(15);
 
             const ironNutrient = result.totalNutrients.find((n: Nutrient) => n.name === '鉄分');
             expect(ironNutrient).toBeDefined();
@@ -261,7 +260,12 @@ describe('APIアダプターのテスト', () => {
             const emptyStandardized: StandardizedMealNutrition = {
                 totalCalories: 0,
                 totalNutrients: [],
-                foodItems: []
+                foodItems: [],
+                reliability: {
+                    confidence: 0.5,
+                    balanceScore: 0,
+                    completeness: 0.5
+                }
             };
             const emptyNutritionData: NutritionData = {
                 calories: 0,

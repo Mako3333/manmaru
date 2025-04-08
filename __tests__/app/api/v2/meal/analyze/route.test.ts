@@ -99,6 +99,11 @@ describe('食事分析API v2のテスト', () => {
                 folatePercentage: 25,  // 葉酸充足率
                 ironPercentage: 15,    // 鉄分充足率
                 calciumPercentage: 5   // カルシウム充足率
+            },
+            reliability: {
+                confidence: 0.9,
+                balanceScore: 75,
+                completeness: 0.95
             }
         };
 
@@ -189,6 +194,11 @@ describe('食事分析API v2のテスト', () => {
                 folatePercentage: 25,
                 ironPercentage: 15,
                 calciumPercentage: 5
+            },
+            reliability: {
+                confidence: 0.9,
+                balanceScore: 75,
+                completeness: 0.9
             }
         };
 
@@ -242,6 +252,11 @@ describe('食事分析API v2のテスト', () => {
                 folatePercentage: 0,
                 ironPercentage: 0,
                 calciumPercentage: 0
+            },
+            reliability: {
+                confidence: 0.5,
+                balanceScore: 0,
+                completeness: 0.5
             }
         };
 

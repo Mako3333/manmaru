@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { RecipeService } from '@/lib/services/recipe-service';
 import { withAuthAndErrorHandling, createSuccessResponse } from '@/lib/api/api-handlers';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError, ErrorCode } from '@/lib/error';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
@@ -9,6 +9,15 @@ import { cookies } from 'next/headers';
 export const GET = withAuthAndErrorHandling(
     async (req, { params, user }) => {
         const { id } = params;
+
+        // IDの検証
+        if (!id) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'レシピIDが指定されていません',
+                userMessage: 'レシピIDが必要です'
+            });
+        }
 
         const recipe = await RecipeService.getRecipeById(id, user.id);
 
@@ -21,12 +30,14 @@ export const PATCH = withAuthAndErrorHandling(
     async (req, { params, user }) => {
         const { id } = params;
 
-        // 更新データを取得
-        const updateData = await req.json();
-
-        // 重要：updateDataからuser_idとidの更新は許可しない
-        if (updateData.user_id) delete updateData.user_id;
-        if (updateData.id) delete updateData.id;
+        // IDの検証
+        if (!id) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'レシピIDが指定されていません',
+                userMessage: 'レシピIDが必要です'
+            });
+        }
 
         try {
             // レシピの存在確認
@@ -52,6 +63,9 @@ export const PATCH = withAuthAndErrorHandling(
                 }
             );
 
+            // リクエストボディからレシピ更新用データを取得
+            const updateData = await req.json();
+
             // データ更新
             const { data: updatedRecipe, error } = await supabase
                 .from('clipped_recipes')
@@ -65,12 +79,12 @@ export const PATCH = withAuthAndErrorHandling(
                 .single();
 
             if (error) {
-                throw new ApiError(
-                    `レシピ更新エラー: ${error.message}`,
-                    ErrorCode.API_ERROR,
-                    'レシピの更新中にエラーが発生しました',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `レシピ更新エラー: ${error.message}`,
+                    userMessage: 'レシピの更新中にエラーが発生しました',
+                    originalError: error instanceof Error ? error : undefined
+                });
             }
 
             return NextResponse.json(createSuccessResponse(updatedRecipe, 'レシピを更新しました'));
@@ -85,6 +99,15 @@ export const PATCH = withAuthAndErrorHandling(
 export const DELETE = withAuthAndErrorHandling(
     async (req, { params, user }) => {
         const { id } = params;
+
+        // IDの検証
+        if (!id) {
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'レシピIDが指定されていません',
+                userMessage: 'レシピIDが必要です'
+            });
+        }
 
         try {
             // レシピの存在確認
@@ -117,12 +140,12 @@ export const DELETE = withAuthAndErrorHandling(
                 .eq('user_id', user.id);
 
             if (error) {
-                throw new ApiError(
-                    `レシピ削除エラー: ${error.message}`,
-                    ErrorCode.API_ERROR,
-                    'レシピの削除中にエラーが発生しました',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `レシピ削除エラー: ${error.message}`,
+                    userMessage: 'レシピの削除中にエラーが発生しました',
+                    originalError: error instanceof Error ? error : undefined
+                });
             }
 
             return NextResponse.json(createSuccessResponse(

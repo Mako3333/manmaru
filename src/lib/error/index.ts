@@ -8,4 +8,7 @@ export * from './types/base-error';
 export * from './types/nutrition-errors';
 
 // AI関連エラー
-export * from './types/ai-errors'; 
+export * from './types/ai-errors';
+
+// エラーハンドリングユーティリティ
+export * from './utils'; 

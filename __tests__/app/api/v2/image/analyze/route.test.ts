@@ -46,7 +46,12 @@ describe('画像分析API v2のテスト', () => {
             { id: 'img-1', name: '解析された食品1', amount: 100, unit: 'g', nutrition: { calories: 200, nutrients: [{ name: 'エネルギー', value: 200, unit: 'kcal' }], servingSize: { value: 100, unit: 'g' } } },
             { id: 'img-2', name: '解析された食品2', amount: 50, unit: 'g', nutrition: { calories: 120, nutrients: [{ name: 'エネルギー', value: 120, unit: 'kcal' }], servingSize: { value: 50, unit: 'g' } } }
         ],
-        pregnancySpecific: { folatePercentage: 25, ironPercentage: 15, calciumPercentage: 5 }
+        pregnancySpecific: { folatePercentage: 25, ironPercentage: 15, calciumPercentage: 5 },
+        reliability: {
+            confidence: 0.9,
+            balanceScore: 75,
+            completeness: 0.95
+        }
     };
 
     beforeAll(() => {

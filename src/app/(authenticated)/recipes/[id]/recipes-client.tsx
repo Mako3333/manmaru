@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Heart, Clock, Plus, ExternalLink, Trash } from 'lucide-react';
 import { ClippedRecipe } from '@/types/recipe';
@@ -23,7 +23,10 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
     const [showMealDialog, setShowMealDialog] = useState<boolean>(false);
     const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     // ソーシャルメディアかどうかを判定
     const isSocialMedia = recipe.source_platform === 'Instagram' || recipe.source_platform === 'TikTok';

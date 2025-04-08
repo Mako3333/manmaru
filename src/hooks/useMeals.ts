@@ -113,13 +113,19 @@ export const useMeals = () => {
      * @returns 食事タイプ別にグループ化された食事データ
      */
     const groupMealsByType = (mealsData: Meal[]) => {
-        const grouped: Record<string, Meal[]> = {};
+        const grouped: Record<string, any[]> = {};
 
+        // 先にすべてのミールタイプのキーを初期化
+        const mealTypes = Array.from(new Set(mealsData.map(meal => meal.meal_type)));
+        mealTypes.forEach(type => {
+            grouped[type] = [];
+        });
+
+        // 各ミールをタイプごとに分類
         mealsData.forEach(meal => {
-            if (!grouped[meal.meal_type]) {
-                grouped[meal.meal_type] = [];
+            if (meal.meal_type && grouped[meal.meal_type]) {
+                grouped[meal.meal_type].push(meal);
             }
-            grouped[meal.meal_type].push(meal);
         });
 
         return grouped;
