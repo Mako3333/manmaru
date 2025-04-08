@@ -1,156 +1,121 @@
 import React from 'react';
-import { Meta, StoryObj } from '@storybook/react';
+import { StoryObj, Meta } from '@storybook/react';
 import { NutritionSummary } from './nutrition-summary';
 import { StandardizedMealNutrition } from '@/types/nutrition';
 
-// StandardizedMealNutrition型に合わせたモックデータ
-const createStandardizedMockData = (isDeficient: boolean = false): StandardizedMealNutrition => ({
-    totalCalories: 450,
-    totalNutrients: [
-        { name: 'たんぱく質', value: isDeficient ? 15 : 20, unit: 'g' },
-        { name: '脂質', value: 15, unit: 'g' },
-        { name: '炭水化物', value: 60, unit: 'g' },
-        { name: '食物繊維', value: 5, unit: 'g' },
-        { name: '鉄分', value: isDeficient ? 1.5 : 2.5, unit: 'mg' },
-        { name: '鉄', value: isDeficient ? 1.5 : 2.5, unit: 'mg' },
-        { name: 'iron', value: isDeficient ? 1.5 : 2.5, unit: 'mg' },
-        { name: '葉酸', value: isDeficient ? 70 : 120, unit: 'mcg' },
-        { name: 'folic_acid', value: isDeficient ? 70 : 120, unit: 'mcg' },
-        { name: 'カルシウム', value: isDeficient ? 150 : 200, unit: 'mg' },
-        { name: 'calcium', value: isDeficient ? 150 : 200, unit: 'mg' },
-        { name: 'ビタミンA', value: 300, unit: 'mcg' },
-        { name: 'ビタミンB1', value: 0.3, unit: 'mg' },
-        { name: 'ビタミンB2', value: 0.4, unit: 'mg' },
-        { name: 'ビタミンC', value: isDeficient ? 20 : 30, unit: 'mg' }
-    ],
-    foodItems: [],
-    reliability: {
-        confidence: 0.85,
-        balanceScore: 75,
-        completeness: 0.9
-    }
-});
-
-// 標準的な栄養データ
-const mockStandardizedNutrition = createStandardizedMockData();
-
-// 不足している栄養素を含むデータ
-const mockStandardizedNutritionWithDeficiencies = createStandardizedMockData(true);
-
 const meta: Meta<typeof NutritionSummary> = {
-    title: 'Nutrition/NutritionSummary',
+    title: 'Components/Nutrition/NutritionSummary',
     component: NutritionSummary,
     parameters: {
         layout: 'centered',
     },
     tags: ['autodocs'],
-    argTypes: {
-        nutritionData: {
-            control: 'object',
-            description: '標準化された栄養データ'
-        },
-        missingFoodsCount: {
-            control: { type: 'number', min: 0 },
-            description: '見つからなかった食品の数'
-        },
-        lowConfidenceFoodsCount: {
-            control: { type: 'number', min: 0 },
-            description: '低確信度の食品の数'
-        },
-        initiallyExpanded: {
-            control: 'boolean',
-            description: '詳細表示の初期状態'
-        },
-        compact: {
-            control: 'boolean',
-            description: 'コンパクト表示モード'
-        }
-    }
 };
 
 export default meta;
 type Story = StoryObj<typeof NutritionSummary>;
 
+const mockNutritionData: StandardizedMealNutrition = {
+    totalCalories: 450,
+    totalNutrients: [
+        { name: 'タンパク質', value: 30, unit: 'g', percentDailyValue: 60 },
+        { name: 'カルシウム', value: 500, unit: 'mg', percentDailyValue: 50 },
+        { name: '鉄分', value: 8, unit: 'mg', percentDailyValue: 45 },
+        { name: '葉酸', value: 220, unit: 'mcg', percentDailyValue: 55 },
+        { name: '脂質', value: 15, unit: 'g', percentDailyValue: 30 },
+        { name: '炭水化物', value: 50, unit: 'g', percentDailyValue: 20 },
+    ],
+    foodItems: [
+        {
+            id: '1',
+            name: '鶏胸肉',
+            nutrition: {
+                calories: 165,
+                nutrients: [
+                    { name: 'タンパク質', value: 20, unit: 'g', percentDailyValue: 40 },
+                ],
+                servingSize: {
+                    value: 100,
+                    unit: 'g'
+                }
+            },
+            amount: 100,
+            unit: 'g',
+            confidence: 0.9
+        },
+        {
+            id: '2',
+            name: 'ほうれん草',
+            nutrition: {
+                calories: 45,
+                nutrients: [
+                    { name: '鉄分', value: 3, unit: 'mg', percentDailyValue: 15 },
+                    { name: '葉酸', value: 100, unit: 'mcg', percentDailyValue: 25 },
+                ],
+                servingSize: {
+                    value: 50,
+                    unit: 'g'
+                }
+            },
+            amount: 50,
+            unit: 'g',
+            confidence: 0.85
+        },
+    ],
+    reliability: {
+        confidence: 0.85,
+        balanceScore: 75,
+        completeness: 0.9
+    },
+    pregnancySpecific: {
+        calciumPercentage: 50,
+        ironPercentage: 45,
+        folatePercentage: 55,
+    }
+};
+
 export const Default: Story = {
     args: {
-        nutritionData: mockStandardizedNutrition,
+        nutritionData: mockNutritionData,
         missingFoodsCount: 0,
         lowConfidenceFoodsCount: 0,
-        initiallyExpanded: false,
-        compact: false
-    }
+    },
 };
 
-export const WithDeficiencies: Story = {
-    args: {
-        nutritionData: mockStandardizedNutritionWithDeficiencies,
-        missingFoodsCount: 0,
-        lowConfidenceFoodsCount: 1,
-        initiallyExpanded: false,
-        compact: false
-    }
-};
-
-export const LowReliability: Story = {
+export const WithReliabilityIssues: Story = {
     args: {
         nutritionData: {
-            ...mockStandardizedNutrition,
+            ...mockNutritionData,
             reliability: {
-                confidence: 0.45,
+                confidence: 0.65,
                 balanceScore: 40,
                 completeness: 0.5
             }
         },
         missingFoodsCount: 2,
-        lowConfidenceFoodsCount: 1,
-        initiallyExpanded: false,
-        compact: false
-    }
+        lowConfidenceFoodsCount: 3,
+    },
 };
 
-export const InitiallyExpanded: Story = {
-    args: {
-        nutritionData: mockStandardizedNutrition,
-        missingFoodsCount: 0,
-        lowConfidenceFoodsCount: 0,
-        initiallyExpanded: true,
-        compact: false
-    }
-};
-
-export const CompactView: Story = {
-    args: {
-        nutritionData: mockStandardizedNutrition,
-        missingFoodsCount: 0,
-        lowConfidenceFoodsCount: 0,
-        initiallyExpanded: false,
-        compact: true
-    }
-};
-
-export const CompactWithDeficiencies: Story = {
-    args: {
-        nutritionData: mockStandardizedNutritionWithDeficiencies,
-        missingFoodsCount: 0,
-        lowConfidenceFoodsCount: 1,
-        initiallyExpanded: false,
-        compact: true
-    }
-};
-
-export const CompactLowReliability: Story = {
+export const LowNutrients: Story = {
     args: {
         nutritionData: {
-            ...mockStandardizedNutrition,
-            reliability: {
-                confidence: 0.45,
-                balanceScore: 40,
-                completeness: 0.5
+            ...mockNutritionData,
+            totalNutrients: [
+                { name: 'タンパク質', value: 10, unit: 'g', percentDailyValue: 20 },
+                { name: 'カルシウム', value: 150, unit: 'mg', percentDailyValue: 15 },
+                { name: '鉄分', value: 2, unit: 'mg', percentDailyValue: 10 },
+                { name: '葉酸', value: 80, unit: 'mcg', percentDailyValue: 20 },
+                { name: '脂質', value: 5, unit: 'g', percentDailyValue: 10 },
+                { name: '炭水化物', value: 20, unit: 'g', percentDailyValue: 8 },
+            ],
+            pregnancySpecific: {
+                calciumPercentage: 15,
+                ironPercentage: 10,
+                folatePercentage: 20,
             }
         },
-        missingFoodsCount: 2,
-        lowConfidenceFoodsCount: 1,
-        initiallyExpanded: false,
-        compact: true
-    }
+        missingFoodsCount: 0,
+        lowConfidenceFoodsCount: 0,
+    },
 }; 

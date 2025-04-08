@@ -1,23 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-    Card,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-    CardContent,
-    CardFooter
-} from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Save } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { FoodListEditor } from "@/components/food/food-list-editor";
 import { FoodItem } from "@/components/food/food-edit-modal";
 import { ReliabilityIndicator } from "@/components/nutrition/reliability-indicator";
-import { NutritionSummary, NutrientData } from "@/components/nutrition/nutrition-summary";
-import { StandardizedMealNutrition, Nutrient } from "@/types/nutrition";
+import { NutritionSummary } from "@/components/nutrition/nutrition-summary";
+import { StandardizedMealNutrition, Nutrient, FoodCategory } from "@/types/nutrition";
+import { FoodSearchInput } from "@/components/food/food-search-input";
+import { FoodListEditor } from "@/components/food/food-list-editor";
+import { toast } from "sonner";
 
 // APIに送信する食品アイテムの型定義
 interface ApiFood {
@@ -30,6 +24,11 @@ interface ApiFood {
 interface RecognitionData {
     foods: ApiFood[];
     nutrition: StandardizedMealNutrition;
+    reliability?: {
+        confidence: number;
+        missingFoodsCount: number;
+        lowConfidenceFoodsCount: number;
+    };
 }
 
 // コンポーネントのProps
@@ -41,6 +40,27 @@ interface EnhancedRecognitionEditorProps {
     mealDate?: string | undefined;
     photoUrl?: string | undefined;
 }
+
+// 食品名からカテゴリを推測する関数
+const getFoodCategory = (foodName: string): FoodCategory => {
+    const lowerName = foodName.toLowerCase();
+
+    if (/米|パン|麺|うどん|そば|パスタ|シリアル|麦/.test(lowerName)) {
+        return FoodCategory.GRAINS;
+    } else if (/牛肉|豚肉|鶏肉|魚|卵|豆腐|納豆|大豆|肉/.test(lowerName)) {
+        return FoodCategory.PROTEIN;
+    } else if (/牛乳|ヨーグルト|チーズ|乳製品/.test(lowerName)) {
+        return FoodCategory.DAIRY;
+    } else if (/りんご|バナナ|みかん|いちご|果物/.test(lowerName)) {
+        return FoodCategory.FRUITS;
+    } else if (/にんじん|ほうれん草|トマト|キャベツ|野菜/.test(lowerName)) {
+        return FoodCategory.VEGETABLES;
+    } else if (/塩|砂糖|醤油|味噌|ソース|調味料/.test(lowerName)) {
+        return FoodCategory.SEASONINGS;
+    }
+
+    return FoodCategory.OTHER;
+};
 
 // 特定の栄養素を取得するヘルパー関数
 const getNutrientValue = (nutrients: Nutrient[], name: string): number => {
@@ -60,8 +80,6 @@ export function EnhancedRecognitionEditor({
     const [foods, setFoods] = useState<FoodItem[]>([]);
     // 栄養情報の状態
     const [nutrition, setNutrition] = useState<StandardizedMealNutrition>(initialData.nutrition);
-    // 栄養素データ（NutritionSummary用）
-    const [nutrients, setNutrients] = useState<NutrientData[]>([]);
     // 保存中の状態
     const [saving, setSaving] = useState(false);
     // エラーの状態
@@ -80,71 +98,6 @@ export function EnhancedRecognitionEditor({
         }));
         setFoods(foodItems);
         setNutrition(initialData.nutrition);
-
-        // 栄養素データをNutrientDataの形式に変換
-        const nutrientItems: NutrientData[] = [
-            {
-                name: 'エネルギー',
-                amount: initialData.nutrition.totalCalories,
-                unit: 'kcal',
-                percentOfDaily: initialData.nutrition.totalCalories / 2000 // 仮の推奨摂取量
-            }
-        ];
-
-        // totalNutrientsから各栄養素を抽出
-        const protein = getNutrientValue(initialData.nutrition.totalNutrients, 'たんぱく質');
-        const iron = getNutrientValue(initialData.nutrition.totalNutrients, '鉄分');
-        const folicAcid = getNutrientValue(initialData.nutrition.totalNutrients, '葉酸');
-        const calcium = getNutrientValue(initialData.nutrition.totalNutrients, 'カルシウム');
-        const vitaminD = getNutrientValue(initialData.nutrition.totalNutrients, 'ビタミンD');
-
-        // タンパク質
-        nutrientItems.push({
-            name: 'たんぱく質',
-            amount: protein,
-            unit: 'g',
-            percentOfDaily: protein / 60 // 仮の推奨摂取量
-        });
-
-        // 鉄分
-        nutrientItems.push({
-            name: '鉄分',
-            amount: iron,
-            unit: 'mg',
-            percentOfDaily: iron / 10.5, // 妊婦の推奨摂取量
-            isDeficient: iron < 8 // 鉄分不足の目安
-        });
-
-        // 葉酸
-        nutrientItems.push({
-            name: '葉酸',
-            amount: folicAcid,
-            unit: 'μg',
-            percentOfDaily: folicAcid / 400, // 妊婦の推奨摂取量
-            isDeficient: folicAcid < 300 // 葉酸不足の目安
-        });
-
-        // カルシウム
-        nutrientItems.push({
-            name: 'カルシウム',
-            amount: calcium,
-            unit: 'mg',
-            percentOfDaily: calcium / 650, // 妊婦の推奨摂取量
-            isDeficient: calcium < 500 // カルシウム不足の目安
-        });
-
-        // ビタミンD
-        if (vitaminD !== undefined) {
-            nutrientItems.push({
-                name: 'ビタミンD',
-                amount: vitaminD,
-                unit: 'μg',
-                percentOfDaily: vitaminD / 8.5, // 妊婦の推奨摂取量
-                isDeficient: vitaminD < 7 // ビタミンD不足の目安
-            });
-        }
-
-        setNutrients(nutrientItems);
     }, [initialData]);
 
     // 食品リストの更新ハンドラー
@@ -258,16 +211,27 @@ export function EnhancedRecognitionEditor({
         }
     };
 
-    // 低確信度の食品数を計算
-    const lowConfidenceFoodsCount = foods.filter(food => food.confidence !== undefined && food.confidence < 0.7).length;
+    // 栄養データをNutrientData形式に変換して表示用に準備
+    const convertToDisplayFormat = () => {
+        if (!initialData?.nutrition) return [];
 
-    // 見つからなかった食品の数（名前はあるが確信度がない食品）
-    const missingFoodsCount = foods.filter(food => food.name.trim() && (!food.confidence || food.confidence < 0.35)).length;
+        const getPercentageOfDaily = (value: number, target: number) => {
+            // 日々の推奨摂取量に対する割合を計算
+            return target > 0 ? value / target : 0;
+        };
 
-    // 信頼性スコアを取得（仮の実装）
-    const getReliabilityScore = (): number => {
-        // 実際のアプリケーションでは、より複雑な計算や StandardizedMealNutrition からの取得方法を実装すべき
-        return 0.8 - (lowConfidenceFoodsCount * 0.1);
+        // 重要な栄養素を抽出して表示用に変換
+        const importantNutrients = [
+            {
+                name: "カロリー",
+                unit: "kcal",
+                target: 2000, // 仮の値
+                value: initialData.nutrition.totalCalories
+            },
+            ...initialData.nutrition.totalNutrients
+        ];
+
+        return importantNutrients;
     };
 
     return (
@@ -284,26 +248,30 @@ export function EnhancedRecognitionEditor({
                 <FoodListEditor
                     foodItems={foods}
                     onFoodListChange={handleFoodListChange}
-                    editable={true}
                 />
 
                 {/* 栄養情報サマリー */}
                 <NutritionSummary
-                    nutrients={nutrients}
-                    reliabilityScore={getReliabilityScore()}
-                    missingFoodsCount={missingFoodsCount}
-                    lowConfidenceFoodsCount={lowConfidenceFoodsCount}
-                    initiallyExpanded={false}
+                    nutritionData={nutrition}
+                    reliabilityScore={nutrition.reliability?.confidence ? nutrition.reliability.confidence * 100 : undefined}
+                    missingFoodsCount={0}
+                    lowConfidenceFoodsCount={foods.filter(f => f.confidence && f.confidence < 0.7).length}
                 />
             </CardContent>
 
-            <CardFooter>
+            <CardFooter className="flex justify-end gap-2">
+                <Button
+                    variant="outline"
+                    onClick={() => router.back()}
+                >
+                    キャンセル
+                </Button>
                 <Button
                     onClick={handleSave}
-                    className="w-full sm:w-auto"
-                    disabled={foods.some(food => !food.name.trim()) || saving}
+                    disabled={saving || foods.length === 0}
+                    className="flex items-center gap-2"
                 >
-                    <Save className="mr-2 h-4 w-4" />
+                    <Save className="h-4 w-4" />
                     保存する
                 </Button>
             </CardFooter>

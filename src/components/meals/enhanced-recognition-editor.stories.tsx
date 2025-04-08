@@ -45,6 +45,9 @@ const mockInitialData: RecognitionData = {
             folatePercentage: (250 / 400) * 100,
             ironPercentage: (6.5 / 20) * 100,
             calciumPercentage: (300 / 800) * 100,
+        },
+        reliability: {
+            confidence: 0.85
         }
     }
 };
@@ -70,6 +73,9 @@ const mockLowConfidenceData: RecognitionData = {
             folatePercentage: (200 / 400) * 100,
             ironPercentage: (4.5 / 20) * 100,
             calciumPercentage: (250 / 800) * 100,
+        },
+        reliability: {
+            confidence: 0.6
         }
     }
 };
@@ -95,6 +101,9 @@ const mockDeficiencyData: RecognitionData = {
             folatePercentage: (150 / 400) * 100,
             ironPercentage: (2.5 / 20) * 100,
             calciumPercentage: (200 / 800) * 100,
+        },
+        reliability: {
+            confidence: 0.7
         }
     }
 };
@@ -110,6 +119,9 @@ const mockEmptyData: RecognitionData = {
             folatePercentage: 0,
             ironPercentage: 0,
             calciumPercentage: 0,
+        },
+        reliability: {
+            confidence: 0
         }
     }
 };

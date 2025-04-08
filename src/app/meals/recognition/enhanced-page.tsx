@@ -58,6 +58,9 @@ const mockRecognitionData: RecognitionData = {
             folatePercentage: (250 / 400) * 100,
             ironPercentage: (6.5 / 20) * 100,
             calciumPercentage: (300 / 800) * 100,
+        },
+        reliability: {
+            confidence: 0.9
         }
     }
 };
@@ -71,6 +74,9 @@ const emptyNutrition: StandardizedMealNutrition = {
         folatePercentage: 0,
         ironPercentage: 0,
         calciumPercentage: 0,
+    },
+    reliability: {
+        confidence: 0.8
     }
 };
 
@@ -139,6 +145,9 @@ export default function EnhancedRecognitionPage() {
                                 folatePercentage: (180 / 400) * 100,
                                 ironPercentage: (4.0 / 20) * 100,
                                 calciumPercentage: (150 / 800) * 100,
+                            },
+                            reliability: {
+                                confidence: 0.85
                             }
                         }
                     };

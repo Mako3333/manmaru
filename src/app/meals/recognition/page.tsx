@@ -48,19 +48,27 @@ const createNutrient = (name: string, value: number, unit: NutrientUnit): Nutrie
 
 // モックデータ (StandardizedMealNutrition 形式)
 const mockStandardizedNutrition: StandardizedMealNutrition = {
-    totalCalories: 450,
+    totalCalories: 650,
     totalNutrients: [
-        createNutrient('たんぱく質', 15, 'g'),
-        createNutrient('鉄分', 6.5, 'mg'),
-        createNutrient('葉酸', 250, 'mcg'),
-        createNutrient('カルシウム', 300, 'mg'),
-        createNutrient('ビタミンD', 3.5, 'mcg'),
+        { name: "タンパク質", value: 30, unit: "g", percentDailyValue: 60 },
+        { name: "脂質", value: 22, unit: "g", percentDailyValue: 33 },
+        { name: "炭水化物", value: 80, unit: "g", percentDailyValue: 27 },
+        { name: "食物繊維", value: 8, unit: "g", percentDailyValue: 32 },
+        { name: "糖質", value: 12, unit: "g", percentDailyValue: 13 },
+        { name: "ナトリウム", value: 800, unit: "mg", percentDailyValue: 35 },
+        { name: "カルシウム", value: 300, unit: "mg", percentDailyValue: 30 },
+        { name: "鉄分", value: 4, unit: "mg", percentDailyValue: 22 },
+        { name: "ビタミンA", value: 450, unit: "mcg", percentDailyValue: 50 },
+        { name: "ビタミンC", value: 80, unit: "mg", percentDailyValue: 88 },
     ],
     foodItems: [], // モックでは簡易的に空
     pregnancySpecific: {
         folatePercentage: (250 / 400) * 100,
         ironPercentage: (6.5 / 20) * 100,
         calciumPercentage: (300 / 800) * 100,
+    },
+    reliability: {
+        confidence: 0.9
     }
 };
 
@@ -183,7 +191,7 @@ export default function RecognitionPage() {
             ) : (
                 <div className="max-w-4xl mx-auto">
                     <RecognitionEditor
-                        initialData={mockLegacyRecognitionData}
+                        initialData={mockLegacyRecognitionData as any}
                         onSave={handleSave}
                         mealType={mealType}
                         mealDate={mealDate}
