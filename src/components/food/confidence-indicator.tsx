@@ -53,32 +53,31 @@ export const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
 
         return (
             <span
-                className={`inline-flex items-center rounded-full ${paddingClass[size]} ${sizeClasses[size]} font-medium bg-opacity-10 ${className}`}
-                style={{ backgroundColor: `${display.color}20`, color: display.color }}
+                className={`inline-flex items-center rounded-full ${paddingClass[size]} ${sizeClasses[size]} font-medium ${display.colorClass} bg-opacity-10 ${className}`}
             >
                 {showIcon && (
                     <span className="mr-1">
                         {display.icon === 'check-circle' && <CheckCircleIcon className="w-3.5 h-3.5" />}
-                        {display.icon === 'info' && <InformationCircleIcon className="w-3.5 h-3.5" />}
-                        {display.icon === 'alert-triangle' && <ExclamationTriangleIcon className="w-3.5 h-3.5" />}
+                        {display.icon === 'info-circle' && <InformationCircleIcon className="w-3.5 h-3.5" />}
+                        {display.icon === 'exclamation-circle' && <ExclamationTriangleIcon className="w-3.5 h-3.5" />}
                     </span>
                 )}
-                {showLabel && display.label}
+                {showLabel && display.message}
             </span>
         );
     }
 
     // バッジスタイルではない場合はシンプルな表示
     return (
-        <span className={`inline-flex items-center ${sizeClasses[size]} ${className}`} style={{ color: display.color }}>
+        <span className={`inline-flex items-center ${sizeClasses[size]} ${display.colorClass} ${className}`}>
             {showIcon && (
                 <span className="mr-1">
                     {display.icon === 'check-circle' && <CheckCircleIcon className="w-3.5 h-3.5" />}
-                    {display.icon === 'info' && <InformationCircleIcon className="w-3.5 h-3.5" />}
-                    {display.icon === 'alert-triangle' && <ExclamationTriangleIcon className="w-3.5 h-3.5" />}
+                    {display.icon === 'info-circle' && <InformationCircleIcon className="w-3.5 h-3.5" />}
+                    {display.icon === 'exclamation-circle' && <ExclamationTriangleIcon className="w-3.5 h-3.5" />}
                 </span>
             )}
-            {showLabel && display.label}
+            {showLabel && display.message}
         </span>
     );
 }; 

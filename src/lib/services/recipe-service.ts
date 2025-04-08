@@ -1,9 +1,10 @@
 //src\lib\services\recipe-service.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
+import { AppError, ErrorCode } from '@/lib/error';
 import { validateUrl } from '@/lib/validation/response-validators';
 import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 export class RecipeService {
     /**
@@ -40,28 +41,32 @@ export class RecipeService {
 
             if (error) {
                 if (error.code === 'PGRST116') {
-                    throw new ApiError(
-                        `レシピが見つかりません: ${recipeId}`,
-                        ErrorCode.DATA_NOT_FOUND,
-                        'レシピが見つかりませんでした',
-                        404
-                    );
+                    throw new AppError({
+                        code: ErrorCode.Base.DATA_NOT_FOUND,
+                        message: `レシピが見つかりません: ${recipeId}`,
+                        userMessage: 'レシピが見つかりませんでした',
+                        details: error,
+                        severity: 'error',
+                        suggestions: ['レシピIDを確認してください']
+                    });
                 }
-                throw new ApiError(
-                    `レシピ取得エラー: ${error.message}`,
-                    ErrorCode.API_ERROR,
-                    'レシピの取得中にエラーが発生しました',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `レシピ取得エラー: ${error.message}`,
+                    userMessage: 'レシピの取得中にエラーが発生しました',
+                    details: error,
+                    severity: 'error'
+                });
             }
 
             if (!recipe) {
-                throw new ApiError(
-                    `レシピが見つかりません: ${recipeId}`,
-                    ErrorCode.DATA_NOT_FOUND,
-                    'レシピが見つかりませんでした',
-                    404
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_NOT_FOUND,
+                    message: `レシピが見つかりません: ${recipeId}`,
+                    userMessage: 'レシピが見つかりませんでした',
+                    details: { recipeId },
+                    severity: 'error'
+                });
             }
 
             // 栄養データを標準化フォーマットに変換
@@ -76,14 +81,15 @@ export class RecipeService {
 
             return recipe;
         } catch (error) {
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            throw new ApiError(
-                `レシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.API_ERROR,
-                'レシピの取得中にエラーが発生しました',
-                500
-            );
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: `レシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'レシピの取得中にエラーが発生しました',
+                details: error,
+                severity: 'error'
+            });
         }
     }
 
@@ -127,12 +133,14 @@ export class RecipeService {
                 .single();
 
             if (error) {
-                throw new ApiError(
-                    `お気に入り更新エラー: ${error.message}`,
-                    ErrorCode.API_ERROR,
-                    'お気に入り状態の更新中にエラーが発生しました',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `お気に入り更新エラー: ${error.message}`,
+                    userMessage: 'お気に入り状態の更新中にエラーが発生しました',
+                    details: error,
+                    severity: 'error',
+                    suggestions: ['しばらく経ってからもう一度お試しください']
+                });
             }
 
             // 状態を反転
@@ -148,12 +156,14 @@ export class RecipeService {
                 .single();
 
             if (toggleError) {
-                throw new ApiError(
-                    `お気に入り更新エラー: ${toggleError.message}`,
-                    ErrorCode.API_ERROR,
-                    'お気に入り状態の更新中にエラーが発生しました',
-                    500
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `お気に入り更新エラー: ${toggleError.message}`,
+                    userMessage: 'お気に入り状態の更新中にエラーが発生しました',
+                    details: toggleError,
+                    severity: 'error',
+                    suggestions: ['しばらく経ってからもう一度お試しください']
+                });
             }
 
             return {
@@ -161,14 +171,16 @@ export class RecipeService {
                 isFavorite: finalRecipe.is_favorite
             };
         } catch (error) {
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            throw new ApiError(
-                `お気に入り更新エラー: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.API_ERROR,
-                'お気に入り状態の更新中にエラーが発生しました',
-                500
-            );
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: `お気に入り更新エラー: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'お気に入り状態の更新中にエラーが発生しました',
+                details: error,
+                severity: 'error',
+                suggestions: ['しばらく経ってからもう一度お試しください']
+            });
         }
     }
 
@@ -179,12 +191,12 @@ export class RecipeService {
         try {
             // URLの妥当性チェック
             if (!url || !validateUrl(url)) {
-                throw new ApiError(
-                    '無効なURL',
-                    ErrorCode.DATA_VALIDATION_ERROR,
-                    '有効なURLを入力してください',
-                    400
-                );
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: '無効なURL',
+                    userMessage: '有効なURLを入力してください',
+                    severity: 'warning'
+                });
             }
 
             // URLのドメインを確認
@@ -192,18 +204,30 @@ export class RecipeService {
 
             // ソーシャルメディアの判断
             let platform = '';
-            let contentId = '';
+            let contentId: string | undefined = '';
 
             if (url.includes('instagram.com')) {
                 platform = 'instagram';
                 // Instagram IDの抽出
                 const match = url.match(/instagram\.com\/(?:p|reel)\/([^\/\?]+)/);
-                contentId = match ? match[1] : '';
+                contentId = match ? match[1] : undefined;
             } else if (url.includes('tiktok.com')) {
                 platform = 'tiktok';
                 // TikTok IDの抽出
-                const match = url.match(/tiktok\.com\/@[^\/]+\/video\/(\d+)/);
-                contentId = match ? match[1] : '';
+                const match = url.match(/tiktok\.com\/[@\w]+\/video\/(\d+)/);
+                contentId = match ? match[1] : undefined;
+            } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                platform = 'youtube';
+                // YouTube IDの抽出
+                const match = url.includes('youtu.be')
+                    ? url.match(/youtu\.be\/([^\/\?]+)/)
+                    : url.match(/youtube\.com\/watch\?v=([^&]+)/);
+                contentId = match ? match[1] : undefined;
+            } else if (url.includes('pinterest.com') || url.includes('pin.it')) {
+                platform = 'pinterest';
+                // Pinterest IDの抽出
+                const match = url.match(/pinterest\.com\/pin\/(\d+)/);
+                contentId = match ? match[1] : undefined;
             } else if (domain.includes('cookpad.com')) {
                 platform = 'cookpad';
                 // クックパッドIDの抽出
@@ -220,10 +244,13 @@ export class RecipeService {
 
             // コンテンツIDがない場合はエラー（ソーシャルの場合のみ）
             if ((platform === 'instagram' || platform === 'tiktok') && !contentId) {
-                throw new ApiError(
+                throw new AppError(
                     'URLからコンテンツIDを抽出できませんでした',
                     ErrorCode.DATA_VALIDATION_ERROR,
                     '正しいSNS投稿URLを入力してください',
+                    {},
+                    'error',
+                    [],
                     400
                 );
             }
@@ -234,19 +261,25 @@ export class RecipeService {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 },
             }).catch(error => {
-                throw new ApiError(
+                throw new AppError(
                     `URLからのデータ取得エラー: ${error.message}`,
                     ErrorCode.API_REQUEST_FAILED,
                     'URLからデータを取得できませんでした',
+                    {},
+                    'error',
+                    [],
                     400
                 );
             });
 
             if (!response || !response.ok) {
-                throw new ApiError(
+                throw new AppError(
                     `URLからのデータ取得に失敗しました (${response?.status || 'Unknown'})`,
                     ErrorCode.API_REQUEST_FAILED,
                     'URLからデータを取得できませんでした',
+                    {},
+                    'error',
+                    [],
                     400
                 );
             }
@@ -293,14 +326,15 @@ export class RecipeService {
 
             return recipeData;
         } catch (error) {
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            throw new ApiError(
-                `レシピ解析エラー: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCode.RECIPE_PROCESSING_ERROR,
-                'レシピの解析中にエラーが発生しました',
-                500
-            );
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: `レシピ解析エラー: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'レシピの解析中にエラーが発生しました',
+                details: error,
+                severity: 'error'
+            });
         }
     }
 
@@ -350,10 +384,13 @@ export class RecipeService {
             const { data: recipes, error, count } = await query;
 
             if (error) {
-                throw new ApiError(
+                throw new AppError(
                     `お気に入りレシピ取得エラー: ${error.message}`,
                     ErrorCode.API_ERROR,
                     'お気に入りレシピの取得中にエラーが発生しました',
+                    {},
+                    'error',
+                    [],
                     500
                 );
             }
@@ -368,12 +405,15 @@ export class RecipeService {
                 }
             };
         } catch (error) {
-            if (error instanceof ApiError) throw error;
+            if (error instanceof AppError) throw error;
 
-            throw new ApiError(
+            throw new AppError(
                 `お気に入りレシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
                 ErrorCode.API_ERROR,
                 'お気に入りレシピの取得中にエラーが発生しました',
+                {},
+                'error',
+                [],
                 500
             );
         }

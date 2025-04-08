@@ -36,14 +36,14 @@ export class FoodInputParser {
 
         const normalizedInput = input.trim();
 
-        // パターン1: "食品名 100g" または "食品名　100g"
+        // パターン1: "食品名 100g"（スペース区切り）
         const spacePattern = /^(.+?)[\s　]+([0-9０-９]+\.?[0-9０-９]*\s*[a-zA-Zａ-ｚＡ-Ｚ一-龠々ぁ-ヶ]+)$/;
         const spaceMatch = spacePattern.exec(normalizedInput);
 
-        if (spaceMatch) {
+        if (spaceMatch?.[1] && spaceMatch?.[2]) {
             return {
-                foodName: spaceMatch[1].trim(),
-                quantityText: spaceMatch[2].trim(),
+                foodName: spaceMatch[1]!.trim(),
+                quantityText: spaceMatch[2]!.trim(),
                 confidence: 0.9
             };
         }
@@ -52,10 +52,10 @@ export class FoodInputParser {
         const parenthesesPattern = /^(.+?)[\(（]([0-9０-９]+\.?[0-9０-９]*\s*[a-zA-Zａ-ｚＡ-Ｚ一-龠々ぁ-ヶ]+)[\)）]$/;
         const parenthesesMatch = parenthesesPattern.exec(normalizedInput);
 
-        if (parenthesesMatch) {
+        if (parenthesesMatch?.[1] && parenthesesMatch?.[2]) {
             return {
-                foodName: parenthesesMatch[1].trim(),
-                quantityText: parenthesesMatch[2].trim(),
+                foodName: parenthesesMatch[1]!.trim(),
+                quantityText: parenthesesMatch[2]!.trim(),
                 confidence: 0.9
             };
         }
@@ -64,12 +64,12 @@ export class FoodInputParser {
         const noSpacePattern = /^(.+?)([0-9０-９]+\.?[0-9０-９]*\s*[a-zA-Zａ-ｚＡ-Ｚ一-龠々ぁ-ヶ]+)$/;
         const noSpaceMatch = noSpacePattern.exec(normalizedInput);
 
-        if (noSpaceMatch) {
+        if (noSpaceMatch?.[1] && noSpaceMatch?.[2]) {
             // 食品名の部分が実際にマッチするか確認
-            const possibleFoodName = noSpaceMatch[1].trim();
+            const possibleFoodName = noSpaceMatch[1]!.trim();
 
             // 量の部分
-            const quantityText = noSpaceMatch[2].trim();
+            const quantityText = noSpaceMatch[2]!.trim();
 
             // このパターンは曖昧なので確信度を下げる
             return {
@@ -83,10 +83,10 @@ export class FoodInputParser {
         const quantityFirstPattern = /^([0-9０-９]+\.?[0-9０-９]*\s*[a-zA-Zａ-ｚＡ-Ｚ一-龠々ぁ-ヶ]+)(.+?)$/;
         const quantityFirstMatch = quantityFirstPattern.exec(normalizedInput);
 
-        if (quantityFirstMatch) {
+        if (quantityFirstMatch?.[1] && quantityFirstMatch?.[2]) {
             return {
-                foodName: quantityFirstMatch[2].trim(),
-                quantityText: quantityFirstMatch[1].trim(),
+                foodName: quantityFirstMatch[2]!.trim(),
+                quantityText: quantityFirstMatch[1]!.trim(),
                 confidence: 0.7
             };
         }
@@ -126,7 +126,7 @@ export class FoodInputParser {
      */
     static generateNameQuantityPairs(
         parseResults: FoodInputParseResult[]
-    ): Array<{ name: string; quantity?: string }> {
+    ): Array<{ name: string; quantity?: string | undefined }> {
         return parseResults.map(result => ({
             name: result.foodName,
             quantity: result.quantityText || undefined

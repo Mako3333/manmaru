@@ -1,4 +1,4 @@
-import { AppError, ErrorCode } from '../errors/app-errors';
+import { AppError, ErrorCode } from '@/lib/error';
 
 /**
  * リクエストデータ検証の結果型

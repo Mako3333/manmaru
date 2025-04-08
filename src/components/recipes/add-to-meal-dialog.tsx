@@ -163,7 +163,11 @@ export function AddToMealDialog({ isOpen, onClose, recipe }: AddToMealDialogProp
                                 max={2}
                                 step={0.25}
                                 value={[portionSize]}
-                                onValueChange={(values: number[]) => setPortionSize(values[0])}
+                                onValueChange={(values: number[]) => {
+                                    if (values.length > 0 && values[0] !== undefined) {
+                                        setPortionSize(values[0]);
+                                    }
+                                }}
                             />
                             <div className="flex justify-between text-xs text-gray-500">
                                 <span>少なめ</span>

@@ -7,8 +7,7 @@ import {
 } from './food-matching-service';
 import { FoodRepository } from './food-repository';
 import { FoodRepositoryFactory, FoodRepositoryType } from './food-repository-factory';
-import { AppError, ErrorCode } from '@/lib/errors/app-errors';
-import { FoodMatchingErrorHandler } from './food-matching-error-handler';
+import { AppError, ErrorCode } from '@/lib/error';
 
 /**
  * 食品マッチングサービスの実装

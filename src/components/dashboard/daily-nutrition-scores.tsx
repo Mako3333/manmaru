@@ -161,7 +161,7 @@ export default function DailyNutritionScores({ userId }: DailyNutritionScoresPro
             <h3 className="text-base font-medium mt-6 mb-3">栄養素別の達成状況</h3>
 
             {/* 最新日のデータを使用 */}
-            {scores.length > 0 && (
+            {scores.length > 0 && scores[0]?.nutrients && (
                 <div className="space-y-3">
                     {Object.entries(scores[0].nutrients).map(([nutrient, data]) => {
                         const nutrientNames: Record<string, string> = {

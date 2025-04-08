@@ -50,8 +50,12 @@ export const ManualIngredientsForm: React.FC<ManualIngredientsFormProps> = ({
     // 材料の量の更新
     const updateIngredientQuantity = (index: number, quantity: string) => {
         const newIngredients = [...ingredients];
-        newIngredients[index] = { ...newIngredients[index], quantity };
-        onChange(newIngredients);
+        const currentIngredient = newIngredients[index];
+        if (currentIngredient) {
+            // nameプロパティは元の値を保持する
+            newIngredients[index] = { ...currentIngredient, quantity };
+            onChange(newIngredients);
+        }
     };
 
     // 人数の変更

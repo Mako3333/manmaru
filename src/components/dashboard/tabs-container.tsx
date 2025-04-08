@@ -15,7 +15,7 @@ interface TabsContainerProps {
 }
 
 export default function TabsContainer({ tabList, contentMap, defaultTab }: TabsContainerProps) {
-    const [activeTab, setActiveTab] = useState<string>(defaultTab || tabList[0].id);
+    const [activeTab, setActiveTab] = useState<string>(defaultTab || (tabList?.[0]?.id ?? ''));
 
     return (
         <Tabs

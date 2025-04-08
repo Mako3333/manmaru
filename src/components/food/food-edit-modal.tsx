@@ -3,6 +3,7 @@ import { XMarkIcon } from '@heroicons/react/20/solid';
 import { ConfidenceIndicator } from './confidence-indicator';
 import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 import debounce from 'lodash/debounce';
+import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 
 export interface FoodItem {
     /** 食品ID */
@@ -10,7 +11,7 @@ export interface FoodItem {
     /** 食品名 */
     name: string;
     /** 食品量（テキスト表現） */
-    quantity?: string;
+    quantity?: string | undefined;
     /** マッチング確信度 */
     confidence?: number;
     /** カテゴリ */
@@ -67,13 +68,14 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
 
             setIsSearching(true);
             try {
-                const matchingService = FoodMatchingServiceFactory.getService();
-                const results = await matchingService.searchFoodsByName(query);
+                // 食品リポジトリを使用して検索
+                const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
+                const results = await foodRepo.searchFoodsByFuzzyMatch(query, 5);
                 setSearchResults(results.map(result => ({
-                    id: result.matchedFood.id,
-                    name: result.matchedFood.name,
-                    confidence: result.confidence,
-                    category: result.matchedFood.category
+                    id: result.food.id,
+                    name: result.food.name,
+                    confidence: result.similarity,
+                    category: result.food.category
                 })));
             } catch (error) {
                 console.error('食品検索エラー:', error);
@@ -91,12 +93,14 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
 
     // 更新ハンドラー
     const handleUpdate = () => {
-        onUpdate({
-            id: food.id,
+        const updatedFood: FoodItem = {
             name: foodName,
-            quantity,
-            category: food.category
-        });
+            quantity: quantity || undefined,
+            ...(food.id !== undefined && { id: food.id }),
+            ...(food.category !== undefined && { category: food.category }),
+            ...(food.confidence !== undefined && { confidence: food.confidence })
+        };
+        onUpdate(updatedFood);
         onClose();
     };
 
@@ -104,11 +108,12 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
     const selectSearchResult = (result: FoodItem) => {
         setFoodName(result.name);
         // 食品IDも更新するため、onUpdateを呼び出す前に更新対象の食品を作成
-        const updatedFood = {
-            id: result.id,
+        const updatedFood: FoodItem = {
             name: result.name,
             quantity,
-            category: result.category
+            ...(result.id !== undefined && { id: result.id }),
+            ...(result.category !== undefined && { category: result.category }),
+            ...(result.confidence !== undefined && { confidence: result.confidence })
         };
         onUpdate(updatedFood);
         onClose();

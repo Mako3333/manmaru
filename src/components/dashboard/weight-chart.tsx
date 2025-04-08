@@ -115,7 +115,7 @@ export default function WeightChart({ userId }: WeightChartProps) {
     }
 
     // 直近の体重
-    const latestWeight = weightData[weightData.length - 1].weight;
+    const latestWeight = weightData.length > 0 ? weightData[weightData.length - 1]!.weight : 0;
     const weightGain = prePregnancyWeight ? calculateWeightGain(latestWeight) : null;
 
     return (
@@ -198,9 +198,9 @@ export default function WeightChart({ userId }: WeightChartProps) {
                     <div className="absolute left-0 right-0 bottom-0 flex justify-between text-xs text-gray-500">
                         {weightData.length > 5 ? (
                             <>
-                                <span>{formatShortDate(weightData[0].recorded_date)}</span>
-                                <span>{formatShortDate(weightData[Math.floor(weightData.length / 2)].recorded_date)}</span>
-                                <span>{formatShortDate(weightData[weightData.length - 1].recorded_date)}</span>
+                                <span>{formatShortDate(weightData[0]!.recorded_date)}</span>
+                                <span>{formatShortDate(weightData[Math.floor(weightData.length / 2)]!.recorded_date)}</span>
+                                <span>{formatShortDate(weightData[weightData.length - 1]!.recorded_date)}</span>
                             </>
                         ) : (
                             weightData.map(record => (

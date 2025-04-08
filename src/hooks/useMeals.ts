@@ -7,7 +7,7 @@ import {
     getMealSummaryByDateRange
 } from '@/lib/supabase/client';
 import { Meal, MealCreateData, MealWithNutrients, DailyMealSummary } from '@/types/meal';
-import { formatDate } from '@/lib/utils/date';
+import { formatDate } from '@/lib/date-utils';
 
 /**
  * 食事データを管理するためのカスタムフック
@@ -56,7 +56,7 @@ export const useMeals = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const formattedDate = formatDate(date);
+            const formattedDate = formatDate(new Date(date));
             const mealsData = await getMealsByDate(formattedDate);
             setMeals(mealsData);
         } catch (err) {
@@ -75,7 +75,7 @@ export const useMeals = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const formattedDate = formatDate(date);
+            const formattedDate = formatDate(new Date(date));
             const mealsData = await getMealsWithNutrientsByDate(formattedDate);
             setMealsWithNutrients(mealsData);
         } catch (err) {
@@ -95,8 +95,8 @@ export const useMeals = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const formattedStartDate = formatDate(startDate);
-            const formattedEndDate = formatDate(endDate);
+            const formattedStartDate = formatDate(new Date(startDate));
+            const formattedEndDate = formatDate(new Date(endDate));
             const summaries = await getMealSummaryByDateRange(formattedStartDate, formattedEndDate);
             setDailySummaries(summaries);
         } catch (err) {
@@ -123,8 +123,9 @@ export const useMeals = () => {
 
         // 各ミールをタイプごとに分類
         mealsData.forEach(meal => {
-            if (meal.meal_type && grouped[meal.meal_type]) {
-                grouped[meal.meal_type].push(meal);
+            const mealType = meal.meal_type;
+            if (mealType && grouped[mealType]) {
+                grouped[mealType].push(meal);
             }
         });
 
