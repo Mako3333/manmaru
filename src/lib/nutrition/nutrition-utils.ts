@@ -371,28 +371,41 @@ export function prepareForApiRequest(standardizedData: StandardizedMealData) {
  */
 export function safeConvertNutritionData(
     sourceData: any,
-    sourceType: 'nutrient' | 'standard' | 'old' = 'nutrient'
+    sourceType: 'nutrient' | 'standard' | 'old' | null
 ): NutritionData {
     try {
-        if (!sourceData) {
-            throw new Error('変換元データがnullまたはundefined');
+        // sourceType が null の場合や、sourceData が null/undefined の場合の処理を明確化
+        if (sourceData === null || sourceData === undefined) {
+            // 'nutrient' タイプとして空データを返す意図であれば、エラーログは出さない
+            if (sourceType === 'nutrient') {
+                // console.log('safeConvertNutritionData: sourceData is null/undefined, returning empty nutrient data.'); // デバッグ用
+                return createEmptyNutritionData();
+            } else {
+                // 他のタイプや sourceType が null の場合はエラーとして扱う
+                throw new Error('変換元データがnullまたはundefined、または不正なsourceTypeです');
+            }
         }
 
         switch (sourceType) {
             case 'nutrient':
-                return createEmptyNutritionData();
+                // sourceData が null でない場合の 'nutrient' タイプは通常ありえないはずだが、
+                // もし意図があるならその処理、なければエラー
+                console.warn(`safeConvertNutritionData called with non-null sourceData for type 'nutrient'`);
+                return createEmptyNutritionData(); // 一旦空を返す
             case 'standard':
-                return convertToLegacyNutrition(sourceData);
+                // sourceData が StandardizedMealNutrition 型であることを期待
+                return convertToLegacyNutrition(sourceData as StandardizedMealNutrition);
             case 'old':
+                // sourceData が古い型であることを期待
                 return convertOldToNutritionData(sourceData);
             default:
-                throw new Error(`未知の変換タイプ: ${sourceType}`);
+                throw new Error(`未知またはnullの変換タイプ: ${sourceType}`);
         }
     } catch (error) {
-        console.error(`栄養データ変換エラー (${sourceType}):`, error, {
+        // エラーログの出力は維持
+        console.error(`栄養データ変換エラー (type: ${sourceType}):`, error, {
             sourceData: JSON.stringify(sourceData).substring(0, 200) + '...'
         });
-
         // 型に準拠した最小限のデータを返却
         return createEmptyNutritionData();
     }

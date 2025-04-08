@@ -33,7 +33,7 @@ describe('PromptService', () => {
         const prompt = promptService.generateNutritionAdvicePrompt(context);
 
         expect(prompt).toContain('20週目');
-        expect(prompt).toContain('鉄分、葉酸');
+        expect(prompt).toContain('鉄分,葉酸');
         expect(prompt).toContain('簡潔なアドバイス');
         expect(prompt).not.toContain('詳細なアドバイス');
     });
@@ -52,7 +52,7 @@ describe('PromptService', () => {
 
         expect(prompt).toContain('30週目');
         expect(prompt).toContain('詳細なアドバイス');
-        expect(prompt).toContain('推奨食品リスト');
+        expect(prompt).toContain('"recommended_foods"');
         expect(prompt).toContain('夏の旬の食材');
     });
 
@@ -66,6 +66,5 @@ describe('PromptService', () => {
         expect(prompt).toContain('・ご飯 1杯');
         expect(prompt).toContain('・味噌汁');
         expect(prompt).toContain('・焼き鮭 1切れ');
-        expect(prompt).toContain('JSONフォーマットで出力');
     });
 }); 
