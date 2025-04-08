@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandling } from '@/lib/api/middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
@@ -9,7 +9,7 @@ import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { ApiResponse } from '@/types/api';
 import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -97,8 +97,6 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
 
         // 標準形式の栄養データを取得
         const standardizedNutrition = nutritionResult.nutrition;
-        // レガシー形式も生成 (後方互換性のため)
-        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
 
         // 結果を返却
         let warningMessage;
@@ -113,8 +111,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
             nutritionResult: {
                 nutrition: standardizedNutrition,
                 reliability: nutritionResult.reliability,
-                matchResults: nutritionResult.matchResults,
-                legacyNutrition: legacyNutrition // 生成したレガシー形式を設定
+                matchResults: nutritionResult.matchResults
             },
             recognitionConfidence: analysisResult.confidence, // AIの信頼度を使用
             aiEstimatedNutrition: analysisResult.estimatedNutrition, // AI推定栄養素を追加
@@ -143,5 +140,5 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => 
  * プリフライトリクエスト対応
  */
 export const OPTIONS = withErrorHandling(async () => {
-    return { success: true, data: { message: 'OK' } };
+    return NextResponse.json({ success: true, data: { message: 'OK' } });
 }); 

@@ -105,7 +105,6 @@ export interface NutritionResult {
     nutrition: import('@/types/nutrition').StandardizedMealNutrition;
     reliability: NutritionReliability;
     matchResults?: any[];
-    legacyNutrition?: NutritionData; // 後方互換性のために残す
 }
 
 // 食事解析結果インターフェース

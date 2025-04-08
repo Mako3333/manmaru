@@ -5,10 +5,9 @@ import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repos
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 import { AppError, ErrorOptions } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import type { ApiResponse } from '@/types/api';
 import type { RecipeAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition, convertToLegacyNutrition, createStandardizedMealNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToStandardizedNutrition, createStandardizedMealNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
 import { IAIService } from '@/lib/ai/ai-service.interface';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
@@ -36,7 +35,7 @@ const requestSchema = z.object({
  * レシピ解析API v2
  * ハイブリッドアプローチ: 専用パーサー優先、AIフォールバック
  */
-export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiResponse<any>> => {
+export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResponse> => {
     const requestData = await req.json();
     try {
         const validatedData = requestSchema.parse(requestData);
@@ -216,14 +215,10 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
         // 7. 結果の整形と返却 - 共通処理
         const standardizedNutrition = nutritionResult.nutrition;
         let standardizedPerServing: StandardizedMealNutrition | undefined;
-        let legacyPerServing: any | undefined;
 
         if (servingsNum > 0 && standardizedNutrition) {
             // 1人前計算ロジック (省略のためコメントアウト)
             // standardizedPerServing = { ... };
-            if (standardizedPerServing) { // standardizedPerServing が計算された場合のみ実行
-                legacyPerServing = convertToLegacyNutrition(standardizedPerServing);
-            }
         }
 
         let warningMessage;
@@ -234,22 +229,19 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
             warningMessage = (warningMessage ? warningMessage + ' ' : '') + 'AIによる解析のため、精度が低い可能性があります。';
         }
 
-        return {
+        return NextResponse.json({
             success: true,
             data: {
                 recipe: {
                     title: recipeTitle,
                     servings: servingsString,
-                    ingredients: nameQuantityPairs, // nameQuantityPairs を返すように修正
+                    ingredients: nameQuantityPairs,
                     sourceUrl: url
                 },
                 nutritionResult: {
                     nutrition: standardizedNutrition,
                     reliability: nutritionResult.reliability,
-                    matchResults: nutritionResult.matchResults,
-                    legacyNutrition: standardizedNutrition ? convertToLegacyNutrition(standardizedNutrition) : undefined,
-                    perServing: standardizedPerServing,
-                    legacyPerServing: legacyPerServing
+                    matchResults: nutritionResult.matchResults
                 }
             },
             meta: {
@@ -257,7 +249,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
                 analysisSource: analysisSource,
                 ...(warningMessage ? { warning: warningMessage } : {})
             }
-        };
+        });
 
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -284,5 +276,5 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<ApiRespo
  * プリフライトリクエスト対応
  */
 export const OPTIONS = withErrorHandling(async () => {
-    return { success: true, data: { message: 'OK' } };
+    return NextResponse.json({ success: true, data: { message: 'OK' } });
 }); 

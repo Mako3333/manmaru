@@ -5,7 +5,6 @@ import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-facto
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { z } from 'zod';
-import { convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { parseFoodInputText, FoodParseServiceResult } from '@/lib/food/food-parsing-service';
 
 // リクエストの検証スキーマ
@@ -83,18 +82,6 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         }
 
         const standardizedNutrition = nutritionResult.nutrition;
-        let legacyNutrition;
-        try {
-            legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
-        } catch (conversionError) {
-            // console.error('Error converting nutrition data to legacy format:', conversionError);
-            throw new AppError({
-                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                message: `Error converting to legacy nutrition format: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`,
-                userMessage: '計算結果の表示形式への変換中に問題が発生しました。',
-                originalError: conversionError instanceof Error ? conversionError : undefined
-            });
-        }
 
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
@@ -116,10 +103,8 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 nutritionResult: {
                     nutrition: standardizedNutrition,
                     reliability: nutritionResult.reliability,
-                    matchResults: nutritionResult.matchResults,
-                    legacyNutrition: legacyNutrition
+                    matchResults: nutritionResult.matchResults
                 },
-                nutrition: legacyNutrition,
                 ...aiSpecificData
             },
             meta: {
