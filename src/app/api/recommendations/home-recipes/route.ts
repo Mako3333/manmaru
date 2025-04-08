@@ -15,11 +15,8 @@ interface Recipe {
 }
 
 export async function GET() {
-    console.log('[home-recipes] Test 4: Fetch recently_used');
     try {
         const cookieStore = await cookies();
-        console.log('[home-recipes] cookies() called successfully');
-
         const supabase = createServerClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -37,97 +34,137 @@ export async function GET() {
                 },
             }
         );
-        console.log('[home-recipes] Supabase client initialized');
-
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.log('[home-recipes] getSession() called');
 
         if (sessionError) {
-            console.error('[home-recipes] Error getting session:', sessionError);
+            console.error('Error getting session:', sessionError); // セッションエラーログは残す
         }
-        console.log('[home-recipes] Session data:', session);
 
         if (!session) {
-            console.log('[home-recipes] No session found, returning 401');
-            // return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            // テストのためモックを返す
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // 1. クリップデータの取得
-        console.log('[home-recipes] Getting clipped recipes for user:', session?.user.id);
+        // 1. clipped_recipes のデータ取得
         const { data: clippedRecipes, error: clippedError } = await supabase
             .from('clipped_recipes')
             .select('*')
-            .eq('user_id', session?.user.id || '')
+            .eq('user_id', session.user.id)
             .order('clipped_at', { ascending: false });
 
         if (clippedError) {
-            console.error('[home-recipes] Error fetching clipped recipes:', clippedError);
-            // エラーが発生しても、テストのためモックデータを返す
-        } else {
-            console.log('[home-recipes] Found', clippedRecipes?.length || 0, 'clipped recipes');
+            console.error('Error fetching clipped recipes:', clippedError); // DBエラーログは残す
+            return NextResponse.json({ status: 'no_clips', recipes: [], total_clips: 0 });
         }
 
-        // 2. 最近使用したレシピの取得を元に戻す
-        console.log('[home-recipes] Getting recently used recipes for user:', session?.user.id);
+        // 2. meal_recipe_entries の取得と recentlyUsedIds の作成
         const { data: recentlyUsed, error: recentError } = await supabase
             .from('meal_recipe_entries')
             .select('clipped_recipe_id')
-            .eq('user_id', session?.user.id || '') // sessionがない場合もエラー回避
+            .eq('user_id', session.user.id)
             .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
 
         if (recentError) {
-            console.error('[home-recipes] Error fetching recently used recipes:', recentError);
-            // エラーがあっても処理を続行（最近使用したレシピがないだけと扱う）
-        } else {
-            console.log('[home-recipes] Found', recentlyUsed?.length || 0, 'recently used recipe entries');
+            console.error('Error fetching recently used recipes:', recentError); // DBエラーログは残す
+            // エラーがあっても処理を続行（最近使用なしとして扱う）
         }
 
-        // recentlyUsedIds の作成を元に戻す
-        let recentlyUsedIds: Set<string>;
+        let recentlyUsedIds = new Set<string>();
         try {
             recentlyUsedIds = new Set(
                 (recentlyUsed || [])
                     .filter(item => item && item.clipped_recipe_id)
                     .map(item => item.clipped_recipe_id)
             );
-            console.log('[home-recipes] recentlyUsedIds size:', recentlyUsedIds.size);
-            // console.log('[home-recipes] recentlyUsedIds content:', Array.from(recentlyUsedIds));
         } catch (error) {
-            console.error('[home-recipes] Error creating recentlyUsedIds:', error);
-            recentlyUsedIds = new Set(); // エラー時は空にする
+            console.error('Error creating recentlyUsedIds:', error); // ID作成エラーログは残す
+            // エラーが発生しても空のSetで続行
         }
 
+        // 3. レコメンドロジック
+        let recommendedRecipes: Recipe[] = [];
+        const recipes = (clippedRecipes || []) as Recipe[];
+        const clippedCount = recipes.length;
 
-        // 3. レコメンドロジックはまだコメントアウト
-        // ...
+        if (clippedCount === 0) {
+            return NextResponse.json({ status: 'no_clips', recipes: [] });
+        } else if (clippedCount < 5) {
+            if (recipes[0]) {
+                recommendedRecipes = [recipes[0]];
+            }
+            return NextResponse.json({ status: 'few_clips', recipes: recommendedRecipes });
+        } else if (clippedCount < 10) {
+            let availableRecipes = recipes.filter(r => r && !recentlyUsedIds.has(r.id));
+            if (availableRecipes.length === 0) availableRecipes = recipes.filter(r => r); // fallback
+            const favoriteRecipes = availableRecipes.filter(r => r && r.is_favorite === true);
 
-        // 固定のJSONレスポンスを返す
-        const mockRecipes = [
-            { id: 'mock1', title: 'Mock Recipe 1', image_url: '/placeholder.png', is_favorite: false },
-            { id: 'mock2', title: 'Mock Recipe 2', image_url: '/placeholder.png', is_favorite: true },
-        ];
+            if (favoriteRecipes.length >= 2) {
+                recommendedRecipes = shuffleArray(favoriteRecipes).slice(0, 2);
+            } else if (favoriteRecipes.length === 1) {
+                recommendedRecipes = [...favoriteRecipes];
+                const nonFavorites = availableRecipes.filter(r => r && !r.is_favorite);
+                if (nonFavorites.length > 0) {
+                    const recipeToAdd = nonFavorites[0];
+                    if (recipeToAdd) {
+                        recommendedRecipes.push(recipeToAdd);
+                    }
+                } else if (availableRecipes.length > 1) { // fallback if only favorite exists
+                    const otherAvailable = availableRecipes.filter(r => r.id !== favoriteRecipes[0]?.id);
+                    if (otherAvailable.length > 0) {
+                        const recipeToAdd = otherAvailable[0];
+                        if (recipeToAdd) {
+                            recommendedRecipes.push(recipeToAdd);
+                        }
+                    }
+                }
+            } else {
+                recommendedRecipes = availableRecipes.slice(0, Math.min(2, availableRecipes.length));
+            }
+            return NextResponse.json({ status: 'few_more_clips', recipes: recommendedRecipes, total_clips: clippedCount });
+        } else { // clippedCount >= 10
+            let availableRecipes = recipes.filter(r => r && !recentlyUsedIds.has(r.id));
+            if (availableRecipes.length === 0) availableRecipes = recipes.filter(r => r); // fallback
+            const favoriteRecipes = availableRecipes.filter(r => r && r.is_favorite === true);
 
-        console.log('[home-recipes] Returning mock data');
-        return NextResponse.json({
-            status: 'enough_clips', // 仮のステータス
-            recipes: mockRecipes,
-            total_clips: 2 // 仮の件数
-        });
+            if (favoriteRecipes.length >= 4) {
+                recommendedRecipes = shuffleArray(favoriteRecipes).slice(0, 4);
+            } else {
+                const recipesCount = availableRecipes.length;
+                if (recipesCount > 0) {
+                    const step = Math.max(1, Math.floor(recipesCount / 4));
+                    recommendedRecipes = [0, 1, 2, 3].map(i => availableRecipes[Math.min(i * step, recipesCount - 1)])
+                        .filter((r): r is Recipe => !!r); // filter out undefined
+                } else {
+                    recommendedRecipes = [];
+                }
+            }
+            return NextResponse.json({ status: 'enough_clips', recipes: recommendedRecipes, total_clips: clippedCount });
+        }
 
     } catch (error) {
-        console.error('[home-recipes] Test 4 Error:', error);
-        // エラーの詳細を出力
+        console.error('Home recipes API Error:', error); // 一般エラーログは残す
         if (error instanceof Error) {
-            console.error('[home-recipes] Error name:', error.name);
-            console.error('[home-recipes] Error message:', error.message);
-            console.error('[home-recipes] Error stack:', error.stack);
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            // console.error('Error stack:', error.stack); // スタックトレースは冗長なのでコメントアウト
         }
         return NextResponse.json(
-            { error: 'Test 4 failed' },
+            { error: '推奨レシピの取得中にエラーが発生しました' }, // ユーザー向けエラーメッセージ
             { status: 500 }
         );
     }
 }
 
-// shuffleArray 関数はまだ不要 
+// shuffleArray 関数 (修正済み)
+function shuffleArray<T>(array: T[]): T[] {
+    if (!array || array.length === 0) return [];
+    const validItems = array.filter(item => item !== undefined && item !== null);
+    if (validItems.length === 0) return [];
+    const newArray = [...validItems];
+    for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = newArray[i]!;
+        newArray[i]! = newArray[j]!;
+        newArray[j]! = temp;
+    }
+    return newArray;
+} 

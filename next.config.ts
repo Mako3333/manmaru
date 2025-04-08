@@ -9,6 +9,9 @@ const withPWA = require("next-pwa")({
 /** @type {import('next').NextConfig} */
 const nextConfig: NextConfig = withPWA({
   reactStrictMode: true,
+  dev: {
+    turbopack: false,
+  },
   experimental: {
     turbo: {
       rules: {},
