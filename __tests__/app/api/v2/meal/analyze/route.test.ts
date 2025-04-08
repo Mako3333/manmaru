@@ -38,36 +38,7 @@ describe('食事分析API v2のテスト', () => {
     });
 
     it('正しいリクエストの場合、StandardizedMealNutritionフォーマットでレスポンスを返すこと', async () => {
-        // レガシーデータ（NutritionData形式）の準備
-        const mockLegacyNutrition: NutritionData = {
-            calories: 320,
-            protein: 15,
-            fat: 10,
-            carbohydrate: 45,
-            iron: 2.5,
-            folic_acid: 100,
-            calcium: 50,
-            vitamin_d: 3,
-            dietaryFiber: 5,
-            salt: 1.2,
-            confidence_score: 0.9
-        };
-
-        // エネルギーや鉄分などの栄養素データをNutrient配列に変換
-        const nutrientsList: Nutrient[] = [
-            { name: 'エネルギー', value: 320, unit: 'kcal' },
-            { name: 'たんぱく質', value: 15, unit: 'g' },
-            { name: '脂質', value: 10, unit: 'g' },
-            { name: '炭水化物', value: 45, unit: 'g' },
-            { name: '鉄', value: 2.5, unit: 'mg' },
-            { name: '葉酸', value: 100, unit: 'mcg' },
-            { name: 'カルシウム', value: 50, unit: 'mg' },
-            { name: 'ビタミンD', value: 3, unit: 'mcg' },
-            { name: '食物繊維', value: 5, unit: 'g' },
-            { name: '食塩相当量', value: 1.2, unit: 'g' },
-        ];
-
-        // StandardizedMealNutrition型に合わせたテストデータ
+        // テスト用の栄養データ（StandardizedMealNutrition形式）を準備
         const mockStandardNutrition: StandardizedMealNutrition = {
             totalCalories: 320,
             totalNutrients: [

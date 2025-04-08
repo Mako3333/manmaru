@@ -174,7 +174,7 @@ export function createStandardizedMealNutrition(
         return defaultValue;
     }
 
-    // NutritionDataが渡された場合はStandardizedMealNutritionに変換
+    // NutritionData (旧型) が渡された場合、互換性のためにStandardizedMealNutritionに変換
     if ('calories' in data && typeof data.calories === 'number') {
         return convertToStandardizedNutrition(data as NutritionData);
     }
@@ -198,12 +198,12 @@ export function createStandardizedMealNutrition(
     return result;
 }
 
-// 栄養素名と NutritionData のキー、単位のマッピング
+// 栄養素名と取得元のキー、単位のマッピング定義
 const nutrientMapping: {
-    name: string;
-    key: keyof NutritionData | keyof NonNullable<NutritionData['extended_nutrients']>;
-    unit: NutrientUnit;
-    source: 'direct' | 'extended'
+    name: string; // StandardizedMealNutrition.totalNutrients[].name で使用される日本語名
+    key: keyof NutritionData | keyof NonNullable<NutritionData['extended_nutrients']>; // NutritionDataから値を取得する際のキー
+    unit: NutrientUnit; // StandardizedMealNutrition.totalNutrients[].unit で使用される単位
+    source: 'direct' | 'extended' // NutritionDataのどの階層から値を取得するか (direct: トップレベル, extended: extended_nutrients内)
 }[] = [
         // 基本の6栄養素 (+ エネルギー)
         { name: 'エネルギー', key: 'calories', unit: 'kcal', source: 'direct' },

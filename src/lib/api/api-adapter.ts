@@ -181,17 +181,16 @@ export class ApiAdapter {
         let legacyNutritionDataForResponse: NutritionData | null = null;
 
         if (nutritionData) {
-            // まず、どんな形式でも NutritionData (旧標準) に変換しようと試みる
+            // どのような形式の入力であっても StandardizedMealNutrition 形式に変換を試みる
+            // (内部で NutritionData への変換を経由する可能性がある)
             const intermediateLegacyNutrition = ApiAdapter.convertToStandardNutrition(nutritionData);
-            // 次に、NutritionData から StandardizedMealNutrition (新標準) へ変換
             standardizedNutrition = ApiAdapter.convertToStandardizedNutritionFormat(intermediateLegacyNutrition);
-            // レスポンス用の legacyNutrition として、元データに近い形（変換前のオブジェクトか、なければ変換後の中間データ）を保持
-            legacyNutritionDataForResponse = nutritionData; // 元の形式を保持するのが望ましい場合がある
-            // もし元のnutritionDataが標準形式に近ければそちらを使う、なければ中間生成したものを保持
-            if (typeof legacyNutritionDataForResponse !== 'object' || legacyNutritionDataForResponse === null) {
-                legacyNutritionDataForResponse = intermediateLegacyNutrition;
-            }
 
+            // legacyNutrition フィールドは削除済みのため、関連コードをコメントアウトまたは削除
+            // legacyNutritionDataForResponse = nutritionData; 
+            // if (typeof legacyNutritionDataForResponse !== 'object' || legacyNutritionDataForResponse === null) {
+            //     legacyNutritionDataForResponse = intermediateLegacyNutrition;
+            // }
         }
 
         // 食品リストの取得 (より堅牢に)
@@ -205,8 +204,8 @@ export class ApiAdapter {
                 foods: Array.isArray(foods) ? foods : [],
                 nutritionResult: {
                     nutrition: standardizedNutrition, // 標準化形式
-                    // legacyNutritionは、変換前の入力データか、それがなければ変換後の中間形式を入れる
-                    legacyNutrition: legacyNutritionDataForResponse,
+                    // legacyNutrition フィールドは削除
+                    // legacyNutrition: legacyNutritionDataForResponse,
                     reliability: nutritionResultData?.reliability || {
                         confidence: confidence ?? 0.8, // confidenceの取得元を修正
                         balanceScore: nutritionResultData?.balanceScore ?? legacyAnalysisResponse.balanceScore ?? 50,

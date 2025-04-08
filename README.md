@@ -34,3 +34,13 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Application Overview
+
+This application, `manmaru`, is designed to help pregnant individuals manage their nutritional intake.
+
+### Core Data Model: Nutrition
+
+The application utilizes a standardized data model for handling nutritional information, defined in `StandardizedMealNutrition` (`src/types/nutrition.ts`). This model provides a consistent structure for representing meal composition, total nutrients, and individual food item details throughout the application.
+
+For detailed information on the nutrition data model and its usage, please refer to the [Nutrition Data Standardization Guidelines](./docs/guidelines/nutrition-type-standardization.md).

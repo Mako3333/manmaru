@@ -3,7 +3,7 @@
  * 表示に特化した計算ロジックを提供します
  */
 
-import { StandardizedMealNutrition, Nutrient, NutritionProgress } from '@/types/nutrition'; // LegacyNutritionData の代わりに NutritionProgress をインポート
+import { StandardizedMealNutrition, Nutrient, NutritionProgress } from '@/types/nutrition';
 
 // 栄養データの型定義（共通で使用する場合は別ファイルに移動すべき）
 // export interface NutritionData { // ← コメントアウトまたは削除検討

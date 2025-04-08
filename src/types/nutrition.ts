@@ -70,7 +70,10 @@ export interface NutritionData {
     confidence_score: number;      // AI分析の信頼度 (0.0-1.0)
     not_found_foods?: string[];    // 見つからなかった食品リスト
 
-    // 互換性のためのプロパティ（旧NutrientData型互換）
+    // 互換性のためのプロパティ（旧NutrientData型互換） -> 削除または修正検討
+    // 以下のプロパティは NutritionData (旧型) との互換性のために一時的に残されています。
+    // StandardizedMealNutrition への完全移行後は削除される予定です。
+    // 新規コードでは使用しないでください。
     energy?: number;               // calories と同じ
     fat?: number;                  // extended_nutrients.fat と同じ
     carbohydrate?: number;         // extended_nutrients.carbohydrate と同じ 
@@ -78,7 +81,8 @@ export interface NutritionData {
     sugars?: number;               // extended_nutrients.sugars と同じ
     salt?: number;                 // extended_nutrients.salt と同じ
 
-    // 互換性のための構造化オブジェクト
+    // 互換性のための構造化オブジェクト -> 削除または修正検討
+    // これらも旧型との互換性のための一時的なものです。
     minerals?: {
         sodium?: number;
         calcium?: number;
@@ -364,29 +368,95 @@ export interface FoodItemNutrition {
 }
 
 /**
- * 食事全体の標準化された栄養データ
+ * 標準化された食事の栄養情報。
+ * このインターフェースは、アプリケーション全体で一貫して使用される栄養データの標準形式を定義します。
+ * 複数の食品アイテムから構成される一食分の総栄養価、各食品の詳細な栄養情報、
+ * 妊婦向けの特記事項、およびデータの信頼性に関する情報を含みます。
  */
 export interface StandardizedMealNutrition {
-    totalCalories: number;         // 総カロリー
-    totalNutrients: Nutrient[];    // 総栄養素
+    /**
+     * 食事全体の総カロリー (kcal)。
+     * foodItems 配列内の各食品のカロリーを合計した値。
+     */
+    totalCalories: number;
+
+    /**
+     * 食事全体の総栄養素リスト。
+     * Nutrient インターフェースの配列で、各要素が特定の栄養素（名前、値、単位）を表します。
+     * @see Nutrient
+     */
+    totalNutrients: Nutrient[];
+
+    /**
+     * 食事を構成する各食品アイテムの詳細リスト。
+     */
     foodItems: {
-        id: string;                  // 食品ID
-        name: string;                // 食品名
-        nutrition: FoodItemNutrition; // 食品ごとの栄養データ
-        amount: number;              // 摂取量
-        unit: string;                // 単位
-        confidence?: number;         // この食品アイテムに対する信頼度 (オプショナル)
+        /**
+         * 食品データベースにおける一意の識別子。
+         */
+        id: string;
+        /**
+         * 食品名（例: 「鶏むね肉」、「ほうれん草」）。
+         */
+        name: string;
+        /**
+         * この食品アイテム単体の栄養情報。
+         * @see FoodItemNutrition
+         */
+        nutrition: FoodItemNutrition;
+        /**
+         * 摂取量（数値）。単位は `unit` プロパティで指定されます。
+         */
+        amount: number;
+        /**
+         * 摂取量の単位（例: "g", "ml", "個"）。
+         */
+        unit: string;
+        /**
+         * この食品アイテムの栄養価分析に対する信頼度スコア (0.0 - 1.0)。
+         * AIによる分析やユーザー入力の曖昧さなどを反映します（オプショナル）。
+         */
+        confidence?: number;
     }[];
-    // 妊婦向け特別データ
+
+    /**
+     * 妊婦向けの特定の栄養素に関する追加情報（オプショナル）。
+     * 妊娠期間に応じた推奨摂取量に対する充足率などを格納します。
+     */
     pregnancySpecific?: {
-        folatePercentage: number;    // 葉酸摂取割合
-        ironPercentage: number;      // 鉄分摂取割合
-        calciumPercentage: number;   // カルシウム摂取割合
+        /**
+         * 葉酸の推奨摂取量に対する充足率 (%)。
+         */
+        folatePercentage: number;
+        /**
+         * 鉄分の推奨摂取量に対する充足率 (%)。
+         */
+        ironPercentage: number;
+        /**
+         * カルシウムの推奨摂取量に対する充足率 (%)。
+         */
+        calciumPercentage: number;
     };
+
+    /**
+     * この栄養データ全体の信頼性に関する情報。
+     */
     reliability: {
-        confidence: number;      // 全体の確信度 (0.0-1.0)
-        balanceScore?: number;   // 栄養バランススコア (0-100) (オプショナルに変更)
-        completeness?: number;   // データの完全性 (0.0-1.0) (オプショナルに変更)
+        /**
+         * 算出された栄養価全体の確信度 (0.0 - 1.0)。
+         * 各 foodItems の confidence や、分析手法の不確実性を総合的に評価した値。
+         */
+        confidence: number;
+        /**
+         * 栄養バランスの評価スコア (0 - 100)。
+         * 主要栄養素（PFCバランスなど）や推奨される栄養パターンに基づいて算出（オプショナル）。
+         */
+        balanceScore?: number;
+        /**
+         * 必須栄養素データがどの程度網羅されているかを示す完全性スコア (0.0 - 1.0)。
+         * 例えば、必須アミノ酸や特定のビタミン・ミネラルのデータが不足している場合に低くなる（オプショナル）。
+         */
+        completeness?: number;
     };
 }
 
