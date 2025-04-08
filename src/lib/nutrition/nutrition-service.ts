@@ -1,8 +1,7 @@
 import { Food, FoodQuantity, MealFoodItem } from '@/types/food';
-import { NutritionCalculationResult, NutritionData } from '@/types/nutrition';
+import { NutritionCalculationResult, StandardizedMealNutrition, NutrientDeficiency } from '@/types/nutrition';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { FoodAnalysisResult } from '@/types/ai';
-import { StandardizedMealNutrition, NutrientDeficiency } from '@/types/nutrition';
 //src\lib\nutrition\nutrition-service.ts
 /**
  * 栄養計算サービスのインターフェース

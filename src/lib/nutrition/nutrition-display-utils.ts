@@ -76,7 +76,7 @@ export function calculatePercentage(value: number | undefined, target: number | 
 }
 
 // 栄養素名からターゲットキーを取得するヘルパー
-function getTargetKeyFromName(name: string): keyof NutritionTargets | undefined {
+export function getTargetKeyFromName(name: string): keyof NutritionTargets | undefined {
     const lowerCaseName = name.toLowerCase();
     // 完全一致または前方一致で検索
     for (const [keyName, targetKey] of Object.entries(NUTRIENT_NAME_TO_KEY)) {
@@ -91,11 +91,47 @@ function getTargetKeyFromName(name: string): keyof NutritionTargets | undefined 
     return undefined;
 }
 
-// 栄養素の値を取得するヘルパー (単位変換が必要な場合はここで対応)
-function getNutrientValue(nutrient: Nutrient): number {
+/**
+ * 個々の栄養素の値を取得するヘルパー (単位変換が必要な場合はここで対応)
+ * @param nutrient 栄養素オブジェクト
+ * @returns 栄養素の値
+ */
+export function getNutrientValue(nutrient: Nutrient): number {
     // TODO: 必要に応じて単位変換ロジックを追加 (例: mg -> g)
     // 例: if (nutrient.unit === 'mg' && targetUnit === 'g') return nutrient.value / 1000;
     return nutrient.value;
+}
+
+/**
+ * 栄養素名から StandardizedMealNutrition オブジェクト内の栄養素値を取得
+ * @param nutrition StandardizedMealNutrition オブジェクト
+ * @param nutrientName 検索する栄養素名
+ * @returns 栄養素の値、見つからない場合は 0
+ */
+export function getNutrientValueByName(nutrition: StandardizedMealNutrition, nutrientName: string): number {
+    if (!nutrition || !nutrition.totalNutrients) return 0;
+
+    // カロリーは特別扱い
+    if (nutrientName.toLowerCase() === 'calories' ||
+        nutrientName.toLowerCase() === 'カロリー' ||
+        nutrientName.toLowerCase() === 'エネルギー') {
+        return nutrition.totalCalories;
+    }
+
+    // totalNutrients から検索
+    const nutrient = nutrition.totalNutrients.find(n => {
+        // 日本語名での比較
+        if (n.name.toLowerCase() === nutrientName.toLowerCase()) return true;
+
+        // 標準化されたキー名の取得を試みる
+        const targetKey = getTargetKeyFromName(n.name);
+        const queryKey = getTargetKeyFromName(nutrientName);
+
+        // キー名での比較
+        return targetKey && queryKey && targetKey === queryKey;
+    });
+
+    return nutrient ? nutrient.value : 0;
 }
 
 /**
@@ -134,11 +170,11 @@ export function calculateNutritionScore(
             // weight が undefined でないことを確認
             if (weight === undefined) continue;
 
-            const nutrient = stdNutrition.totalNutrients.find(n => getTargetKeyFromName(n.name) === targetKey);
+            // getNutrientValueByName を使用
+            const value = getNutrientValueByName(stdNutrition, targetKey);
             const targetValue = targets[targetKey as keyof NutritionTargets];
 
-            if (nutrient && targetValue !== undefined && targetValue > 0) {
-                const value = getNutrientValue(nutrient);
+            if (targetValue !== undefined && targetValue > 0) {
                 const achievementRate = value / targetValue;
                 const score = Math.min(1.0, achievementRate) * (weight * 100);
                 weightedScoreSum += score;
@@ -215,7 +251,43 @@ export function getNutrientBarColor(percent: number): string {
     // 120% を超えてもバーの色は緑のままにするか、オレンジ/赤にするかは要件次第
     // return 'bg-orange-500'; // 120% を超えたらオレンジ
     // return 'bg-red-500'; // 150% を超えたら赤
-    return 'bg-green-500'; // 100% 超えても緑のまま (UI上の表現として)
+    if (percent <= 150) return 'bg-orange-500'; // 120%超～150%以下はオレンジ
+    return 'bg-red-500'; // 150%超は赤
 }
-// --- 既存の getNutrientColor, getNutrientBarColor は達成率を受け取るので大きな変更は不要 ---
-// ただし、達成率の評価基準 (閾値) は見直した方が良いかもしれないので調整 
+
+/**
+ * 栄養素リストをソートする (表示順のカスタマイズ用)
+ * 重要な栄養素を先頭に、その他をアルファベット順にソート
+ * @param nutrients 栄養素のリスト
+ * @returns ソートされた栄養素リスト
+ */
+export function sortNutrients(nutrients: Nutrient[]): Nutrient[] {
+    if (!nutrients) return [];
+
+    // 優先順位の定義 (数値が小さいほど優先度高)
+    const priorityOrder: Record<string, number> = {
+        'たんぱく質': 1,
+        'タンパク質': 1,
+        '鉄分': 2,
+        '鉄': 2,
+        '葉酸': 3,
+        'カルシウム': 4,
+        'ビタミンD': 5,
+        '脂質': 6,
+        '炭水化物': 7,
+        '食物繊維': 8,
+    };
+
+    return [...nutrients].sort((a, b) => {
+        // 優先度が定義されている場合はそれに従う
+        const priorityA = priorityOrder[a.name] || 1000;
+        const priorityB = priorityOrder[b.name] || 1000;
+
+        if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+        }
+
+        // 優先度が同じ場合は名前でソート
+        return a.name.localeCompare(b.name);
+    });
+} 

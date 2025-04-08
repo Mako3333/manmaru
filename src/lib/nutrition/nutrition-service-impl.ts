@@ -21,6 +21,7 @@ import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { FoodAnalysisResult } from '@/types/ai';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { getNutrientValueByName } from './nutrition-display-utils'; // getNutrientValueByName関数をインポート
 //src\lib\nutrition\nutrition-service-impl.ts
 
 /**
@@ -223,7 +224,7 @@ export class NutritionServiceImpl implements NutritionService {
             const targetValue = targetValues[name];
             // 目標値が設定され、かつ0より大きい場合のみ評価対象とする
             if (typeof targetValue === 'number' && targetValue > 0) {
-                const currentValue = this.getNutrientValue(nutrition, name);
+                const currentValue = getNutrientValueByName(nutrition, name);
                 // 充足率を計算 (最大100% = 1.0)
                 const fulfillmentRatio = Math.min(1.0, currentValue / targetValue);
                 fulfillmentSum += fulfillmentRatio;
@@ -249,7 +250,7 @@ export class NutritionServiceImpl implements NutritionService {
      * 目標値に対する充足率が閾値未満の栄養素名を返す
      * @param nutrition 栄養データ
      * @param targetValues 目標値 (例: { calories: 2200, protein: 75, ... })
-     * @param threshold 不足と判断する充足率の閾値 (デフォルト: 0.7)
+     * @param threshold 不足と判断する充足率の閾値 (0.0-1.0、デフォルト: 0.7)
      * @returns 不足している栄養素の詳細情報リスト
      */
     identifyDeficientNutrients(
@@ -257,28 +258,31 @@ export class NutritionServiceImpl implements NutritionService {
         targetValues: Record<string, number>,
         threshold: number = 0.7 // デフォルト値を設定
     ): NutrientDeficiency[] { // 戻り値の型を変更
-        const deficiencies: NutrientDeficiency[] = [];
+        const deficientNutrients: NutrientDeficiency[] = [];
 
-        const mvpNutrientNames = ['calories', 'protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'];
+        // 各栄養素について評価
+        for (const [nutrientCode, targetValue] of Object.entries(targetValues)) {
+            // 目標値が0以下の場合はスキップ
+            if (targetValue <= 0) continue;
 
-        for (const name of mvpNutrientNames) {
-            const targetValue = targetValues[name];
-            // 目標値が設定されている栄養素のみチェック
-            if (typeof targetValue === 'number' && targetValue > 0) {
-                const currentValue = this.getNutrientValue(nutrition, name);
-                const fulfillmentRatio = currentValue / targetValue;
+            // 現在の摂取量を取得
+            const currentValue = getNutrientValueByName(nutrition, nutrientCode);
 
-                if (fulfillmentRatio < threshold) {
-                    deficiencies.push({ // 詳細情報を格納
-                        nutrientCode: name,
-                        fulfillmentRatio,
-                        currentValue,
-                        targetValue
-                    });
-                }
+            // 充足率を計算
+            const fulfillmentRatio = currentValue / targetValue;
+
+            // 充足率が閾値未満なら不足と判断
+            if (fulfillmentRatio < threshold) {
+                deficientNutrients.push({
+                    nutrientCode,
+                    fulfillmentRatio,
+                    currentValue,
+                    targetValue
+                });
             }
         }
-        return deficiencies; // 詳細情報の配列を返す
+
+        return deficientNutrients;
     }
 
     /**
@@ -314,14 +318,39 @@ export class NutritionServiceImpl implements NutritionService {
     }
 
     /**
-     * StandardizedMealNutrition から特定の栄養素の値を取得する
+     * StandardizedMealNutritionから特定の栄養素の値を取得するヘルパーメソッド
      * @param nutrition 栄養データ
-     * @param nutrientName 取得したい栄養素の名前
-     * @returns 栄養素の値。見つからない場合は 0 を返す。
+     * @param nutrientName 栄養素名またはコード
+     * @returns 栄養素の値、見つからない場合は0
      */
     private getNutrientValue(nutrition: StandardizedMealNutrition, nutrientName: string): number {
-        const nutrient = nutrition.totalNutrients.find(n => n.name === nutrientName);
-        return nutrient?.value ?? 0;
+        // nutrientNameがカロリー関連であればtotalCaloriesを返す
+        if (nutrientName === 'calories' || nutrientName === 'energy') {
+            return nutrition.totalCalories;
+        }
+
+        // 栄養素名を日本語に変換するマッピング
+        const codeToJapanese: Record<string, string> = {
+            'protein': 'タンパク質',
+            'iron': '鉄分',
+            'calcium': 'カルシウム',
+            'folic_acid': '葉酸',
+            'vitamin_d': 'ビタミンD'
+        };
+
+        // 日本語の栄養素名を取得
+        const japaneseName = codeToJapanese[nutrientName];
+
+        if (japaneseName) {
+            // totalNutrientsから該当する栄養素を探す
+            const nutrient = nutrition.totalNutrients.find(n => n.name === japaneseName);
+            return nutrient ? nutrient.value : 0;
+        }
+
+        // コードから直接検索できない場合は、栄養素名での検索を試みる
+        return nutrition.totalNutrients.find(n => {
+            return n.name.toLowerCase() === nutrientName.toLowerCase();
+        })?.value || 0;
     }
 
     /**

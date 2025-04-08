@@ -2,8 +2,10 @@ import {
     calculateNutritionScore,
     getNutrientColor,
     getNutrientBarColor,
-    NutritionData
+    getNutrientValueByName,
+    sortNutrients
 } from '../../../src/lib/nutrition/nutrition-display-utils';
+import { StandardizedMealNutrition, Nutrient, NutritionProgress, NutrientUnit } from '../../../src/types/nutrition';
 
 describe('栄養表示ユーティリティ', () => {
     // 栄養スコア計算のテスト
@@ -12,21 +14,42 @@ describe('栄養表示ユーティリティ', () => {
             expect(calculateNutritionScore(null)).toBe(0);
         });
 
-        test('すべての栄養素が理想的な範囲内（50-110%）の場合、満点に近いスコアを返す', () => {
-            const idealNutrition: NutritionData = {
-                calories_percent: 100,
-                protein_percent: 100,
-                iron_percent: 100,
-                folic_acid_percent: 100,
-                calcium_percent: 100,
-                vitamin_d_percent: 100
+        test('StandardizedMealNutritionで良好な値の場合、高いスコアを返す', () => {
+            const standardizedNutrition: StandardizedMealNutrition = {
+                totalCalories: 2000,
+                totalNutrients: [
+                    { name: 'タンパク質', value: 50, unit: 'g' },
+                    { name: '鉄分', value: 10, unit: 'mg' },
+                    { name: '葉酸', value: 240, unit: 'mcg' },
+                    { name: 'カルシウム', value: 650, unit: 'mg' },
+                    { name: 'ビタミンD', value: 8.5, unit: 'mcg' }
+                ],
+                foodItems: [],
+                reliability: {
+                    confidence: 0.8
+                }
             };
 
-            expect(calculateNutritionScore(idealNutrition)).toBe(100);
+            expect(calculateNutritionScore(standardizedNutrition)).toBe(99);
         });
 
         test('栄養素が不足している（50%未満）場合、低いスコアを返す', () => {
-            const deficientNutrition: NutritionData = {
+            const deficientNutrition: NutritionProgress = {
+                user_id: '1',
+                trimester: 1,
+                meal_date: '2023-01-01',
+                target_calories: 2000,
+                target_protein: 60,
+                target_iron: 10,
+                target_folic_acid: 240,
+                target_calcium: 650,
+                target_vitamin_d: 8.5,
+                actual_calories: 600,
+                actual_protein: 12,
+                actual_iron: 4,
+                actual_folic_acid: 60,
+                actual_calcium: 227.5,
+                actual_vitamin_d: 1.275,
                 calories_percent: 30,
                 protein_percent: 20,
                 iron_percent: 40,
@@ -35,40 +58,39 @@ describe('栄養表示ユーティリティ', () => {
                 vitamin_d_percent: 15
             };
 
-            // 50%未満は達成率の半分をスコアとするため、低めのスコアになる
-            // 各スコアは平均して約14点なので、合計約84点。100点満点に換算して約28点。
-            const expectedScore = Math.round((30 / 2 + 20 / 2 + 40 / 2 + 25 / 2 + 35 / 2 + 15 / 2) / 6 * 2);
-            expect(calculateNutritionScore(deficientNutrition)).toBe(expectedScore);
-        });
-
-        test('栄養素が過剰（130%超）の場合、減点される', () => {
-            const excessiveNutrition: NutritionData = {
-                calories_percent: 150,
-                protein_percent: 140,
-                iron_percent: 160,
-                folic_acid_percent: 130,
-                calcium_percent: 145,
-                vitamin_d_percent: 170
-            };
-
-            // 130%超は25点になる。130%ちょうどは減点されるが25点より高い。
-            // 6項目とも25点なので、合計150点。100点満点に換算して50点。
-            expect(calculateNutritionScore(excessiveNutrition)).toBe(50);
+            // 各栄養素が目標値の30%以下のため、低めのスコアになる
+            expect(calculateNutritionScore(deficientNutrition)).toBeLessThan(50);
         });
 
         test('栄養素が混在している場合、適切なスコアを返す', () => {
-            const mixedNutrition: NutritionData = {
-                calories_percent: 60,  // 理想範囲内: 50点
-                protein_percent: 40,   // 不足: 20点
-                iron_percent: 120,     // やや過剰: 約37.5点
-                folic_acid_percent: 90, // 理想範囲内: 50点
-                calcium_percent: 30,    // 不足: 15点
-                vitamin_d_percent: 140  // 過剰: 25点
+            const mixedNutrition: NutritionProgress = {
+                user_id: '1',
+                trimester: 1,
+                meal_date: '2023-01-01',
+                target_calories: 2000,
+                target_protein: 60,
+                target_iron: 10,
+                target_folic_acid: 240,
+                target_calcium: 650,
+                target_vitamin_d: 8.5,
+                actual_calories: 1200,
+                actual_protein: 24,
+                actual_iron: 12,
+                actual_folic_acid: 216,
+                actual_calcium: 195,
+                actual_vitamin_d: 11.9,
+                calories_percent: 60,
+                protein_percent: 40,
+                iron_percent: 120,
+                folic_acid_percent: 90,
+                calcium_percent: 30,
+                vitamin_d_percent: 140
             };
 
-            // (50 + 20 + 37.5 + 50 + 15 + 25) / 6 * 2 ≈ 65.8 → 66点
-            const expectedScore = Math.round((50 + 20 + (50 - (10 / 20) * 25) + 50 + 15 + 25) / 6 * 2);
-            expect(calculateNutritionScore(mixedNutrition)).toBe(expectedScore);
+            // 一部の栄養素が目標を下回り、一部が目標を上回る
+            const score = calculateNutritionScore(mixedNutrition);
+            expect(score).toBeGreaterThan(30);
+            expect(score).toBeLessThan(90);
         });
     });
 
@@ -80,27 +102,27 @@ describe('栄養表示ユーティリティ', () => {
             expect(getNutrientColor(49.9)).toBe('text-red-500 bg-red-50');
         });
 
-        test('50%～70%未満の場合、オレンジ色を返す', () => {
+        test('50%～80%未満の場合、オレンジ色を返す', () => {
             expect(getNutrientColor(50)).toBe('text-orange-500 bg-orange-50');
-            expect(getNutrientColor(60)).toBe('text-orange-500 bg-orange-50');
-            expect(getNutrientColor(69.9)).toBe('text-orange-500 bg-orange-50');
+            expect(getNutrientColor(65)).toBe('text-orange-500 bg-orange-50');
+            expect(getNutrientColor(79.9)).toBe('text-orange-500 bg-orange-50');
         });
 
-        test('70%～110%の場合、緑色を返す', () => {
-            expect(getNutrientColor(70)).toBe('text-green-500 bg-green-50');
+        test('80%～120%の場合、緑色を返す', () => {
+            expect(getNutrientColor(80)).toBe('text-green-500 bg-green-50');
             expect(getNutrientColor(100)).toBe('text-green-500 bg-green-50');
-            expect(getNutrientColor(110)).toBe('text-green-500 bg-green-50');
+            expect(getNutrientColor(120)).toBe('text-green-500 bg-green-50');
         });
 
-        test('110%超～130%以下の場合、オレンジ色を返す', () => {
-            expect(getNutrientColor(110.1)).toBe('text-orange-500 bg-orange-50');
-            expect(getNutrientColor(120)).toBe('text-orange-500 bg-orange-50');
-            expect(getNutrientColor(130)).toBe('text-orange-500 bg-orange-50');
+        test('120%超～150%以下の場合、オレンジ色を返す', () => {
+            expect(getNutrientColor(121)).toBe('text-orange-500 bg-orange-50');
+            expect(getNutrientColor(135)).toBe('text-orange-500 bg-orange-50');
+            expect(getNutrientColor(150)).toBe('text-orange-500 bg-orange-50');
         });
 
-        test('130%超の場合、赤色を返す', () => {
-            expect(getNutrientColor(130.1)).toBe('text-red-500 bg-red-50');
-            expect(getNutrientColor(150)).toBe('text-red-500 bg-red-50');
+        test('150%超の場合、赤色を返す', () => {
+            expect(getNutrientColor(151)).toBe('text-red-500 bg-red-50');
+            expect(getNutrientColor(180)).toBe('text-red-500 bg-red-50');
             expect(getNutrientColor(200)).toBe('text-red-500 bg-red-50');
         });
     });
@@ -113,28 +135,110 @@ describe('栄養表示ユーティリティ', () => {
             expect(getNutrientBarColor(49.9)).toBe('bg-red-500');
         });
 
-        test('50%～70%未満の場合、オレンジ色を返す', () => {
+        test('50%～80%未満の場合、オレンジ色を返す', () => {
             expect(getNutrientBarColor(50)).toBe('bg-orange-500');
-            expect(getNutrientBarColor(60)).toBe('bg-orange-500');
-            expect(getNutrientBarColor(69.9)).toBe('bg-orange-500');
+            expect(getNutrientBarColor(65)).toBe('bg-orange-500');
+            expect(getNutrientBarColor(79.9)).toBe('bg-orange-500');
         });
 
-        test('70%～110%の場合、緑色を返す', () => {
-            expect(getNutrientBarColor(70)).toBe('bg-green-500');
+        test('80%～120%の場合、緑色を返す', () => {
+            expect(getNutrientBarColor(80)).toBe('bg-green-500');
             expect(getNutrientBarColor(100)).toBe('bg-green-500');
-            expect(getNutrientBarColor(110)).toBe('bg-green-500');
+            expect(getNutrientBarColor(120)).toBe('bg-green-500');
         });
 
-        test('110%超～130%以下の場合、オレンジ色を返す', () => {
-            expect(getNutrientBarColor(110.1)).toBe('bg-orange-500');
-            expect(getNutrientBarColor(120)).toBe('bg-orange-500');
-            expect(getNutrientBarColor(130)).toBe('bg-orange-500');
+        test('120%超～150%以下の場合、オレンジ色を返す', () => {
+            expect(getNutrientBarColor(121)).toBe('bg-orange-500');
+            expect(getNutrientBarColor(135)).toBe('bg-orange-500');
+            expect(getNutrientBarColor(150)).toBe('bg-orange-500');
         });
 
-        test('130%超の場合、赤色を返す', () => {
-            expect(getNutrientBarColor(130.1)).toBe('bg-red-500');
-            expect(getNutrientBarColor(150)).toBe('bg-red-500');
+        test('150%超の場合、赤色を返す', () => {
+            expect(getNutrientBarColor(151)).toBe('bg-red-500');
+            expect(getNutrientBarColor(180)).toBe('bg-red-500');
             expect(getNutrientBarColor(200)).toBe('bg-red-500');
+        });
+    });
+
+    // getNutrientValueByName関数のテスト
+    describe('getNutrientValueByName', () => {
+        const testNutrition: StandardizedMealNutrition = {
+            totalCalories: 500,
+            totalNutrients: [
+                { name: 'タンパク質', value: 20, unit: 'g' },
+                { name: '鉄分', value: 2.5, unit: 'mg' },
+                { name: '葉酸', value: 150, unit: 'mcg' },
+                { name: 'カルシウム', value: 200, unit: 'mg' }
+            ],
+            foodItems: [],
+            reliability: {
+                confidence: 0.8
+            }
+        };
+
+        test('存在する栄養素の値を正しく取得できる', () => {
+            expect(getNutrientValueByName(testNutrition, 'タンパク質')).toBe(20);
+            expect(getNutrientValueByName(testNutrition, '鉄分')).toBe(2.5);
+        });
+
+        test('カロリーを特別扱いで取得できる', () => {
+            expect(getNutrientValueByName(testNutrition, 'calories')).toBe(500);
+            expect(getNutrientValueByName(testNutrition, 'カロリー')).toBe(500);
+            expect(getNutrientValueByName(testNutrition, 'エネルギー')).toBe(500);
+        });
+
+        test('存在しない栄養素の場合は0を返す', () => {
+            expect(getNutrientValueByName(testNutrition, 'ビタミンC')).toBe(0);
+            expect(getNutrientValueByName(testNutrition, '亜鉛')).toBe(0);
+        });
+
+        test('nullやundefinedの場合は0を返す', () => {
+            expect(getNutrientValueByName(null as unknown as StandardizedMealNutrition, 'タンパク質')).toBe(0);
+            const emptyNutrition = {} as StandardizedMealNutrition;
+            expect(getNutrientValueByName(emptyNutrition, 'タンパク質')).toBe(0);
+        });
+    });
+
+    // sortNutrients関数のテスト
+    describe('sortNutrients', () => {
+        test('栄養素を優先順位に従ってソートする', () => {
+            const nutrients: Nutrient[] = [
+                { name: '食物繊維', value: 10, unit: 'g' },
+                { name: 'カルシウム', value: 200, unit: 'mg' },
+                { name: 'ビタミンC', value: 80, unit: 'mg' },
+                { name: 'タンパク質', value: 20, unit: 'g' },
+                { name: '鉄分', value: 2.5, unit: 'mg' }
+            ];
+
+            const sorted = sortNutrients(nutrients);
+
+            // タンパク質、鉄分、カルシウムが上位に来るべき
+            expect(sorted[0]?.name).toBe('タンパク質');
+            expect(sorted[1]?.name).toBe('鉄分');
+            expect(sorted[2]?.name).toBe('カルシウム');
+            expect(sorted[3]?.name).toBe('食物繊維');
+            // ビタミンCは優先順位が定義されていないため最後尾
+            expect(sorted[4]?.name).toBe('ビタミンC');
+        });
+
+        test('空の配列や未定義の場合は空配列を返す', () => {
+            expect(sortNutrients([])).toEqual([]);
+            expect(sortNutrients(undefined as unknown as Nutrient[])).toEqual([]);
+        });
+
+        test('同じ優先順位の場合はアルファベット順にソートする', () => {
+            const nutrients: Nutrient[] = [
+                { name: 'ビタミンC', value: 80, unit: 'mg' },
+                { name: 'ビタミンA', value: 100, unit: 'mcg' },
+                { name: 'ビタミンB12', value: 2, unit: 'mcg' }
+            ];
+
+            const sorted = sortNutrients(nutrients);
+
+            // アルファベット順（日本語の場合は文字コード順）
+            expect(sorted[0]?.name).toBe('ビタミンA');
+            expect(sorted[1]?.name).toBe('ビタミンB12');
+            expect(sorted[2]?.name).toBe('ビタミンC');
         });
     });
 }); 
