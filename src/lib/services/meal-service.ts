@@ -3,7 +3,8 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { validateMealData } from '@/lib/nutrition/nutrition-utils';
-import { MealNutrient } from '@/types/nutrition';
+import { MealNutrient, StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
+import { convertToDbNutritionFormat, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 /**
  * 食事データの保存リクエスト型
@@ -14,7 +15,7 @@ export interface SaveMealRequest {
     meal_date: string;
     photo_url?: string;
     food_description?: string;
-    nutrition_data?: any;
+    nutrition_data?: StandardizedMealNutrition;
     servings?: number;
 }
 
@@ -39,7 +40,7 @@ export class MealService {
     /**
      * 食事データと栄養データをトランザクション的に保存
      * @param supabase Supabaseクライアント
-     * @param mealData 食事データ
+     * @param mealData 食事データ (nutrition_dataはStandardizedMealNutrition型)
      * @param nutritionData 栄養データ（省略可）
      * @returns 保存された食事データのID
      */
@@ -60,6 +61,12 @@ export class MealService {
                 });
             }
 
+            // StandardizedMealNutritionをDB保存用のフォーマットに変換
+            let dbNutritionData = null;
+            if (mealData.nutrition_data) {
+                dbNutritionData = convertToDbNutritionFormat(mealData.nutrition_data);
+            }
+
             // 食事データ保存
             const { data: savedMeal, error: mealError } = await supabase
                 .from('meals')
@@ -69,7 +76,7 @@ export class MealService {
                     meal_date: mealData.meal_date,
                     photo_url: mealData.photo_url,
                     food_description: mealData.food_description,
-                    nutrition_data: mealData.nutrition_data,
+                    nutrition_data: dbNutritionData,
                     servings: mealData.servings || 1
                 })
                 .select('id')
@@ -207,6 +214,21 @@ export class MealService {
                 });
             }
 
+            // 栄養データを標準化フォーマットに変換
+            if (meals && meals.length > 0) {
+                return meals.map(meal => {
+                    if (meal.nutrition_data) {
+                        // DB形式からStandardizedMealNutrition形式に変換
+                        const standardizedNutrition = convertToStandardizedNutrition(meal.nutrition_data);
+                        return {
+                            ...meal,
+                            nutrition_data: standardizedNutrition
+                        };
+                    }
+                    return meal;
+                });
+            }
+
             return meals;
         } catch (error) {
             if (error instanceof AppError) throw error;
@@ -248,13 +270,12 @@ export class MealService {
                         code: ErrorCode.Base.DATA_NOT_FOUND,
                         message: `指定された食事データ(ID: ${mealId})が見つかりません`,
                         userMessage: '指定された食事データが見つかりません。',
-                        details: { mealId, dbError: fetchError }
+                        details: { mealId }
                     });
                 }
-
                 throw new AppError({
                     code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                    message: `食事データ取得エラー: ${fetchError.message}`,
+                    message: `食事データの取得に失敗しました: ${fetchError.message}`,
                     userMessage: '食事データの取得中にデータベースエラーが発生しました。',
                     originalError: fetchError,
                     details: { dbError: fetchError }
@@ -262,39 +283,28 @@ export class MealService {
             }
 
             // 権限チェック
-            if (mealData.user_id !== userId) {
+            if (!mealData || mealData.user_id !== userId) {
                 throw new AppError({
                     code: ErrorCode.Base.AUTH_ERROR,
-                    message: `権限エラー: ユーザー(${userId})は食事(${mealId})を削除する権限がありません`,
+                    message: `食事データの削除権限がありません(ID: ${mealId}, 要求元ユーザー: ${userId})`,
                     userMessage: 'この食事データを削除する権限がありません。',
-                    details: { userId, mealId }
+                    details: { mealId, requestUserId: userId, actualUserId: mealData?.user_id }
                 });
             }
 
-            // 関連する栄養データを削除
-            const { error: nutrientDeleteError } = await supabase
-                .from('meal_nutrients')
-                .delete()
-                .eq('meal_id', mealId);
-
-            if (nutrientDeleteError) {
-                console.error('栄養データ削除エラー:', nutrientDeleteError);
-                // エラーが発生したが、食事データの削除は続行する
-            }
-
-            // 食事データを削除
-            const { error: mealDeleteError } = await supabase
+            // データ削除
+            const { error: deleteError } = await supabase
                 .from('meals')
                 .delete()
                 .eq('id', mealId);
 
-            if (mealDeleteError) {
+            if (deleteError) {
                 throw new AppError({
                     code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                    message: `食事データ削除エラー: ${mealDeleteError.message}`,
+                    message: `食事データの削除に失敗しました: ${deleteError.message}`,
                     userMessage: '食事データの削除中にデータベースエラーが発生しました。',
-                    originalError: mealDeleteError,
-                    details: { dbError: mealDeleteError }
+                    originalError: deleteError,
+                    details: { dbError: deleteError }
                 });
             }
 

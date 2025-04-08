@@ -5,7 +5,8 @@ import {
     createEmptyNutritionData,
     createStandardizedMealNutrition,
     convertToStandardizedNutrition,
-    convertToLegacyNutrition
+    convertToLegacyNutrition,
+    convertToDbNutritionFormat
 } from '../../../src/lib/nutrition/nutrition-type-utils';
 import { NutritionData, StandardizedMealNutrition } from '../../../src/types/nutrition';
 
@@ -51,6 +52,9 @@ describe('栄養データ型ユーティリティのテスト', () => {
             folatePercentage: 0,
             ironPercentage: 0,
             calciumPercentage: 0
+        },
+        reliability: {
+            confidence: 0.8
         }
     };
 
@@ -190,6 +194,66 @@ describe('栄養データ型ユーティリティのテスト', () => {
                 expect(result.minerals.sodium).toBe(500);
                 expect(result.minerals.potassium).toBe(300);
             }
+        });
+    });
+
+    describe('convertToDbNutritionFormat', () => {
+        it('StandardizedMealNutritionからDB保存用のNutritionDataに変換できること', () => {
+            // 更新されたサンプルデータ（reliability追加）
+            const standardizedData: StandardizedMealNutrition = {
+                ...sampleStandardizedNutrition,
+                reliability: {
+                    confidence: 0.85
+                }
+            };
+
+            const result = convertToDbNutritionFormat(standardizedData);
+
+            // 基本的な栄養素の確認
+            expect(result.calories).toBe(500);
+            expect(result.protein).toBe(20);
+            expect(result.iron).toBe(2.5);
+            expect(result.folic_acid).toBe(150);
+            expect(result.calcium).toBe(200);
+            expect(result.vitamin_d).toBe(5);
+            expect(result.confidence_score).toBe(0.85); // reliabilityから取得したconfidence
+
+            // extended_nutrientsの確認
+            expect(result.extended_nutrients).toBeDefined();
+            if (result.extended_nutrients) {
+                expect(result.extended_nutrients.fat).toBe(15);
+                expect(result.extended_nutrients.carbohydrate).toBe(60);
+
+                // ミネラルの確認
+                if (result.extended_nutrients.minerals) {
+                    expect(result.extended_nutrients.minerals.sodium).toBe(500);
+                    expect(result.extended_nutrients.minerals.potassium).toBe(300);
+                }
+
+                // ビタミンの確認
+                if (result.extended_nutrients.vitamins) {
+                    expect(result.extended_nutrients.vitamins.vitamin_c).toBe(80);
+                }
+            }
+        });
+
+        it('reliability情報がない場合にデフォルト値が設定されること', () => {
+            // reliabilityがないサンプルデータを作成（reliabilityは必須なので設定）
+            const standardizedDataWithoutReliability: StandardizedMealNutrition = {
+                totalCalories: 300,
+                totalNutrients: [
+                    { name: 'たんぱく質', value: 15, unit: 'g' }
+                ],
+                foodItems: [],
+                reliability: {
+                    confidence: 0 // 意図的に0を設定してデフォルト値の挙動を確認
+                }
+            };
+
+            const result = convertToDbNutritionFormat(standardizedDataWithoutReliability);
+
+            // デフォルトのconfidence_scoreが設定されていることを確認
+            expect(result.confidence_score).toBe(0.9);
         });
     });
 

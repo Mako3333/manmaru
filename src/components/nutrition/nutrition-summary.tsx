@@ -1,24 +1,10 @@
 import React from 'react';
 import { ReliabilityIndicator } from './reliability-indicator';
-
-export interface NutrientData {
-    /** 栄養素名 */
-    name: string;
-    /** 栄養素の量 */
-    amount: number;
-    /** 単位 (g, mg, μg など) */
-    unit: string;
-    /** 推奨摂取量に対する割合 (0-1) */
-    percentOfDaily?: number;
-    /** 不足しているか */
-    isDeficient?: boolean;
-}
+import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
 
 export interface NutritionSummaryProps {
-    /** 栄養素データの配列 */
-    nutrients: NutrientData[];
-    /** 栄養計算の信頼性スコア (0.0-1.0) */
-    reliabilityScore: number;
+    /** 栄養データ */
+    nutritionData: StandardizedMealNutrition;
     /** 見つからなかった食品の数 */
     missingFoodsCount: number;
     /** 低確信度の食品の数 */
@@ -38,8 +24,7 @@ export interface NutritionSummaryProps {
  * また、栄養計算の信頼性も表示します。
  */
 export const NutritionSummary: React.FC<NutritionSummaryProps> = ({
-    nutrients,
-    reliabilityScore,
+    nutritionData,
     missingFoodsCount,
     lowConfidenceFoodsCount,
     initiallyExpanded = false,
@@ -47,6 +32,8 @@ export const NutritionSummary: React.FC<NutritionSummaryProps> = ({
     className = ''
 }) => {
     const [isExpanded, setIsExpanded] = React.useState(initiallyExpanded);
+    const reliabilityScore = nutritionData?.reliability?.confidence ?? 0;
+    const nutrients = nutritionData?.totalNutrients || [];
 
     // 表示する栄養素を絞り込む（重要な栄養素のみ、または全て）
     const displayedNutrients = isExpanded
@@ -55,8 +42,28 @@ export const NutritionSummary: React.FC<NutritionSummaryProps> = ({
             ['エネルギー', 'たんぱく質', '脂質', '炭水化物', '食物繊維', '鉄', '葉酸', 'カルシウム'].includes(n.name)
         );
 
-    // 不足している栄養素
-    const deficientNutrients = nutrients.filter(n => n.isDeficient);
+    // 不足している栄養素（ここでは仮に値が推奨摂取量の70%未満を不足と定義）
+    // この部分は実際のアプリケーションの要件に応じて調整する必要がある
+    const deficientNutrients = nutrients.filter(n => {
+        // 栄養素ごとの推奨摂取量の閾値（実際のアプリケーションでは外部から提供されるべき）
+        const thresholds: Record<string, number> = {
+            'たんぱく質': 60,
+            'タンパク質': 60,
+            'protein': 60,
+            '鉄分': 20,
+            '鉄': 20,
+            'iron': 20,
+            '葉酸': 400,
+            'folic_acid': 400,
+            'カルシウム': 650,
+            'calcium': 650
+        };
+
+        const threshold = thresholds[n.name];
+        if (!threshold) return false;
+
+        return n.value < threshold * 0.7; // 70%未満を不足と定義
+    });
 
     if (compact) {
         return (
@@ -88,19 +95,38 @@ export const NutritionSummary: React.FC<NutritionSummaryProps> = ({
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
-                    {displayedNutrients.slice(0, 4).map(nutrient => (
-                        <div key={nutrient.name} className="text-sm">
-                            <div className="font-medium">{nutrient.name}</div>
-                            <div className="text-gray-500">
-                                {nutrient.amount} {nutrient.unit}
-                                {nutrient.percentOfDaily !== undefined && (
-                                    <span className="ml-1 text-xs">
-                                        ({Math.round(nutrient.percentOfDaily * 100)}%)
-                                    </span>
-                                )}
+                    {displayedNutrients.slice(0, 4).map(nutrient => {
+                        // 推奨摂取量に対する割合の計算（仮の実装）
+                        const thresholds: Record<string, number> = {
+                            'たんぱく質': 60,
+                            'タンパク質': 60,
+                            'protein': 60,
+                            '鉄分': 20,
+                            '鉄': 20,
+                            'iron': 20,
+                            '葉酸': 400,
+                            'folic_acid': 400,
+                            'カルシウム': 650,
+                            'calcium': 650
+                        };
+
+                        const threshold = thresholds[nutrient.name];
+                        const percentOfDaily = threshold ? nutrient.value / threshold : undefined;
+
+                        return (
+                            <div key={nutrient.name} className="text-sm">
+                                <div className="font-medium">{nutrient.name}</div>
+                                <div className="text-gray-500">
+                                    {nutrient.value.toFixed(1)} {nutrient.unit}
+                                    {percentOfDaily !== undefined && (
+                                        <span className="ml-1 text-xs">
+                                            ({Math.round(percentOfDaily * 100)}%)
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {displayedNutrients.length > 4 && (
@@ -140,28 +166,47 @@ export const NutritionSummary: React.FC<NutritionSummaryProps> = ({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {displayedNutrients.map(nutrient => (
-                        <div key={nutrient.name} className="flex justify-between items-center">
-                            <div>
-                                <div className="font-medium">{nutrient.name}</div>
-                                <div className="text-sm text-gray-500">{nutrient.amount} {nutrient.unit}</div>
-                            </div>
-                            {nutrient.percentOfDaily !== undefined && (
-                                <div className="w-24">
-                                    <div className="text-right text-sm mb-1">
-                                        {Math.round(nutrient.percentOfDaily * 100)}%
-                                    </div>
-                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                        <div
-                                            className={`h-1.5 rounded-full ${nutrient.isDeficient ? 'bg-amber-500' : 'bg-green-500'
-                                                }`}
-                                            style={{ width: `${Math.min(100, nutrient.percentOfDaily * 100)}%` }}
-                                        ></div>
-                                    </div>
+                    {displayedNutrients.map(nutrient => {
+                        // 推奨摂取量に対する割合の計算（仮の実装）
+                        const thresholds: Record<string, number> = {
+                            'たんぱく質': 60,
+                            'タンパク質': 60,
+                            'protein': 60,
+                            '鉄分': 20,
+                            '鉄': 20,
+                            'iron': 20,
+                            '葉酸': 400,
+                            'folic_acid': 400,
+                            'カルシウム': 650,
+                            'calcium': 650
+                        };
+
+                        const threshold = thresholds[nutrient.name];
+                        const percentOfDaily = threshold ? nutrient.value / threshold : undefined;
+                        const isDeficient = percentOfDaily !== undefined && percentOfDaily < 0.7;
+
+                        return (
+                            <div key={nutrient.name} className="flex justify-between items-center">
+                                <div>
+                                    <div className="font-medium">{nutrient.name}</div>
+                                    <div className="text-sm text-gray-500">{nutrient.value.toFixed(1)} {nutrient.unit}</div>
                                 </div>
-                            )}
-                        </div>
-                    ))}
+                                {percentOfDaily !== undefined && (
+                                    <div className="w-24">
+                                        <div className="text-right text-sm mb-1">
+                                            {Math.round(percentOfDaily * 100)}%
+                                        </div>
+                                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div
+                                                className={`h-1.5 rounded-full ${isDeficient ? 'bg-amber-500' : 'bg-green-500'}`}
+                                                style={{ width: `${Math.min(100, percentOfDaily * 100)}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {nutrients.length > displayedNutrients.length && (

@@ -3,6 +3,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { ApiError, ErrorCode } from '@/lib/errors/app-errors';
 import { validateUrl } from '@/lib/validation/response-validators';
+import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 export class RecipeService {
     /**
@@ -61,6 +62,16 @@ export class RecipeService {
                     'レシピが見つかりませんでした',
                     404
                 );
+            }
+
+            // 栄養データを標準化フォーマットに変換
+            if (recipe.nutrition_per_serving) {
+                // DB形式からStandardizedMealNutrition形式に変換
+                const standardizedNutrition = convertToStandardizedNutrition(recipe.nutrition_per_serving);
+                return {
+                    ...recipe,
+                    nutrition_per_serving: standardizedNutrition
+                };
             }
 
             return recipe;

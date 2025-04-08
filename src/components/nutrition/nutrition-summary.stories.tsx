@@ -1,34 +1,41 @@
 import React from 'react';
 import { Meta, StoryObj } from '@storybook/react';
 import { NutritionSummary } from './nutrition-summary';
+import { StandardizedMealNutrition } from '@/types/nutrition';
 
-// モックの栄養素データ
-const mockNutrients = [
-    { name: 'エネルギー', amount: 450, unit: 'kcal', percentOfDaily: 0.23 },
-    { name: 'たんぱく質', amount: 20, unit: 'g', percentOfDaily: 0.4 },
-    { name: '脂質', amount: 15, unit: 'g', percentOfDaily: 0.25 },
-    { name: '炭水化物', amount: 60, unit: 'g', percentOfDaily: 0.2 },
-    { name: '食物繊維', amount: 5, unit: 'g', percentOfDaily: 0.25 },
-    { name: '鉄', amount: 2.5, unit: 'mg', percentOfDaily: 0.18, isDeficient: true },
-    { name: '葉酸', amount: 120, unit: 'μg', percentOfDaily: 0.3 },
-    { name: 'カルシウム', amount: 200, unit: 'mg', percentOfDaily: 0.2 },
-    { name: 'ビタミンA', amount: 300, unit: 'μg', percentOfDaily: 0.5 },
-    { name: 'ビタミンB1', amount: 0.3, unit: 'mg', percentOfDaily: 0.3 },
-    { name: 'ビタミンB2', amount: 0.4, unit: 'mg', percentOfDaily: 0.35 },
-    { name: 'ビタミンC', amount: 30, unit: 'mg', percentOfDaily: 0.3, isDeficient: true }
-];
+// StandardizedMealNutrition型に合わせたモックデータ
+const createStandardizedMockData = (isDeficient: boolean = false): StandardizedMealNutrition => ({
+    totalCalories: 450,
+    totalNutrients: [
+        { name: 'たんぱく質', value: isDeficient ? 15 : 20, unit: 'g' },
+        { name: '脂質', value: 15, unit: 'g' },
+        { name: '炭水化物', value: 60, unit: 'g' },
+        { name: '食物繊維', value: 5, unit: 'g' },
+        { name: '鉄分', value: isDeficient ? 1.5 : 2.5, unit: 'mg' },
+        { name: '鉄', value: isDeficient ? 1.5 : 2.5, unit: 'mg' },
+        { name: 'iron', value: isDeficient ? 1.5 : 2.5, unit: 'mg' },
+        { name: '葉酸', value: isDeficient ? 70 : 120, unit: 'mcg' },
+        { name: 'folic_acid', value: isDeficient ? 70 : 120, unit: 'mcg' },
+        { name: 'カルシウム', value: isDeficient ? 150 : 200, unit: 'mg' },
+        { name: 'calcium', value: isDeficient ? 150 : 200, unit: 'mg' },
+        { name: 'ビタミンA', value: 300, unit: 'mcg' },
+        { name: 'ビタミンB1', value: 0.3, unit: 'mg' },
+        { name: 'ビタミンB2', value: 0.4, unit: 'mg' },
+        { name: 'ビタミンC', value: isDeficient ? 20 : 30, unit: 'mg' }
+    ],
+    foodItems: [],
+    reliability: {
+        confidence: 0.85,
+        balanceScore: 75,
+        completeness: 0.9
+    }
+});
+
+// 標準的な栄養データ
+const mockStandardizedNutrition = createStandardizedMockData();
 
 // 不足している栄養素を含むデータ
-const mockNutrientsWithDeficiencies = [
-    ...mockNutrients.slice(0, 5),
-    { name: '鉄', amount: 1.5, unit: 'mg', percentOfDaily: 0.11, isDeficient: true },
-    { name: '葉酸', amount: 70, unit: 'μg', percentOfDaily: 0.18, isDeficient: true },
-    { name: 'カルシウム', amount: 150, unit: 'mg', percentOfDaily: 0.15, isDeficient: true },
-    { name: 'ビタミンA', amount: 300, unit: 'μg', percentOfDaily: 0.5 },
-    { name: 'ビタミンB1', amount: 0.3, unit: 'mg', percentOfDaily: 0.3 },
-    { name: 'ビタミンB2', amount: 0.4, unit: 'mg', percentOfDaily: 0.35 },
-    { name: 'ビタミンC', amount: 20, unit: 'mg', percentOfDaily: 0.2, isDeficient: true }
-];
+const mockStandardizedNutritionWithDeficiencies = createStandardizedMockData(true);
 
 const meta: Meta<typeof NutritionSummary> = {
     title: 'Nutrition/NutritionSummary',
@@ -38,13 +45,9 @@ const meta: Meta<typeof NutritionSummary> = {
     },
     tags: ['autodocs'],
     argTypes: {
-        nutrients: {
+        nutritionData: {
             control: 'object',
-            description: '栄養素データの配列'
-        },
-        reliabilityScore: {
-            control: { type: 'range', min: 0, max: 1, step: 0.01 },
-            description: '栄養計算の信頼性スコア (0.0-1.0)'
+            description: '標準化された栄養データ'
         },
         missingFoodsCount: {
             control: { type: 'number', min: 0 },
@@ -70,8 +73,7 @@ type Story = StoryObj<typeof NutritionSummary>;
 
 export const Default: Story = {
     args: {
-        nutrients: mockNutrients,
-        reliabilityScore: 0.85,
+        nutritionData: mockStandardizedNutrition,
         missingFoodsCount: 0,
         lowConfidenceFoodsCount: 0,
         initiallyExpanded: false,
@@ -81,8 +83,7 @@ export const Default: Story = {
 
 export const WithDeficiencies: Story = {
     args: {
-        nutrients: mockNutrientsWithDeficiencies,
-        reliabilityScore: 0.75,
+        nutritionData: mockStandardizedNutritionWithDeficiencies,
         missingFoodsCount: 0,
         lowConfidenceFoodsCount: 1,
         initiallyExpanded: false,
@@ -92,8 +93,14 @@ export const WithDeficiencies: Story = {
 
 export const LowReliability: Story = {
     args: {
-        nutrients: mockNutrients,
-        reliabilityScore: 0.45,
+        nutritionData: {
+            ...mockStandardizedNutrition,
+            reliability: {
+                confidence: 0.45,
+                balanceScore: 40,
+                completeness: 0.5
+            }
+        },
         missingFoodsCount: 2,
         lowConfidenceFoodsCount: 1,
         initiallyExpanded: false,
@@ -103,8 +110,7 @@ export const LowReliability: Story = {
 
 export const InitiallyExpanded: Story = {
     args: {
-        nutrients: mockNutrients,
-        reliabilityScore: 0.85,
+        nutritionData: mockStandardizedNutrition,
         missingFoodsCount: 0,
         lowConfidenceFoodsCount: 0,
         initiallyExpanded: true,
@@ -114,8 +120,7 @@ export const InitiallyExpanded: Story = {
 
 export const CompactView: Story = {
     args: {
-        nutrients: mockNutrients,
-        reliabilityScore: 0.85,
+        nutritionData: mockStandardizedNutrition,
         missingFoodsCount: 0,
         lowConfidenceFoodsCount: 0,
         initiallyExpanded: false,
@@ -125,8 +130,7 @@ export const CompactView: Story = {
 
 export const CompactWithDeficiencies: Story = {
     args: {
-        nutrients: mockNutrientsWithDeficiencies,
-        reliabilityScore: 0.75,
+        nutritionData: mockStandardizedNutritionWithDeficiencies,
         missingFoodsCount: 0,
         lowConfidenceFoodsCount: 1,
         initiallyExpanded: false,
@@ -136,8 +140,14 @@ export const CompactWithDeficiencies: Story = {
 
 export const CompactLowReliability: Story = {
     args: {
-        nutrients: mockNutrients,
-        reliabilityScore: 0.45,
+        nutritionData: {
+            ...mockStandardizedNutrition,
+            reliability: {
+                confidence: 0.45,
+                balanceScore: 40,
+                completeness: 0.5
+            }
+        },
         missingFoodsCount: 2,
         lowConfidenceFoodsCount: 1,
         initiallyExpanded: false,
