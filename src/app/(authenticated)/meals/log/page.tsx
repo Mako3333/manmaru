@@ -1,6 +1,6 @@
 'use client'
 // ライブラリのインポート
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect, FormEvent, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
@@ -18,13 +18,12 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { AppError, ErrorCode } from '@/lib/error'
 import {
-    normalizeNutritionData,
     validateMealData,
     prepareForApiRequest,
-    convertToStandardizedNutrition
-} from '@/lib/nutrition/nutrition-utils';
-import { StandardizedMealData, StandardizedMealNutrition, Nutrient, NutritionData } from '@/types/nutrition';
-import { FoodInputParseResult } from '@/lib/food/food-input-parser';
+} from '@/lib/nutrition/nutrition-utils'
+import { StandardizedMealData, StandardizedMealNutrition, NutritionData } from '@/types/nutrition'
+import { FoodInputParseResult } from '@/lib/food/food-input-parser'
+import type { Profile } from '@/lib/utils/profile'
 
 
 // 入力モードの型定義
@@ -43,11 +42,11 @@ interface RecognitionData {
     foods: FoodInputParseResult[];
     nutritionResult: {
         nutrition: StandardizedMealNutrition;
-        matchResults: any[];
+        matchResults: unknown[];
         legacyNutrition: NutritionData;
     };
     recognitionConfidence?: number;
-    aiEstimatedNutrition?: any;
+    aiEstimatedNutrition?: unknown;
     originalImageProvided?: boolean;
     mealType?: string;
 }
@@ -69,20 +68,20 @@ interface ApiRecognitionResponse {
 
 export default function MealLogPage() {
     // ユーザープロフィール関連の状態
-    const [profile, setProfile] = useState<any | null>(null)
+    const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
 
     // 食事タイプの状態(朝食・昼食・夕食・間食)
     const [mealType, setMealType] = useState<MealType>('breakfast')
 
-    // 日付の状態
-    const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+    // 日付の状態 (selectedDate は保持し、setSelectedDate を未使用にする)
+    const [selectedDate, _setSelectedDate] = useState<Date>(new Date())
 
     // 入力モードの状態(写真モード・テキストモード)
     const [inputMode, setInputMode] = useState<InputMode>('photo')
 
-    // 画像解析関連の状態
-    const [selectedFile, setSelectedFile] = useState<File | null>(null)
+    // 画像解析関連の状態 (selectedFile は未使用のまま)
+    const [,] = useState<File | null>(null)
     const [base64Image, setBase64Image] = useState<string | null>(null)
     const [analyzing, setAnalyzing] = useState(false)
     const [recognitionData, setRecognitionData] = useState<RecognitionData | null>(null)
@@ -128,19 +127,18 @@ export default function MealLogPage() {
         }
 
         fetchProfile()
-    }, [])//
+    }, [supabase])// supabase を依存配列に追加
 
     // 写真が選択されたときの処理
     const handlePhotoCapture = async (file: File, base64: string) => {
-        setSelectedFile(file);
         setBase64Image(base64);
 
         // 画像解析を開始
         await analyzePhoto(base64);
     };
 
-    // 画像解析処理
-    const analyzePhoto = async (base64Image: string) => {
+    // 画像解析処理 (useCallback でメモ化)
+    const analyzePhoto = useCallback(async (base64Image: string) => {
         console.log('analyzePhoto開始: データ長', base64Image.length);
         setAnalyzing(true);
         setRecognitionData(null);
@@ -174,8 +172,8 @@ export default function MealLogPage() {
             }
 
             // 英語の食品名を検出して警告
-            const hasEnglishFoodNames = result.data.foods.some((food: any) =>
-                /^[a-zA-Z]/.test(food.name) || (food.quantity && typeof food.quantity === 'string' && /^[0-9]+ [a-z]+/.test(food.quantity))
+            const hasEnglishFoodNames = result.data.foods.some((food: FoodInputParseResult) =>
+                /^[a-zA-Z]/.test(food.foodName) || (food.quantityText && typeof food.quantityText === 'string' && /^[0-9]+ [a-z]+/.test(food.quantityText))
             );
 
             if (hasEnglishFoodNames) {
@@ -199,11 +197,11 @@ export default function MealLogPage() {
                             { name: 'カルシウム', value: result.data.aiEstimatedNutrition.calcium, unit: 'mg' },
                             { name: 'ビタミンD', value: result.data.aiEstimatedNutrition.vitamin_d, unit: 'mcg' }
                         ],
-                        foodItems: result.data.foods.map((food: any) => ({
+                        foodItems: result.data.foods.map((food: FoodInputParseResult) => ({
                             id: crypto.randomUUID(),
                             name: food.foodName,
                             amount: 1,
-                            unit: food.quantityText?.split(' ')[1] || '個',
+                            unit: food.quantityText?.split(' ')?.[1] || '個',
                             nutrition: {
                                 calories: result.data.aiEstimatedNutrition.calories / result.data.foods.length,
                                 nutrients: [],
@@ -243,7 +241,7 @@ export default function MealLogPage() {
             console.log('analyzePhoto完了');
             setAnalyzing(false);
         }
-    };
+    }, [setAnalyzing, setRecognitionData, mealType, handleError]);
 
     // 認識結果の保存処理
     const handleSaveRecognition = async (nutritionData: StandardizedMealNutrition) => {
@@ -414,14 +412,18 @@ export default function MealLogPage() {
 
             // 型安全なマッピング
             const enhancedFoodsWithIds: FoodItem[] = [];
-            result.data.foods.forEach((item: any, index: number) => {
+            result.data.foods.forEach((item: unknown, index: number) => {
                 const originalItem = foods[index < foods.length ? index : foods.length - 1];
-                if (originalItem) {
+                if (originalItem && typeof item === 'object' && item !== null) {
+                    const name = 'name' in item && typeof item.name === 'string' ? item.name : originalItem.name;
+                    const quantity = 'quantity' in item && typeof item.quantity === 'string' ? item.quantity : originalItem.quantity;
+                    const confidence = 'confidence' in item && typeof item.confidence === 'number' ? item.confidence : originalItem.confidence;
+
                     enhancedFoodsWithIds.push({
                         id: originalItem.id,
-                        name: item.name || originalItem.name,
-                        quantity: item.quantity || originalItem.quantity,
-                        confidence: typeof item.confidence === 'number' ? item.confidence : originalItem.confidence
+                        name: name,
+                        quantity: quantity,
+                        confidence: confidence
                     });
                 }
             });
@@ -477,7 +479,7 @@ export default function MealLogPage() {
             }
 
             // 保存用のデータ準備（型安全に変換）
-            const foodsData = enhancedFoods.map(({ id, ...rest }) => rest);
+            const foodsForApi = enhancedFoods.map(({ ...rest }) => rest);
 
             // 食品テキストを生成して新APIで栄養計算
             const foodText = enhancedFoods.map(food => `${food.name} ${food.quantity}`).join('、');
@@ -589,7 +591,7 @@ export default function MealLogPage() {
             // 食事タイプが変更されたときのみ再解析
             analyzePhoto(base64Image);
         }
-    }, [mealType, inputMode, base64Image]);
+    }, [mealType, inputMode, base64Image, analyzePhoto]);
 
     // 入力モードが変更されたときの処理
     const handleInputModeChange = (mode: InputMode) => {

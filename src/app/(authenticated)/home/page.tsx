@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import HomeClient from '@/components/home/home-client'
+import type { User } from '@supabase/supabase-js'
 
 export default function HomePage() {
-    const [user, setUser] = useState<any>(null)
+    const [user, setUser] = useState<User | null>(null)
     const [loading, setLoading] = useState(true)
     const router = useRouter()
     const supabase = createBrowserClient(

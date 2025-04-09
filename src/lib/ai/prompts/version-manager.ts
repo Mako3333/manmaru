@@ -23,12 +23,33 @@ export interface PromptMetadata {
     defaultVersion: string;
 }
 
+// 静的インポートを追加 (prompt-service.ts と同様)
+import * as foodAnalysisV1 from './templates/food-analysis/v1';
+import * as nutritionAdviceV1 from './templates/nutrition-advice/v1';
+import * as textInputAnalysisV1 from './templates/text-input-analysis/v1';
+import * as recipeUrlAnalysisV1 from './templates/recipe-url-analysis/v1';
+import * as nutritionTipsV1 from './templates/nutrition-tips/v1';
+// import * as recipeRecommendationV1 from './templates/recipe-recommendation/v1'; // 必要ならコメント解除
+
+// PromptType をインポート
+import { PromptType } from './prompt-service';
+
 /**
  * プロンプトバージョン管理クラス
  */
 export class PromptVersionManager {
     private static instance: PromptVersionManager;
     private promptRegistry: Map<string, PromptMetadata> = new Map();
+
+    // インポートしたテンプレートを保持するマップを追加
+    private templates: Record<string, Record<string, any>> = {
+        [PromptType.FOOD_ANALYSIS]: { 'v1': foodAnalysisV1 },
+        [PromptType.NUTRITION_ADVICE]: { 'v1': nutritionAdviceV1 },
+        [PromptType.TEXT_INPUT_ANALYSIS]: { 'v1': textInputAnalysisV1 },
+        [PromptType.RECIPE_URL_ANALYSIS]: { 'v1': recipeUrlAnalysisV1 },
+        [PromptType.NUTRITION_TIPS]: { 'v1': nutritionTipsV1 },
+        // [PromptType.RECIPE_RECOMMENDATION]: { 'v1': recipeRecommendationV1 }, // 必要ならコメント解除
+    };
 
     private constructor() {
         // シングルトンパターン
@@ -82,10 +103,10 @@ export class PromptVersionManager {
             metadata.defaultVersion;
 
         try {
-            // プロンプトファイルを動的にインポート
-            // 注: この部分は実際の実装で調整が必要
-            const promptModule = require(`./templates/${promptId}/${targetVersion}.ts`);
-            return promptModule.default || promptModule.template;
+            // require を削除し、インポート済みのマップから取得
+            // const promptModule = require(`./templates/${promptId}/${targetVersion}.ts`);
+            const promptModule = this.templates[promptId]?.[targetVersion];
+            return promptModule?.default || promptModule?.template;
         } catch (error) {
             console.error(`プロンプトテンプレートの読み込みに失敗: ${promptId}/${targetVersion}`, error);
             return undefined;

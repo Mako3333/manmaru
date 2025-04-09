@@ -25,7 +25,7 @@ interface MealNutrient {
         name: string;
         unit: string;
         category: string;
-    };
+    }[];
 }
 
 interface Meal {
@@ -41,7 +41,7 @@ interface Meal {
 }
 
 // Supabaseから返されるデータ型
-type SupabaseMeal = any;
+type SupabaseMeal = Meal;
 
 export async function GET(request: Request) {
     try {
@@ -157,9 +157,9 @@ export async function GET(request: Request) {
                 dailySummaries[date].meals += 1;
 
                 // 各食事の栄養素を集計
-                meal.meal_nutrients?.forEach((mealNutrient: any) => {
+                meal.meal_nutrients?.forEach((mealNutrient: MealNutrient) => {
                     const nutrientId = mealNutrient.nutrient_id;
-                    const nutrientName = mealNutrient.nutrients?.name || `nutrient_${nutrientId}`;
+                    const nutrientName = mealNutrient.nutrients?.[0]?.name || `nutrient_${nutrientId}`;
                     const amount = mealNutrient.amount * (meal.servings || 1);
 
                     // そのmealDateに関するデータがなければ初期化
@@ -180,7 +180,7 @@ export async function GET(request: Request) {
                         dailySummaries[date]!.nutrients[nutrientName] = {
                             id: nutrientId,
                             name: nutrientName,
-                            unit: mealNutrient.nutrients?.unit || '',
+                            unit: mealNutrient.nutrients?.[0]?.unit || '',
                             total: 0
                         };
                     }

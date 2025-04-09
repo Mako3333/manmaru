@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
@@ -9,10 +9,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DietaryRestriction } from '@/types/user'
-import { differenceInWeeks, addWeeks } from 'date-fns'
+import { calculatePregnancyWeek } from '@/lib/date-utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { InfoIcon } from 'lucide-react'
-import { calculatePregnancyWeek } from '@/lib/date-utils'
 
 interface ProfileFormData {
     age: number

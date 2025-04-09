@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { URLClipForm } from '@/components/recipes/url-clip-form';
 import { RecipeUrlClipRequest, RecipeUrlClipResponse, RecipeIngredient } from '@/types/recipe';
@@ -8,13 +8,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Check, Loader2, InfoIcon, Info } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { ManualIngredientsForm } from '@/components/recipes/manual-ingredients-form';
 import { ScreenshotUploader } from '@/components/recipes/screenshot-uploader';
 import { SocialMediaPlaceholder } from '@/components/recipes/social-media-placeholder';
 import { StandardizedMealNutrition } from '@/types/nutrition';
 import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-utils';
-import { toast } from 'react-hot-toast';
+import { AlertCircle, Check, Info } from 'lucide-react';
 
 const createEmptyStandardizedNutrition = (): StandardizedMealNutrition => ({
     totalCalories: 0,
@@ -37,24 +37,18 @@ export default function RecipeClipClient() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [step, setStep] = useState<'url' | 'confirm' | 'success'>('url');
-    const [parsedRecipe, setParsedRecipe] = useState<RecipeUrlClipResponse | null>(null);
+    const [usePlaceholder, setUsePlaceholder] = useState<boolean>(true);
+    const [servings, setServings] = useState<number>(2); // デフォルト人数：2人前
     const [editedRecipe, setEditedRecipe] = useState<(
         RecipeUrlClipResponse &
         { recipe_type?: string; }
     ) | null>(null);
-    const [saveSuccess, setSaveSuccess] = useState(false);
-    const [usePlaceholder, setUsePlaceholder] = useState<boolean>(true);
-    const [servings, setServings] = useState<number>(2); // デフォルト人数：2人前
 
     const handleUrlSubmit = async (data: RecipeUrlClipRequest, isSocialMedia: boolean) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            // URLからサイト名を判定
-            const url = new URL(data.url);
-            const hostname = url.hostname;
-
             console.log('レシピURL解析開始:', data.url, 'ソーシャル:', isSocialMedia);
 
             // APIエンドポイント：新しいv2 APIエンドポイントを使用
@@ -90,6 +84,7 @@ export default function RecipeClipClient() {
                 // 仮の食品アイテムリストを作成 (変換関数が要求するため)
                 const tempFoodItems = parsedData.ingredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
                 // convertToStandardizedNutrition は NutritionData (古い型) を期待するため、型アサーション
+                // TODO: convertToStandardizedNutrition を更新し、any アサーションを削除する
                 standardizedNutrition = convertToStandardizedNutrition(parsedData.nutrition_per_serving as any, tempFoodItems as any);
             } else if (parsedData.nutrition_per_serving) {
                 standardizedNutrition = parsedData.nutrition_per_serving;
@@ -97,16 +92,7 @@ export default function RecipeClipClient() {
                 standardizedNutrition = createEmptyStandardizedNutrition();
             }
 
-            setParsedRecipe(parsedData); // 元のレスポンスも保持
-            setEditedRecipe({
-                ...parsedData,
-                nutrition_per_serving: standardizedNutrition,
-                recipe_type: 'main_dish', // デフォルト値
-                // content_id, is_social_media, use_placeholder は parsedData から引き継がれる
-            });
-
-            // ソーシャルメディアの場合はプレースホルダーをデフォルトに
-            setUsePlaceholder(isSocialMedia);
+            setError(null);
 
             setStep('confirm');
         } catch (error) {
@@ -155,14 +141,12 @@ export default function RecipeClipClient() {
                                 const calculatedNutrition = nutritionApiResponse.nutrition_per_serving;
                                 const tempFoodItems = validIngredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
                                 // 変換関数は NutritionData (古い型) を期待する可能性
+                                // TODO: convertToStandardizedNutrition を更新し、any アサーションを削除する
                                 const standardizedNutrition = convertToStandardizedNutrition(calculatedNutrition as any, tempFoodItems as any);
 
                                 // 栄養素データを更新
                                 if (editedRecipe) {
-                                    setEditedRecipe({
-                                        ...editedRecipe,
-                                        nutrition_per_serving: standardizedNutrition
-                                    });
+                                    editedRecipe.nutrition_per_serving = standardizedNutrition;
                                 }
                             }
                         }
@@ -198,8 +182,7 @@ export default function RecipeClipClient() {
                 throw new Error(errorData.error || 'レシピの保存に失敗しました');
             }
 
-            const savedData = await response.json();
-            setSaveSuccess(true);
+            setIsLoading(false);
             setStep('success');
 
             // キャッシュを更新するためにルーターを更新
@@ -207,35 +190,24 @@ export default function RecipeClipClient() {
         } catch (err) {
             console.error('保存エラー:', err);
             setError(err instanceof Error ? err.message : '予期せぬエラーが発生しました');
-        } finally {
-            setIsLoading(false);
         }
     };
 
     const handleRecipeTypeChange = (recipeType: string) => {
         if (editedRecipe) {
-            setEditedRecipe({
-                ...editedRecipe,
-                recipe_type: recipeType,
-            });
+            editedRecipe.recipe_type = recipeType;
         }
     };
 
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (editedRecipe) {
-            setEditedRecipe({
-                ...editedRecipe,
-                title: e.target.value,
-            });
+            editedRecipe.title = e.target.value;
         }
     };
 
     const updateIngredients = (newIngredients: RecipeIngredient[]) => {
         if (editedRecipe) {
-            setEditedRecipe({
-                ...editedRecipe,
-                ingredients: newIngredients
-            });
+            editedRecipe.ingredients = newIngredients;
         }
     };
 
@@ -245,18 +217,14 @@ export default function RecipeClipClient() {
 
     const handleImageCapture = (imageData: string) => {
         if (editedRecipe) {
-            setEditedRecipe({
-                ...editedRecipe,
-                image_url: imageData,
-                use_placeholder: false // 画像が設定されたらプレースホルダーはfalseに
-            });
-            // setUsePlaceholder(false); // setEditedRecipeで更新するので不要
+            editedRecipe.image_url = imageData;
+            editedRecipe.use_placeholder = false; // 画像が設定されたらプレースホルダーはfalseに
         }
     };
 
     const handleUsePlaceholder = () => {
         if (editedRecipe) {
-            setUsePlaceholder(true);
+            editedRecipe.use_placeholder = true;
         }
     };
 
@@ -428,7 +396,7 @@ export default function RecipeClipClient() {
                     {isSocialMedia && (
                         <div className="mb-6">
                             <h3 className="text-lg font-semibold mb-3">表示画像</h3>
-                            <Tabs defaultValue={usePlaceholder ? "placeholder" : "screenshot"} className="w-full">
+                            <Tabs defaultValue={editedRecipe.use_placeholder ? "placeholder" : "screenshot"} className="w-full">
                                 <TabsList className="grid w-full grid-cols-2">
                                     <TabsTrigger value="placeholder" onClick={handleUsePlaceholder}>プレースホルダー</TabsTrigger>
                                     <TabsTrigger value="screenshot" onClick={() => setUsePlaceholder(false)}>スクリーンショット</TabsTrigger>
@@ -438,7 +406,7 @@ export default function RecipeClipClient() {
                                     <p className="text-xs text-gray-500 mt-2">著作権に配慮し、プレースホルダー画像を使用します。</p>
                                 </TabsContent>
                                 <TabsContent value="screenshot" className="mt-4">
-                                    <ScreenshotUploader onImageCapture={handleImageCapture} initialImage={usePlaceholder ? undefined : editedRecipe.image_url} />
+                                    <ScreenshotUploader onImageCapture={handleImageCapture} initialImage={editedRecipe.use_placeholder ? undefined : editedRecipe.image_url} />
                                     <Alert variant="warning" className="mt-4">
                                         <Info className="h-4 w-4" />
                                         <AlertTitle>注意</AlertTitle>
@@ -506,9 +474,6 @@ export default function RecipeClipClient() {
                     variant="outline"
                     onClick={() => {
                         setStep('url');
-                        setParsedRecipe(null);
-                        setEditedRecipe(null);
-                        setSaveSuccess(false);
                         setError(null);
                         setUsePlaceholder(true);
                         setServings(2); // 人数を初期値に戻す

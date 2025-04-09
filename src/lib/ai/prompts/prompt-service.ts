@@ -2,6 +2,14 @@
 import { TemplateEngine } from './template-engine';
 import { PromptVersionManager } from './version-manager';
 
+// 静的インポートを追加
+import * as foodAnalysisV1 from './templates/food-analysis/v1';
+import * as nutritionAdviceV1 from './templates/nutrition-advice/v1';
+import * as textInputAnalysisV1 from './templates/text-input-analysis/v1';
+import * as recipeUrlAnalysisV1 from './templates/recipe-url-analysis/v1';
+import * as nutritionTipsV1 from './templates/nutrition-tips/v1';
+// import * as recipeRecommendationV1 from './templates/recipe-recommendation/v1'; // 必要ならコメント解除
+
 /**
  * プロンプト種別
  */
@@ -116,37 +124,55 @@ export class PromptService {
      */
     private registerPromptTemplates(): void {
         // 食品分析
-        const foodAnalysisV1 = require('./templates/food-analysis/v1');
+        // const foodAnalysisV1 = require('./templates/food-analysis/v1'); // require を削除
         this.versionManager.registerPrompt({
             id: PromptType.FOOD_ANALYSIS,
             name: '食品分析',
             description: '食事写真から食品を識別するプロンプト',
             category: '栄養分析',
-            versions: [foodAnalysisV1.metadata],
+            versions: [
+                {
+                    ...foodAnalysisV1.metadata,
+                    createdAt: new Date(foodAnalysisV1.metadata.createdAt),
+                    updatedAt: new Date(foodAnalysisV1.metadata.updatedAt),
+                }
+            ],
             parameters: ['mealType', 'trimester'],
             defaultVersion: 'v1'
         });
 
         // 栄養アドバイス
-        const nutritionAdviceV1 = require('./templates/nutrition-advice/v1');
+        // const nutritionAdviceV1 = require('./templates/nutrition-advice/v1'); // require を削除
         this.versionManager.registerPrompt({
             id: PromptType.NUTRITION_ADVICE,
             name: '栄養アドバイス',
             description: '妊婦向け栄養アドバイス生成',
             category: '栄養アドバイス',
-            versions: [nutritionAdviceV1.metadata],
+            versions: [
+                {
+                    ...nutritionAdviceV1.metadata,
+                    createdAt: new Date(nutritionAdviceV1.metadata.createdAt),
+                    updatedAt: new Date(nutritionAdviceV1.metadata.updatedAt),
+                }
+            ],
             parameters: ['pregnancyWeek', 'trimester', 'deficientNutrients', 'isSummary', 'formattedDate', 'currentSeason'],
             defaultVersion: 'v1'
         });
 
         // テキスト入力分析
-        const textInputAnalysisV1 = require('./templates/text-input-analysis/v1');
+        // const textInputAnalysisV1 = require('./templates/text-input-analysis/v1'); // require を削除
         this.versionManager.registerPrompt({
             id: PromptType.TEXT_INPUT_ANALYSIS,
             name: 'テキスト入力分析',
             description: '食事テキスト入力の解析と正規化',
             category: '栄養分析',
-            versions: [textInputAnalysisV1.metadata],
+            versions: [
+                {
+                    ...textInputAnalysisV1.metadata,
+                    createdAt: new Date(textInputAnalysisV1.metadata.createdAt),
+                    updatedAt: new Date(textInputAnalysisV1.metadata.updatedAt),
+                }
+            ],
             parameters: ['foodsText'],
             defaultVersion: 'v1'
         });
@@ -154,13 +180,19 @@ export class PromptService {
         // レシピ推薦 (一時的にコメントアウト)
         /*
         try {
-            const recipeRecommendationV1 = require('./templates/recipe-recommendation/v1');
+            // const recipeRecommendationV1 = require('./templates/recipe-recommendation/v1'); // require を削除
             this.versionManager.registerPrompt({
                 id: PromptType.RECIPE_RECOMMENDATION,
                 name: 'レシピ推薦',
                 description: 'ユーザーの過去データに基づいたレシピ推薦プロンプト',
                 category: 'レシピ',
-                versions: [recipeRecommendationV1.metadata],
+                versions: [
+                    {
+                        ...recipeRecommendationV1.metadata,
+                        createdAt: new Date(recipeRecommendationV1.metadata.createdAt),
+                        updatedAt: new Date(recipeRecommendationV1.metadata.updatedAt),
+                    }
+                ],
                 parameters: ['pastNutritionData', 'deficientNutrients', 'userPreferences'], // 例
                 defaultVersion: 'v1'
             });
@@ -172,13 +204,19 @@ export class PromptService {
 
         // URLレシピ解析 (新規追加)
         try {
-            const recipeUrlAnalysisV1 = require('./templates/recipe-url-analysis/v1');
+            // const recipeUrlAnalysisV1 = require('./templates/recipe-url-analysis/v1'); // require を削除
             this.versionManager.registerPrompt({
                 id: PromptType.RECIPE_URL_ANALYSIS,
                 name: 'URLレシピ解析',
                 description: 'URLからレシピ情報を抽出するプロンプト',
                 category: 'レシピ解析',
-                versions: [recipeUrlAnalysisV1.metadata],
+                versions: [
+                    {
+                        ...recipeUrlAnalysisV1.metadata,
+                        createdAt: new Date(recipeUrlAnalysisV1.metadata.createdAt),
+                        updatedAt: new Date(recipeUrlAnalysisV1.metadata.updatedAt),
+                    }
+                ],
                 parameters: ['recipeContent'], // テンプレートの変数名に合わせる
                 defaultVersion: 'v1'
             });
@@ -188,13 +226,19 @@ export class PromptService {
 
         // 栄養Tips (3食記録後)
         try {
-            const nutritionTipsV1 = require('./templates/nutrition-tips/v1');
+            // const nutritionTipsV1 = require('./templates/nutrition-tips/v1'); // require を削除
             this.versionManager.registerPrompt({
                 id: PromptType.NUTRITION_TIPS,
                 name: '栄養Tips',
                 description: '3食記録後のTips生成プロンプト',
                 category: '栄養アドバイス',
-                versions: [nutritionTipsV1.metadata],
+                versions: [
+                    {
+                        ...nutritionTipsV1.metadata,
+                        createdAt: new Date(nutritionTipsV1.metadata.createdAt),
+                        updatedAt: new Date(nutritionTipsV1.metadata.updatedAt),
+                    }
+                ],
                 // テンプレート内で使用する変数を列挙
                 parameters: ['pregnancyWeek', 'trimester', 'formattedDate', 'currentSeason', 'pastNutritionData'],
                 defaultVersion: 'v1'

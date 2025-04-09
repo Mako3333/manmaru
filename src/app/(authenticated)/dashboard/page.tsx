@@ -25,7 +25,7 @@ import { useRouter } from 'next/navigation'
 import { format, subDays, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { Profile } from '@/lib/utils/profile'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, Clock, Calendar } from 'lucide-react';
@@ -37,8 +37,7 @@ import {
     NutritionTargets,
     DEFAULT_NUTRITION_TARGETS,
 } from '@/lib/nutrition/nutrition-display-utils';
-import { StandardizedMealNutrition, NutritionProgress, Nutrient as StandardizedNutrient } from '@/types/nutrition';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { StandardizedMealNutrition, NutritionProgress } from '@/types/nutrition';
 import { Progress } from '@/components/ui/progress';
 
 // 新しいダッシュボードコンポーネントをインポート
@@ -113,8 +112,7 @@ export default function DashboardPage() {
     const [loadingProfile, setLoadingProfile] = useState(true)
     const [currentDate, setCurrentDate] = useState(getJapanDate())
     const [activeTab, setActiveTab] = useState('today')
-    // StandardizedMealNutrition を初期化
-    const [nutritionData, setNutritionData] = useState<StandardizedMealNutrition | null>(null); // 初期値を null に変更
+    const [, _setNutritionData] = useState<StandardizedMealNutrition | null>(null); // 初期値を null に変更
     const [nutritionProgress, setNutritionProgress] = useState<NutritionProgress | null>(null)
     const [nutritionTargets, setNutritionTargets] = useState<NutritionTargets>(DEFAULT_NUTRITION_TARGETS)
     const [nutritionScore, setNutritionScore] = useState(0)
@@ -141,7 +139,7 @@ export default function DashboardPage() {
                     .eq('user_id', session.user.id)
                     .single()
 
-                let userTargets = { ...DEFAULT_NUTRITION_TARGETS }; // 先に初期化
+                const userTargets = { ...DEFAULT_NUTRITION_TARGETS }; // 先に初期化
                 if (profileError) {
                     console.error('プロファイル取得エラー:', profileError);
                     setProfile(null);
@@ -181,25 +179,25 @@ export default function DashboardPage() {
                     // 必要であれば、ここで convertToStandardizedNutrition を使用して変換
                     // try {
                     //     const standardizedNutrition = convertToStandardizedNutrition(nutritionProgressData); // この関数の実装次第
-                    //     setNutritionData(standardizedNutrition);
+                    //     _setNutritionData(standardizedNutrition); // 更新関数を呼び出す
                     //     console.log("Standardized Nutrition Data:", standardizedNutrition);
                     // } catch (conversionError) {
                     //     console.error("Error converting to standardized nutrition data:", conversionError);
-                    //     setNutritionData(null);
+                    //     _setNutritionData(null); // 更新関数を呼び出す
                     // }
 
                 } else {
                     // データがない場合
                     console.log("No nutrition data found for date:", currentDate); // デバッグログ
                     setNutritionProgress(null);
-                    setNutritionData(null); // 標準化データも null
+                    _setNutritionData(null); // 更新関数を呼び出す
                     setNutritionScore(0); // スコアも 0
                 }
             } catch (error) {
                 console.error('データ取得または処理エラー:', error)
                 // エラー状態をユーザーに通知するUIを追加検討
                 setNutritionProgress(null);
-                setNutritionData(null);
+                _setNutritionData(null); // 更新関数を呼び出す
                 setNutritionScore(0);
             } finally {
                 setLoadingProfile(false)

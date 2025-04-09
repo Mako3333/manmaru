@@ -3,7 +3,14 @@ import { cookies } from 'next/headers';
 import RecipesClient from './recipes-client';
 import { notFound } from 'next/navigation';
 
-export default async function RecipePage({ params }: { params: { id: string } }) {
+// Props の型定義を追加
+type RecipePageProps = {
+    params: { id: string };
+    searchParams?: { [key: string]: string | string[] | undefined };
+};
+
+// 型エイリアスを使用するように変更
+export default async function RecipePage({ params }: RecipePageProps) {
     const { id } = params;
 
     try {
