@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
-// import { IAIService } from '@/lib/ai/ai-service.interface'; // 未使用のため削除
 import { AIModelFactory } from '@/lib/ai/core/ai-model-factory';
 import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
 import { getCurrentSeason } from '@/lib/date-utils';
@@ -92,7 +91,7 @@ export async function POST(req: Request) {
 
         // プロンプトサービスからレシピ生成用プロンプトを取得
         const promptService = PromptService.getInstance();
-        const prompt = promptService.generatePrompt(PromptType.RECIPE_RECOMMENDATION, promptContext);
+        const prompt = await promptService.generatePrompt(PromptType.RECIPE_RECOMMENDATION, promptContext);
 
         // モデル呼び出し
         const response = await model.invoke(prompt);

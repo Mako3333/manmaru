@@ -1,10 +1,11 @@
 // src/lib/ai/ai-service.interface.ts
-import { PromptType } from './prompts/prompt-service';
+import { PromptType } from '@/lib/ai/prompts/prompt-service';
 import {
     NutritionAdviceResult,
     MealAnalysisResult,
-    RecipeAnalysisResult
+    RecipeAnalysisResult,
 } from '@/types/ai';
+import { GeminiParseResult } from '@/lib/ai/gemini-response-parser';
 // GeminiProcessResult の具体的な型は実装ファイル (gemini-service.ts) で定義されているため、
 // インターフェースでは汎用的な型か any を使用します。
 
@@ -68,4 +69,13 @@ export interface IAIService {
 
     // 他に AIService クラスにあったメソッドや、共通で必要なメソッドがあれば追加
     // 例: analyzeMeal?(image: string, mealType: string, trimester?: number): Promise<FoodAnalysisResult>;
+
+    /**
+     * @returns AIモデルの応答。
+     */
+    generateResponse(
+        type: PromptType,
+        context: Record<string, unknown>,
+        options?: Record<string, unknown>,
+    ): Promise<string>;
 }

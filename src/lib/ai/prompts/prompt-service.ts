@@ -54,17 +54,17 @@ export class PromptService {
     /**
      * 食品分析プロンプト生成
      */
-    generateFoodAnalysisPrompt(context: {
+    async generateFoodAnalysisPrompt(context: {
         mealType: string;
         trimester?: number;
-    }): string {
+    }): Promise<string> {
         return this.generatePrompt(PromptType.FOOD_ANALYSIS, context);
     }
 
     /**
      * 栄養アドバイスプロンプト生成
      */
-    generateNutritionAdvicePrompt(context: {
+    async generateNutritionAdvicePrompt(context: {
         pregnancyWeek: number;
         trimester: number;
         deficientNutrients: string[];
@@ -83,7 +83,7 @@ export class PromptService {
                 vitamin_d: { percentage: number };
             };
         }>;
-    }): string {
+    }): Promise<string> {
         // デバッグ用ログを追加
         console.log('PromptService: 栄養アドバイスプロンプト生成', {
             pregnancyWeek: context.pregnancyWeek,
@@ -97,21 +97,25 @@ export class PromptService {
     /**
      * テキスト入力分析プロンプト生成
      */
-    generateTextInputAnalysisPrompt(context: {
+    async generateTextInputAnalysisPrompt(context: {
         foodsText: string;
-    }): string {
+    }): Promise<string> {
         return this.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, context);
     }
 
     /**
      * 汎用プロンプト生成メソッド
      */
-    generatePrompt(promptType: PromptType, context: Record<string, any>, version?: string): string {
+    async generatePrompt(
+        type: PromptType,
+        context: Record<string, unknown>,
+        version?: string
+    ): Promise<string> {
         // テンプレート取得
-        const template = this.versionManager.getPromptTemplate(promptType, version);
+        const template = this.versionManager.getPromptTemplate(type, version);
 
         if (!template) {
-            throw new Error(`プロンプトテンプレートが見つかりません: ${promptType}, バージョン: ${version || 'デフォルト'}`);
+            throw new Error(`プロンプトテンプレートが見つかりません: ${type}, バージョン: ${version || 'デフォルト'}`);
         }
 
         // テンプレートレンダリング
