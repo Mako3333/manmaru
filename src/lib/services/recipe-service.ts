@@ -372,7 +372,7 @@ export class RecipeService {
                 selectColumns = 'id, user_id, title, image_url, source_url, source_platform, content_id, recipe_type, ingredients, caution_foods, caution_level, is_favorite, servings, clipped_at, last_used_at, created_at, updated_at, is_social_media, use_placeholder';
             }
 
-            let query = supabase
+            const query = supabase
                 .from('clipped_recipes')
                 .select(selectColumns, { count: 'exact' })
                 .eq('user_id', userId)

@@ -72,7 +72,7 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
 
             if (!response.ok) {
                 let errorJson: ApiErrorResponse | null = null;
-                let httpErrorMessage = `HTTPエラー: ${response.status}`; // デフォルトメッセージ
+                const httpErrorMessage = `HTTPエラー: ${response.status}`; // デフォルトメッセージ
 
                 try {
                     // ★ 修正: 型アサーションを追加

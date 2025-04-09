@@ -127,7 +127,7 @@ export class TemplateEngine {
 
         // すべての条件ブロックを処理
         let result = template;
-        let matches = [];
+        const matches = [];
         let match;
 
         // マッチを全て収集
@@ -175,7 +175,7 @@ export class TemplateEngine {
 
         // すべてのループブロックを処理
         let result = template;
-        let matches = [];
+        const matches = [];
         let match;
 
         // マッチを全て収集
@@ -211,7 +211,7 @@ export class TemplateEngine {
                     try {
                         const itemContext = { ...context, '@index': index, 'this': item };
                         // currentItemTemplate (string) を渡す
-                        let processed = this.replaceItemVariables(currentItemTemplate, item, itemContext);
+                        const processed = this.replaceItemVariables(currentItemTemplate, item, itemContext);
                         return processed;
                     } catch (error) {
                         console.error(`アイテム処理エラー [${index}]:`, error);
