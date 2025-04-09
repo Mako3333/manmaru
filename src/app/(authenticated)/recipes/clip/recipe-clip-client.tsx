@@ -83,8 +83,10 @@ export default function RecipeClipClient() {
                 // 仮の食品アイテムリストを作成 (変換関数が要求するため)
                 const tempFoodItems = parsedData.ingredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
                 // convertToStandardizedNutrition は NutritionData (古い型) を期待するため、型アサーション
-                // TODO: convertToStandardizedNutrition を更新し、any アサーションを削除する
-                parsedData.nutrition_per_serving = convertToStandardizedNutrition(parsedData.nutrition_per_serving as any, tempFoodItems as any);
+                parsedData.nutrition_per_serving = convertToStandardizedNutrition(
+                    parsedData.nutrition_per_serving as import('@/types/nutrition').NutritionData,
+                    tempFoodItems as import('@/types/nutrition').FoodItem[]
+                );
             } else if (!parsedData.nutrition_per_serving) {
                 parsedData.nutrition_per_serving = createEmptyStandardizedNutrition();
             }
@@ -138,8 +140,10 @@ export default function RecipeClipClient() {
                                 const calculatedNutrition = nutritionApiResponse.nutrition_per_serving;
                                 const tempFoodItems = validIngredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
                                 // 変換関数は NutritionData (古い型) を期待する可能性
-                                // TODO: convertToStandardizedNutrition を更新し、any アサーションを削除する
-                                const standardizedNutrition = convertToStandardizedNutrition(calculatedNutrition as any, tempFoodItems as any);
+                                const standardizedNutrition = convertToStandardizedNutrition(
+                                    calculatedNutrition as import('@/types/nutrition').NutritionData,
+                                    tempFoodItems as import('@/types/nutrition').FoodItem[]
+                                );
 
                                 // 栄養素データを更新
                                 if (editedRecipe) {

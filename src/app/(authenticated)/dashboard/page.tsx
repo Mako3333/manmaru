@@ -205,7 +205,6 @@ export default function DashboardPage() {
         }
 
         fetchData()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [supabase, router, currentDate]); // nutritionTargets を依存配列から削除（無限ループ回避のため、目標値設定は初回 or プロファイル変更時が適切）
 
     // 日付を変更する関数 (変更なし)

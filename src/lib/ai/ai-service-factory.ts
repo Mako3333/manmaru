@@ -14,6 +14,16 @@ export enum AIServiceType {
 }
 
 /**
+ * AI設定の型定義
+ */
+export interface AIServiceConfig {
+    apiKey?: string;
+    temperature?: number;
+    maxTokens?: number;
+    [key: string]: string | number | boolean | undefined;
+}
+
+/**
  * AIサービスのファクトリクラス
  * GeminiServiceのような具体的な実装クラスのインスタンスを生成・管理する
  */
@@ -51,7 +61,7 @@ export class AIServiceFactory {
      * インスタンスを強制的に再作成
      * デフォルトは Gemini
      */
-    static recreateService(type: AIServiceType = AIServiceType.GEMINI, config?: any): IAIService {
+    static recreateService(type: AIServiceType = AIServiceType.GEMINI, config?: AIServiceConfig): IAIService {
         let instance: IAIService;
         switch (type) {
             case AIServiceType.GEMINI:

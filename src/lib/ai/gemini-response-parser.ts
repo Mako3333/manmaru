@@ -2,6 +2,15 @@
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 
 /**
+ * AIデバッグ情報の型定義
+ */
+export interface GeminiDebugInfo {
+    parsedData?: Record<string, unknown>;
+    sourceFormat?: 'nutrition_advice' | 'recipe' | 'food/text/image' | string;
+    [key: string]: unknown;
+}
+
+/**
  * AI応答の解析結果を表す型
  */
 export interface GeminiParseResult {
@@ -15,7 +24,17 @@ export interface GeminiParseResult {
     advice_detail?: string;
     recommended_foods?: { name: string; description?: string }[]; // recommended_foods の型を詳細化
     error?: string;
-    debug?: any; // デバッグ情報用
+    debug?: GeminiDebugInfo; // デバッグ情報用
+}
+
+/**
+ * AI入力データの型定義
+ */
+export interface GeminiInputData {
+    text?: string;
+    imageDescription?: string;
+    imageUrl?: string;
+    [key: string]: unknown;
 }
 
 /**
@@ -57,7 +76,7 @@ export class GeminiResponseParser {
             }
 
             console.log(`[GeminiResponseParser] Extracted JSON string (preview): ${jsonStr.substring(0, 100)}...`);
-            const parsedData = JSON.parse(jsonStr);
+            const parsedData = JSON.parse(jsonStr) as Record<string, unknown>;
 
             // 優先度: アドバイス形式かチェック
             if ('advice_summary' in parsedData || 'advice_detail' in parsedData || 'recommended_foods' in parsedData) {
@@ -79,28 +98,31 @@ export class GeminiResponseParser {
             // 次にレシピ解析結果かチェック
             else if ('title' in parsedData || 'servings' in parsedData || 'ingredients' in parsedData) {
                 console.log('[GeminiResponseParser] Parsing as Recipe Analysis result.');
-                const foods: FoodInputParseResult[] = (parsedData.ingredients || []).map((item: any) => ({
-                    foodName: item.name || '',
-                    quantityText: item.quantity || null,
-                    confidence: 0.8
-                }));
+                const foods: FoodInputParseResult[] = Array.isArray(parsedData.ingredients) ?
+                    (parsedData.ingredients || []).map((item: Record<string, unknown>) => ({
+                        foodName: item.name as string || '',
+                        quantityText: item.quantity as string | null || null,
+                        confidence: 0.8
+                    })) : [];
                 return {
                     foods,
-                    title: parsedData.title,
-                    servings: parsedData.servings,
+                    title: parsedData.title as string,
+                    servings: parsedData.servings as string,
                     debug: { parsedData, sourceFormat: 'recipe' }
                 };
             }
             // 次に画像・テキスト解析結果かチェック
             else if ('foods' in parsedData) {
                 console.log('[GeminiResponseParser] Parsing as Food/Text/Image Analysis result.');
-                const foods: FoodInputParseResult[] = (parsedData.foods || []).map((item: any) => ({
-                    foodName: item.name || '',
-                    quantityText: item.quantity || null,
-                    confidence: typeof item.confidence === 'number' ? item.confidence : 0.7
-                }));
+                const foods: FoodInputParseResult[] = Array.isArray(parsedData.foods) ?
+                    (parsedData.foods || []).map((item: Record<string, unknown>) => ({
+                        foodName: item.name as string || '',
+                        quantityText: item.quantity as string | null || null,
+                        confidence: typeof item.confidence === 'number' ? item.confidence : 0.7
+                    })) : [];
                 const confidence = typeof parsedData.confidence === 'number' ? parsedData.confidence : undefined;
-                const nutrition = typeof parsedData.nutrition === 'object' && parsedData.nutrition !== null ? parsedData.nutrition : undefined;
+                const nutrition = typeof parsedData.nutrition === 'object' && parsedData.nutrition !== null ?
+                    parsedData.nutrition as Record<string, number | string> : undefined;
                 return {
                     foods,
                     confidence,
@@ -129,7 +151,7 @@ export class GeminiResponseParser {
      * AIモデルに送信するプロンプトを生成
      * @deprecated PromptServiceを使用してください
      */
-    generatePrompt(inputData: any): string {
+    generatePrompt(inputData: GeminiInputData): string {
         console.warn('GeminiResponseParser.generatePrompt is deprecated. Use PromptService instead.');
 
         // プロンプトテンプレート（互換性のために残していますが、実際にはPromptServiceを使用します）

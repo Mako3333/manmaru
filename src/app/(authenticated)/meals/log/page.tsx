@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
+import { format } from 'date-fns'
 
 // UIコンポーネントのインポート
 import { Button } from '@/components/ui/button'
@@ -241,7 +242,7 @@ export default function MealLogPage() {
             console.log('analyzePhoto完了');
             setAnalyzing(false);
         }
-    }, [setAnalyzing, setRecognitionData, mealType, handleError]);
+    }, [mealType]); // handleErrorを依存配列から削除（コールバック関数であり、変化しないため）
 
     // 認識結果の保存処理
     const handleSaveRecognition = async (nutritionData: StandardizedMealNutrition) => {
@@ -389,196 +390,132 @@ export default function MealLogPage() {
 
     // 食品データを強化する関数
     const enhanceFoodItems = async (foods: FoodItem[], suppressErrorToast: boolean = false): Promise<FoodItem[]> => {
+        // 食品データが空の場合は処理せず、そのまま返す
+        if (foods.length === 0) return foods;
+
         try {
-            // ローディング通知（sonnerスタイル）
-            toast.loading("食品データを分析中...", {
-                id: "enhance-foods",
-                description: "AIが入力内容を解析しています"
-            });
-
-            // 食品名を結合してテキスト入力として解析
-            const foodText = foods.map(food => `${food.name} ${food.quantity}`).join('、');
-
-            // 新APIを使用
-            const result = await analyzeTextInput(foodText);
-
-            // ローディング通知を閉じる
-            toast.dismiss("enhance-foods");
-
-            if (!result.success || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
-                console.error('APIレスポンス:', result);
-                throw new Error('不正な応答フォーマット');
+            if (!foods.some(food => food.name.trim() !== '')) {
+                throw new Error('有効な食品名がありません');
             }
 
-            // 型安全なマッピング
-            const enhancedFoodsWithIds: FoodItem[] = [];
-            result.data.foods.forEach((item: unknown, index: number) => {
-                const originalItem = foods[index < foods.length ? index : foods.length - 1];
-                if (originalItem && typeof item === 'object' && item !== null) {
-                    const name = 'name' in item && typeof item.name === 'string' ? item.name : originalItem.name;
-                    const quantity = 'quantity' in item && typeof item.quantity === 'string' ? item.quantity : originalItem.quantity;
-                    const confidence = 'confidence' in item && typeof item.confidence === 'number' ? item.confidence : originalItem.confidence;
+            console.log('AI解析予定食品:', foods);
 
-                    enhancedFoodsWithIds.push({
-                        id: originalItem.id,
-                        name: name,
-                        quantity: quantity,
-                        confidence: confidence
-                    });
-                }
+            // 食品アイテムを文字列に変換
+            const foodText = foods.map(food => `${food.name} ${food.quantity}`.trim()).join('、');
+
+            // 栄養素解析APIを呼び出す
+            const response = await analyzeTextInput(foodText);
+
+            console.log('AI解析結果:', response);
+
+            if (!response.success || !response.data) {
+                throw new Error('栄養素解析に失敗しました');
+            }
+
+            // APIのレスポンスからIDを合わせて食品情報を更新
+            const updatedFoods = foods.map(food => {
+                const matchedFood = response.data.foods.find(
+                    (apiFood: FoodInputParseResult) =>
+                        apiFood.foodName.toLowerCase() === food.name.toLowerCase()
+                );
+
+                return {
+                    ...food,
+                    confidence: matchedFood ? 0.9 : food.confidence // 適合度を設定
+                };
             });
 
-            // 成功通知
-            toast.success("分析完了", {
-                description: "食品データを最適化しました"
-            });
-
-            return enhancedFoodsWithIds;
+            return updatedFoods;
         } catch (error) {
-            console.error('食品解析エラー:', error);
+            console.error('栄養素解析エラー:', error);
 
             if (!suppressErrorToast) {
-                // エラー通知
-                toast.error("分析エラー", {
-                    description: "食品データの解析に失敗しました。元のデータを使用します。"
+                // エラーメッセージの表示
+                toast.error('栄養素解析に失敗しました', {
+                    description: '手動で情報を編集してください',
                 });
             }
 
-            // エラー時は元のデータを返す
+            // エラー時は元の食品リストを返す
             return foods;
         }
     };
 
     // テキスト入力の保存処理
     const handleSaveTextInput = async () => {
-        // 入力チェック
         if (foodItems.length === 0) {
-            toast.error("入力エラー", {
-                description: "少なくとも1つの食品を追加してください"
-            });
+            toast.error('食品を追加してください');
             return;
         }
 
         setSaving(true);
 
         try {
-            // AIを使って食品データを強化
-            const enhancedFoods = await enhanceFoodItems(foodItems, true);
-            // AIの結果で状態を更新
-            setFoodItems(enhancedFoods);
+            // 食品リストをAIで強化（AIで名前と量を最適化）
+            const enhancedFoods = await enhanceFoodItems(foodItems);
+            console.log('強化された食品リスト:', enhancedFoods);
 
-            // 認証状態を確認
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                throw new AppError({
-                    code: ErrorCode.Base.AUTH_ERROR,
-                    message: 'ログインセッションが無効です',
-                    userMessage: 'ログインセッションの有効期限が切れました',
-                    details: { redirectTo: '/auth/login' }
-                });
-            }
+            // 栄養計算用のテキスト作成 (AIに解析させる)
+            const foodText = enhancedFoods
+                .map(food => `${food.name} ${food.quantity}`)
+                .join('、');
 
-            // 保存用のデータ準備（型安全に変換）
-            const foodsForApi = enhancedFoods.map(({ ...rest }) => rest);
+            console.log('栄養計算用テキスト:', foodText);
 
-            // 食品テキストを生成して新APIで栄養計算
-            const foodText = enhancedFoods.map(food => `${food.name} ${food.quantity}`).join('、');
-            console.log('食品テキスト送信:', foodText);
+            // AI栄養計算API呼び出し
             const nutritionResult = await analyzeTextInput(foodText);
-            console.log('API応答:', JSON.stringify(nutritionResult, null, 2));
 
-            // 新しいレスポンス構造をチェック
-            if (!nutritionResult.success || !nutritionResult.data || !nutritionResult.data.nutritionResult) {
-                console.error('API応答形式エラー（データ構造）:', nutritionResult);
-                throw new Error('栄養計算結果の取得に失敗しました: データ構造不正');
+            if (!nutritionResult.success || !nutritionResult.data) {
+                throw new Error('栄養計算に失敗しました');
             }
 
-            if (!nutritionResult.data.nutritionResult.nutrition) {
-                console.error('API応答形式エラー（nutrition欠落）:', nutritionResult.data.nutritionResult);
-                throw new Error('栄養計算結果の取得に失敗しました: nutrition欠落');
+            console.log('栄養計算結果:', nutritionResult);
+
+            // 保存用データの準備
+            const sessionData = await supabase.auth.getSession();
+            if (!sessionData.data.session) {
+                throw new Error('ログインセッションが無効です');
             }
 
-            // 型安全に栄養データを取得 (ネストされたパスから取得)
-            const standardizedNutrition: StandardizedMealNutrition = nutritionResult.data.nutritionResult.nutrition;
+            const today = new Date();
+            const formattedDate = format(today, 'yyyy-MM-dd');
 
-            // 栄養データの整合性チェック
-            console.log('取得した栄養データ:', standardizedNutrition);
-            if (!standardizedNutrition.totalNutrients || !Array.isArray(standardizedNutrition.totalNutrients)) {
-                console.error('栄養データ形式エラー（totalNutrients不正）:', standardizedNutrition);
-                throw new Error('不正な栄養データ形式: totalNutrientsが配列ではありません');
-            }
-
-            if (typeof standardizedNutrition.totalCalories !== 'number') {
-                console.warn('栄養データ形式警告（totalCalories不正）:', standardizedNutrition.totalCalories);
-                // 0で初期化（エラーにはしない）
-                standardizedNutrition.totalCalories = 0;
-            }
-
-            // 食品アイテムを作成
-            const mealItems = enhancedFoods.map((food) => ({
-                name: food.name,
-                amount: parseFloat(food.quantity?.split(' ')[0] || '1'),
-                unit: food.quantity?.split(' ')[1] || '個',
-            }));
-
-            // 標準化された食事データの準備
-            const standardizedMealData: StandardizedMealData = {
-                user_id: session.user.id,
-                meal_date: (selectedDate ? selectedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
-                meal_type: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
-                meal_items: mealItems,
-                nutrition_data: standardizedNutrition
-                // image_urlは任意のため省略
-            };
-
-            // データの検証
-            const validation = validateMealData(standardizedMealData);
-            if (!validation.isValid) {
-                throw new AppError({
-                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
-                    message: `食事データの検証エラー: ${validation.errors.join(', ')}`,
-                    userMessage: '食事データの検証に失敗しました',
-                    details: { errors: validation.errors }
-                });
-            }
-
-            // APIリクエスト用にデータを変換
-            console.log('APIリクエスト変換前の食事データ:', standardizedMealData);
-            const mealData = prepareForApiRequest(standardizedMealData);
-            console.log('APIリクエスト変換後の食事データ:', mealData);
-
-            // APIを使用してデータを保存
-            const response = await fetch('/api/meals', {
+            // APIでデータを保存
+            const saveResponse = await fetch('/api/update-nutrition-log', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(mealData),
+                body: JSON.stringify({
+                    user_id: sessionData.data.session.user.id,
+                    meal_type: mealType,
+                    meal_date: formattedDate,
+                    foods: enhancedFoods.map(food => ({
+                        name: food.name,
+                        quantity: food.quantity
+                    })),
+                    nutrition: nutritionResult.data.aiEstimatedNutrition,
+                    raw_input: foodText,
+                    standardized_nutrition: nutritionResult.data.standardizedNutrition
+                }),
             });
 
-            // レスポンスのエラーチェック
-            await checkApiResponse(response, '食事データの保存に失敗しました');
+            if (!saveResponse.ok) {
+                const errorData = await saveResponse.json().catch(() => ({}));
+                throw new Error(errorData.message || '保存中にエラーが発生しました');
+            }
 
             // 成功通知
-            toast.success("保存完了", {
-                description: "食事を記録しました！"
+            toast.success('食事記録を保存しました', {
+                description: 'ダッシュボードに栄養データが反映されます',
             });
 
-            // ホームページにリダイレクト
-            setTimeout(() => {
-                try {
-                    console.log('テキスト入力からのリダイレクト実行中...');
-                    router.refresh();
-                    router.push('/home');
-                } catch (redirectError) {
-                    console.error('リダイレクトエラー:', redirectError);
-                    window.location.href = '/home';
-                }
-            }, 1500);
+            // ダッシュボードにリダイレクト
+            router.push('/dashboard');
         } catch (error) {
-            console.error('食事保存エラー:', error);
-            toast.error("保存エラー", {
-                description: "食事の記録に失敗しました。もう一度お試しください。"
+            console.error('テキスト入力保存エラー:', error);
+            toast.error('保存に失敗しました', {
+                description: error instanceof Error ? error.message : '予期せぬエラーが発生しました',
             });
         } finally {
             setSaving(false);

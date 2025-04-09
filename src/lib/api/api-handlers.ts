@@ -4,13 +4,14 @@ import { cookies } from 'next/headers';
 import { AppError, ErrorCode } from '@/lib/error';
 import { validateRequestParams } from '@/lib/validation/response-validators';
 import { z, ZodSchema } from 'zod';
+import { User } from '@supabase/supabase-js';
 
 /**
  * APIエンドポイントハンドラの型定義
  */
 type ApiHandler = (
     req: NextRequest,
-    context: { params: Record<string, string>; user: any }
+    context: { params: Record<string, string>; user: User }
 ) => Promise<NextResponse>;
 
 /**
@@ -18,7 +19,7 @@ type ApiHandler = (
  */
 export type RouteContext = {
     params: Record<string, string>;
-    user: any;
+    user: User;
 };
 
 /**

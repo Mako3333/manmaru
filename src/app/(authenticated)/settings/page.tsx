@@ -40,7 +40,7 @@ export default function SettingsPage() {
         }
 
         fetchProfile()
-    }, [])
+    }, [supabase])
 
     const handleLogout = async () => {
         try {
@@ -48,36 +48,6 @@ export default function SettingsPage() {
             router.push('/')
         } catch (error) {
             console.error('Error signing out:', error)
-        }
-    }
-
-    const updateProfile = async (updatedData: any) => {
-        try {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session) return
-
-            const { error } = await supabase
-                .from('profiles')
-                .update(updatedData)
-                .eq('user_id', session.user.id)
-
-            if (error) throw error
-
-            // 更新成功後、プロファイルを再取得
-            const { data, error: fetchError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('user_id', session.user.id)
-                .single()
-
-            if (fetchError) throw fetchError
-            setProfile(data)
-
-            // 成功メッセージを表示
-            alert('プロファイルを更新しました')
-        } catch (error) {
-            console.error('Error updating profile:', error)
-            alert('プロファイルの更新に失敗しました')
         }
     }
 

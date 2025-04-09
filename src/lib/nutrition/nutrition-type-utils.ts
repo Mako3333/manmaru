@@ -18,23 +18,35 @@ import { ErrorCode } from '../error/codes/error-codes';
 /**
  * JSONデータからNutritionData型へパース
  */
-export function parseNutritionFromJson(jsonData: any): NutritionData {
+export function parseNutritionFromJson(jsonData: string | Record<string, unknown>): NutritionData {
     try {
+        let parsedData: Record<string, unknown>;
         if (typeof jsonData === 'string') {
-            jsonData = JSON.parse(jsonData);
+            parsedData = JSON.parse(jsonData);
+        } else {
+            parsedData = jsonData;
         }
 
-        return {
-            calories: Number(jsonData.calories || 0),
-            protein: Number(jsonData.protein || 0),
-            iron: Number(jsonData.iron || 0),
-            folic_acid: Number(jsonData.folic_acid || 0),
-            calcium: Number(jsonData.calcium || 0),
-            vitamin_d: Number(jsonData.vitamin_d || 0),
-            confidence_score: Number(jsonData.confidence_score || 0.5),
-            extended_nutrients: jsonData.extended_nutrients,
-            not_found_foods: jsonData.not_found_foods
+        const result: NutritionData = {
+            calories: Number(parsedData.calories || 0),
+            protein: Number(parsedData.protein || 0),
+            iron: Number(parsedData.iron || 0),
+            folic_acid: Number(parsedData.folic_acid || 0),
+            calcium: Number(parsedData.calcium || 0),
+            vitamin_d: Number(parsedData.vitamin_d || 0),
+            confidence_score: Number(parsedData.confidence_score || 0.5)
         };
+
+        // オプショナルプロパティの追加
+        if (parsedData.extended_nutrients) {
+            result.extended_nutrients = parsedData.extended_nutrients as NutritionData['extended_nutrients'];
+        }
+
+        if (parsedData.not_found_foods) {
+            result.not_found_foods = parsedData.not_found_foods as string[];
+        }
+
+        return result;
     } catch (error) {
         console.error('Failed to parse nutrition data:', error);
         return createEmptyNutritionData();
@@ -44,7 +56,7 @@ export function parseNutritionFromJson(jsonData: any): NutritionData {
 /**
  * NutritionDataをJSONに変換
  */
-export function serializeNutritionToJson(data: NutritionData): any {
+export function serializeNutritionToJson(data: NutritionData): Record<string, unknown> {
     try {
         return {
             ...data,
