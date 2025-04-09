@@ -15,14 +15,14 @@ export interface GeminiDebugInfo {
  */
 export interface GeminiParseResult {
     foods?: FoodInputParseResult[]; // オプショナルに変更
-    confidence?: number;
+    confidence?: number; // オプショナルに戻す
     title?: string;
     servings?: string;
-    nutrition?: { [key: string]: number | string }; // 栄養情報（キーは栄養素名、値は数値または文字列）
+    nutrition: { [key: string]: number | string } | undefined; // 栄養情報（キーは栄養素名、値は数値または文字列）
     // アドバイス用プロパティを追加
     advice_summary?: string;
     advice_detail?: string;
-    recommended_foods?: { name: string; description?: string }[]; // recommended_foods の型を詳細化
+    recommended_foods?: { name: string; description: string | undefined }[]; // recommended_foods の型を詳細化
     error?: string;
     debug?: GeminiDebugInfo; // デバッグ情報用
 }
@@ -83,7 +83,7 @@ export class GeminiResponseParser {
                 console.log('[GeminiResponseParser] Parsing as Nutrition Advice result.');
                 // recommended_foods の型チェックと変換
                 const recommended_foods = Array.isArray(parsedData.recommended_foods) ?
-                    parsedData.recommended_foods.map((item: any) => ({
+                    parsedData.recommended_foods.map((item: Record<string, unknown>) => ({
                         name: typeof item?.name === 'string' ? item.name : '不明な食品',
                         description: typeof item?.description === 'string' ? item.description : undefined
                     })) : undefined;

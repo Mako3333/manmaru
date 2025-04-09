@@ -47,46 +47,48 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
         const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
 
-        let nameQuantityPairs: Array<{ name: string; quantity?: string }>;
-        try {
-            nameQuantityPairs = foods.map((item) => ({
-                name: item.foodName,
-                ...(item.quantityText ? { quantity: item.quantityText } : {}),
-            }));
-        } catch (mapError) {
-            // console.error('Error mapping food results to name-quantity pairs:', mapError);
-            throw new AppError({
-                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                message: `Error mapping food results: ${mapError instanceof Error ? mapError.message : String(mapError)}`,
-                userMessage: "解析結果の整形中に問題が発生しました。",
-                originalError: mapError instanceof Error ? mapError : undefined
-            });
-        }
-
-        let nutritionResult;
-        try {
-            // TODO: trimester などの情報を栄養計算サービスに渡す必要があれば追加
-            nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
-        } catch (nutritionError) {
-            // console.error('Error during nutrition calculation:', nutritionError);
-            if (nutritionError instanceof AppError) {
-                throw nutritionError;
-            } else {
+        const nameQuantityPairs = (() => {
+            try {
+                return foods.map((item) => ({
+                    name: item.foodName,
+                    ...(item.quantityText ? { quantity: item.quantityText } : {}),
+                }));
+            } catch (mapError) {
                 throw new AppError({
-                    code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
-                    message: `栄養計算中にエラーが発生: ${nutritionError instanceof Error ? nutritionError.message : String(nutritionError)}`,
-                    userMessage: "栄養価の計算中に問題が発生しました。",
-                    originalError: nutritionError instanceof Error ? nutritionError : undefined
+                    code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                    message: `Error mapping food results: ${mapError instanceof Error ? mapError.message : String(mapError)}`,
+                    userMessage: "解析結果の整形中に問題が発生しました。",
+                    originalError: mapError instanceof Error ? mapError : undefined
                 });
             }
-        }
+        })();
+
+        const nutritionResult = await (async () => {
+            try {
+                // TODO: trimester などの情報を栄養計算サービスに渡す必要があれば追加
+                return await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+            } catch (nutritionError) {
+                if (nutritionError instanceof AppError) {
+                    throw nutritionError;
+                } else {
+                    throw new AppError({
+                        code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                        message: `栄養計算中にエラーが発生: ${nutritionError instanceof Error ? nutritionError.message : String(nutritionError)}`,
+                        userMessage: "栄養価の計算中に問題が発生しました。",
+                        originalError: nutritionError instanceof Error ? nutritionError : undefined
+                    });
+                }
+            }
+        })();
 
         const standardizedNutrition = nutritionResult.nutrition;
 
-        let warningMessage;
-        if (nutritionResult.reliability.confidence < 0.7) {
-            warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
-        }
+        const warningMessage = (() => {
+            if (nutritionResult.reliability.confidence < 0.7) {
+                return '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
+            }
+            return undefined;
+        })();
 
         const aiSpecificData = parseResult.analysisSource === 'ai' && parseResult.aiRawResult ? {
             recognitionConfidence: parseResult.confidence,

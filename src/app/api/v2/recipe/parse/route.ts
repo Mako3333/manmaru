@@ -3,12 +3,11 @@ import { withErrorHandling } from '@/lib/api/middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { AppError, ErrorOptions } from '@/lib/error/types/base-error';
+import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { RecipeAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
 import {
-    convertToStandardizedNutrition,
     createStandardizedMealNutrition,
     convertToLegacyNutrition
 } from '@/lib/nutrition/nutrition-type-utils';
@@ -20,10 +19,6 @@ import { getRecipeParser } from '@/lib/recipe-parsers/parser-factory';
 import { RecipeParser } from '@/lib/recipe-parsers/parser-interface';
 import { GenericParser } from '@/lib/recipe-parsers/generic';
 import * as cheerio from 'cheerio';
-// import { calculatePerServingNutrition } from '@/lib/nutrition/nutrition-utils';
-// import { Logger } from '@/lib/logger';
-
-// const logger = Logger.getInstance();
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -43,8 +38,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
     const requestData = await req.json();
     try {
         const validatedData = requestSchema.parse(requestData);
-        let url = validatedData.url?.trim();
-        // const text = validatedData.text?.trim(); // text は現状このロジックでは未使用
+        const url = validatedData.url?.trim();
 
         if (!url) { // ハイブリッドアプローチでは URL が必須
             throw new AppError({
@@ -139,7 +133,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                     if ($(selector).length > 0) {
                         mainContentHtml = $(selector).html() || '';
                         // logger.debug(`[HTML Cleanup] Found main content with selector: ${selector}`);
-                        console.log(`[HTML Cleanup] Found main content with selector: ${selector}`); // logger 代替
+                        // console.log(`[HTML Cleanup] Found main content with selector: ${selector}`); // logger 代替コメントアウト
                         break; // 最初に見つかった主要コンテンツを使用
                     }
                 }
@@ -147,18 +141,18 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 if (mainContentHtml) {
                     cleanedHtml = `<html><body>${mainContentHtml}</body></html>`;
                     // logger.info(`[HTML Cleanup] Extracted main content for AI analysis.`);
-                    console.log(`[HTML Cleanup] Extracted main content for AI analysis.`); // logger 代替
+                    // console.log(`[HTML Cleanup] Extracted main content for AI analysis.`); // logger 代替コメントアウト
                 } else {
                     // 主要コンテンツが見つからない場合は、クリーンアップされた全体のHTMLを使用
                     cleanedHtml = $.html();
                     // logger.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`);
-                    console.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`); // logger 代替
+                    // console.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`); // logger 代替コメントアウト
                 }
 
                 // さらに不要な空白や改行を削除してトークン数を削減
                 cleanedHtml = cleanedHtml.replace(/\s{2,}/g, ' ').replace(/\n{2,}/g, '\n').trim();
                 // logger.debug(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`);
-                console.log(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`); // logger 代替
+                // console.log(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`); // logger 代替コメントアウト
 
             } catch (cleanupError) {
                 // logger.error(`[HTML Cleanup Error] Failed to clean HTML for ${url}`, cleanupError);
@@ -227,35 +221,24 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         } else {
             // Legacy 形式から変換が必要な場合
             const originalNutritionData = nutritionResult.nutrition as unknown as NutritionData;
-            standardizedNutrition = convertToStandardizedNutrition(originalNutritionData);
+            standardizedNutrition = createStandardizedMealNutrition(originalNutritionData);
         }
 
-        // 1人前計算ロジック (StandardizedMealNutrition ベース)
-        // servingsNum が 1 以下なら元の値をそのまま使用、1より大きい場合のみ割り算を実行
-        let standardizedPerServing: StandardizedMealNutrition;
-
-        if (servingsNum > 1 && standardizedNutrition) {
-            // 2人分以上の場合は割り算して1人前を計算
-            standardizedPerServing = JSON.parse(JSON.stringify(standardizedNutrition)); // Deep copy
-
-            // standardizedPerServing が存在する前提で計算
-            if (standardizedPerServing) {
-                standardizedPerServing.totalCalories /= servingsNum;
-                standardizedPerServing.totalNutrients = standardizedPerServing.totalNutrients.map(nutrient => ({
+        // 1人前あたりの栄養素を計算
+        const perServingNutrition: StandardizedMealNutrition | undefined = servingsNum > 1
+            ? {
+                ...standardizedNutrition,
+                totalCalories: standardizedNutrition.totalCalories / servingsNum,
+                totalNutrients: standardizedNutrition.totalNutrients.map(nutrient => ({
                     ...nutrient,
                     value: nutrient.value / servingsNum
-                }));
-                // 妊娠期特有の % なども割る必要があるか要検討だが、一旦主要栄養素のみ対応
-                if (standardizedPerServing.pregnancySpecific) {
-                    standardizedPerServing.pregnancySpecific.folatePercentage /= servingsNum;
-                    standardizedPerServing.pregnancySpecific.ironPercentage /= servingsNum;
-                    standardizedPerServing.pregnancySpecific.calciumPercentage /= servingsNum;
-                }
+                }))
             }
-        } else {
-            // 1人分以下の場合は元の値をそのまま使用
-            standardizedPerServing = JSON.parse(JSON.stringify(standardizedNutrition));
-        }
+            : undefined;
+
+        // 後方互換性のために legacyNutrition も生成 (オプション)
+        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
+        const legacyPerServing = perServingNutrition ? convertToLegacyNutrition(perServingNutrition) : undefined;
 
         let warningMessage;
         if (nutritionResult.reliability.confidence < 0.7) {
@@ -276,7 +259,9 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 },
                 nutritionResult: {
                     nutrition: standardizedNutrition,
-                    perServing: standardizedPerServing,
+                    perServing: perServingNutrition,
+                    legacyNutrition: legacyNutrition,
+                    legacyPerServing: legacyPerServing,
                     reliability: nutritionResult.reliability,
                     matchResults: nutritionResult.matchResults
                 }

@@ -10,15 +10,23 @@ interface NutritionData {
     calcium: number;
 }
 
+// 仮の食品項目型定義 (any[] の代わり)
+interface FoodItem {
+    name: string;
+    quantity: number;
+    unit: string;
+    // 必要に応じて他のプロパティを追加
+}
+
 // 食事データの型定義
 interface MealData {
     food_description?: {
-        items?: any[];
+        items?: FoodItem[]; // any[] を FoodItem[] に変更
         nutrition?: Partial<NutritionData>;
     };
     meal_type?: string;
     servings?: number;
-    nutrition_data?: Partial<NutritionData>;
+    nutrition_data?: Partial<NutritionData>; // これは meals テーブルのカラム？ food_description.nutrition と混同しないように注意
 }
 
 // 基準栄養素量（一般的な妊婦の目安）
@@ -57,45 +65,26 @@ export async function POST(req: Request) {
         // 3. 不足している栄養素を特定
         const deficientNutrients = identifyDeficientNutrients(nutritionSummary);
 
-        // 4. 栄養ログを更新または作成
-        const { data: existingLog, error: logCheckError } = await supabase
-            .from('daily_nutrition_logs')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('log_date', today)
-            .maybeSingle();
-
-        if (logCheckError) {
-            throw logCheckError;
-        }
-
-        const nutritionData = {
-            summary: nutritionSummary,
-            deficient_nutrients: deficientNutrients,
-            meals_count: mealsData?.length || 0
+        // 4. 栄養ログを更新または作成 (upsert を使用)
+        const nutritionLogData = {
+            user_id: userId,
+            log_date: today,
+            nutrition_data: {
+                summary: nutritionSummary,
+                deficient_nutrients: deficientNutrients,
+                meals_count: mealsData?.length || 0
+            }
         };
 
-        let updateResult;
+        const { error: upsertError } = await supabase
+            .from('daily_nutrition_logs')
+            .upsert(nutritionLogData, {
+                onConflict: 'user_id, log_date' // user_id と log_date が重複した場合に update
+            });
 
-        if (existingLog) {
-            // 既存のログを更新
-            updateResult = await supabase
-                .from('daily_nutrition_logs')
-                .update({ nutrition_data: nutritionData })
-                .eq('id', existingLog.id);
-        } else {
-            // 新しいログを作成
-            updateResult = await supabase
-                .from('daily_nutrition_logs')
-                .insert({
-                    user_id: userId,
-                    log_date: today,
-                    nutrition_data: nutritionData
-                });
-        }
-
-        if (updateResult.error) {
-            throw updateResult.error;
+        if (upsertError) {
+            console.error('Supabase upsert エラー:', upsertError);
+            throw upsertError;
         }
 
         return NextResponse.json({
@@ -112,132 +101,54 @@ export async function POST(req: Request) {
     }
 }
 
-// 日次栄養摂取量の計算
+// 日次栄養摂取量の計算 (reduce を使用し、サービング計算を修正)
 function calculateDailyNutrition(meals: MealData[]): NutritionData {
-    let totalNutrition: NutritionData = {
-        calories: 0,
-        protein: 0,
-        iron: 0,
-        folic_acid: 0,
-        calcium: 0
+    const initialNutrition: NutritionData = {
+        calories: 0, protein: 0, iron: 0, folic_acid: 0, calcium: 0
     };
 
-    for (const meal of meals) {
-        const foodItems = meal.food_description?.items || [];
+    return meals.reduce((total, meal) => {
         const servings = meal.servings || 1;
+        const mealNutrition = meal.food_description?.nutrition;
 
-        // 各食品の栄養素を合計
-        // 本来はここで詳細な栄養計算をするが、MVPでは簡易実装
-        // 実際のアプリでは、meal.food_descriptionに含まれる栄養情報を使用
-
-        // 例えば、meal.food_description.nutritionが存在する場合
-        if (meal.food_description?.nutrition) {
-            const mealNutrition = meal.food_description.nutrition;
-            // サービングサイズで調整
-            totalNutrition.calories += (mealNutrition.calories || 0) / servings;
-            totalNutrition.protein += (mealNutrition.protein || 0) / servings;
-            totalNutrition.iron += (mealNutrition.iron || 0) / servings;
-            totalNutrition.folic_acid += (mealNutrition.folic_acid || 0) / servings;
-            totalNutrition.calcium += (mealNutrition.calcium || 0) / servings;
+        if (mealNutrition) {
+            // mealNutrition は食品全体、servings は摂取数と仮定し、乗算する
+            // (以前の / servings は誤りの可能性)
+            total.calories += (mealNutrition.calories || 0) * servings;
+            total.protein += (mealNutrition.protein || 0) * servings;
+            total.iron += (mealNutrition.iron || 0) * servings;
+            total.folic_acid += (mealNutrition.folic_acid || 0) * servings;
+            total.calcium += (mealNutrition.calcium || 0) * servings;
         }
-    }
-
-    return totalNutrition;
+        return total;
+    }, initialNutrition);
 }
 
-// 不足栄養素の特定
+// 不足栄養素の特定 (閾値を明確化)
 function identifyDeficientNutrients(nutritionSummary: NutritionData): string[] {
-    // 妊婦の1日の推奨栄養摂取量（例）
+    // 妊婦の1日の推奨栄養摂取量（例）- 必要に応じてユーザーデータから取得
     const recommendedIntake: NutritionData = {
-        calories: 2000, // kcal
-        protein: 60,    // g
-        iron: 27,       // mg
-        folic_acid: 400, // μg
-        calcium: 1000    // mg
+        calories: 2000, protein: 60, iron: 27, folic_acid: 400, calcium: 1000
     };
+    const DEFICIENCY_THRESHOLD = 0.8; // 80%未満を不足と判定
 
     const deficientNutrients: string[] = [];
 
-    // 各栄養素の充足率をチェック
-    if (nutritionSummary.calories < recommendedIntake.calories * 0.8) {
+    if (nutritionSummary.calories < recommendedIntake.calories * DEFICIENCY_THRESHOLD) {
         deficientNutrients.push('カロリー');
     }
-
-    if (nutritionSummary.protein < recommendedIntake.protein * 0.8) {
+    if (nutritionSummary.protein < recommendedIntake.protein * DEFICIENCY_THRESHOLD) {
         deficientNutrients.push('タンパク質');
     }
-
-    if (nutritionSummary.iron < recommendedIntake.iron * 0.8) {
+    if (nutritionSummary.iron < recommendedIntake.iron * DEFICIENCY_THRESHOLD) {
         deficientNutrients.push('鉄分');
     }
-
-    if (nutritionSummary.folic_acid < recommendedIntake.folic_acid * 0.8) {
+    if (nutritionSummary.folic_acid < recommendedIntake.folic_acid * DEFICIENCY_THRESHOLD) {
         deficientNutrients.push('葉酸');
     }
-
-    if (nutritionSummary.calcium < recommendedIntake.calcium * 0.8) {
+    if (nutritionSummary.calcium < recommendedIntake.calcium * DEFICIENCY_THRESHOLD) {
         deficientNutrients.push('カルシウム');
     }
-
-    return deficientNutrients;
-}
-
-// 目標栄養量の計算
-function calculateTargetNutrition(userPreferences: Record<string, unknown>): NutritionData {
-    // ここではデフォルト値を返すが、実際のアプリではユーザーの妊娠週や体重などから計算
-    return { ...DEFAULT_NUTRITION_TARGETS };
-}
-
-// 合計栄養素の計算
-function calculateTotalNutrition(nutritionLogs: Record<string, any>[]): NutritionData {
-    let totalNutrition: NutritionData = {
-        calories: 0,
-        protein: 0,
-        iron: 0,
-        folic_acid: 0,
-        calcium: 0
-    };
-
-    // 各ログの栄養素を合計
-    nutritionLogs.forEach(log => {
-        if (log.nutrition) {
-            const nutrition = log.nutrition as Partial<NutritionData>;
-            totalNutrition.calories += nutrition.calories || 0;
-            totalNutrition.protein += nutrition.protein || 0;
-            totalNutrition.iron += nutrition.iron || 0;
-            totalNutrition.folic_acid += nutrition.folic_acid || 0;
-            totalNutrition.calcium += nutrition.calcium || 0;
-        }
-    });
-
-    return totalNutrition;
-}
-
-// 達成率の計算
-function calculateAchievementRates(totalNutrition: NutritionData, targetNutrition: NutritionData): Record<string, number> {
-    const rates: Record<string, number> = {};
-
-    // 各栄養素の達成率を計算
-    rates.calories = (totalNutrition.calories / targetNutrition.calories) * 100;
-    rates.protein = (totalNutrition.protein / targetNutrition.protein) * 100;
-    rates.iron = (totalNutrition.iron / targetNutrition.iron) * 100;
-    rates.folic_acid = (totalNutrition.folic_acid / targetNutrition.folic_acid) * 100;
-    rates.calcium = (totalNutrition.calcium / targetNutrition.calcium) * 100;
-
-    return rates;
-}
-
-// 不足栄養素の計算
-function calculateDeficientNutrients(achievementRates: Record<string, number>): string[] {
-    const deficientNutrients: string[] = [];
-    const threshold = 80; // 80%未満を不足とみなす
-
-    // プロパティの存在を確認してからアクセス
-    if (achievementRates.calories && achievementRates.calories < threshold) deficientNutrients.push('カロリー');
-    if (achievementRates.protein && achievementRates.protein < threshold) deficientNutrients.push('タンパク質');
-    if (achievementRates.iron && achievementRates.iron < threshold) deficientNutrients.push('鉄分');
-    if (achievementRates.folic_acid && achievementRates.folic_acid < threshold) deficientNutrients.push('葉酸');
-    if (achievementRates.calcium && achievementRates.calcium < threshold) deficientNutrients.push('カルシウム');
 
     return deficientNutrients;
 } 

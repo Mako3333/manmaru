@@ -19,26 +19,49 @@ interface DailySummary {
 }
 
 // 食事データとそれに関連する型の定義
-interface Nutrient {
+// interface Nutrient {
+//     id: number;
+//     name: string;
+//     unit: string;
+//     category: string;
+// }
+// 
+// interface MealNutrient {
+//     id: number;
+//     nutrient_id: number;
+//     amount: number;
+//     nutrients: Nutrient;
+// }
+// 
+// interface Meal {
+//     id: number;
+//     meal_type: string;
+//     meal_date: string;
+//     servings: number | null;
+//     meal_nutrients: MealNutrient[] | null;
+// }
+
+// Supabase からの応答データに合わせた型定義
+interface SupabaseNutrient {
     id: number;
     name: string;
     unit: string;
     category: string;
 }
 
-interface MealNutrient {
+interface SupabaseMealNutrient {
     id: number;
     nutrient_id: number;
     amount: number;
-    nutrients: Nutrient;
+    nutrients: SupabaseNutrient | null; // null の可能性を考慮
 }
 
-interface Meal {
+interface SupabaseMeal {
     id: number;
     meal_type: string;
     meal_date: string;
     servings: number | null;
-    meal_nutrients: MealNutrient[] | null;
+    meal_nutrients: SupabaseMealNutrient[] | null; // null の可能性を考慮
 }
 
 export async function GET(request: Request) {
@@ -125,32 +148,39 @@ export async function GET(request: Request) {
             );
         }
 
+        // Supabase からの応答が null の場合のフォールバック
+        // Supabaseの型推論の問題を回避するため、明示的に型アサーションを使用
+        // unknown を経由して型アサーションを行う
+        const validMeals: SupabaseMeal[] = (meals as unknown as SupabaseMeal[] | null) || [];
+
         // 日付ごとの栄養素合計を計算
         const summary: DailySummary = {
             date,
-            total_meals: meals.length,
+            total_meals: validMeals.length, // meals の代わりに validMeals を使用
             nutrients: {}
         };
 
         // 各食事の栄養素を集計
-        // TODO: Supabaseからの戻り値の正確な型定義を行い、any型を置き換える
-        meals.forEach((meal: any) => {
+        // TODO: Supabaseからの戻り値の正確な型定義を行い、any型を置き換える -> 修正済み
+        validMeals.forEach((meal) => { // any を削除し、推論された型 (SupabaseMeal) を使用
             const servings = meal.servings || 1;
 
-            meal.meal_nutrients?.forEach((mealNutrient: any) => {
+            meal.meal_nutrients?.forEach((mealNutrient) => { // any を削除し、推論された型 (SupabaseMealNutrient) を使用
                 const nutrient = mealNutrient.nutrients;
+                // nutrient が null の場合はスキップ
                 if (!nutrient) return;
 
                 const nutrientId = nutrient.id;
                 const nutrientName = nutrient.name;
-                const amount = mealNutrient.amount * servings;
+                // mealNutrient.amount が数値であることを保証 (必要なら型ガードを追加)
+                const amount = (mealNutrient.amount || 0) * servings;
 
                 if (!summary.nutrients[nutrientName]) {
                     summary.nutrients[nutrientName] = {
                         id: nutrientId,
                         name: nutrientName,
-                        unit: nutrient.unit || '',
-                        category: nutrient.category || 'その他',
+                        unit: nutrient.unit || '', // null/undefined の場合のフォールバック
+                        category: nutrient.category || 'その他', // null/undefined の場合のフォールバック
                         total: 0
                     };
                 }

@@ -68,7 +68,7 @@ export default function AuthCallbackPage() {
             console.log('有効なパラメータが存在しません、ログインページにリダイレクトします')
             router.replace('/auth/login')
         }
-    }, [router])
+    }, [router, supabase])
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white">

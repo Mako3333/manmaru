@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { EnhancedRecognitionEditor } from "@/components/meals/enhanced-recognition-editor";
 import { RecognitionEditor } from "@/components/meals/recognition-editor";
 import { StandardizedMealNutrition, Nutrient, NutrientUnit } from "@/types/nutrition";
@@ -38,13 +38,6 @@ interface RecognitionData {
     foods: ApiFood[];
     nutrition: StandardizedMealNutrition;
 }
-
-// 栄養素作成ヘルパー
-const createNutrient = (name: string, value: number, unit: NutrientUnit): Nutrient => ({
-    name,
-    value,
-    unit,
-});
 
 // モックデータ (StandardizedMealNutrition 形式)
 const mockStandardizedNutrition: StandardizedMealNutrition = {
@@ -133,8 +126,8 @@ export default function RecognitionPage() {
         router.push(`/meals/recognition?${params.toString()}`);
     };
 
-    // 保存ハンドラー（型をanyにして両方のエディタから受け取れるようにする）
-    const handleSave = (data: any) => {
+    // 保存ハンドラーの型を修正
+    const handleSave = (data: RecognitionData | LegacyRecognitionData) => {
         console.log(`保存データ (${editorVersion}):`, data);
         // 保存後にリダイレクト
         router.push("/home");
@@ -182,7 +175,7 @@ export default function RecognitionPage() {
             {editorVersion === "enhanced" ? (
                 <EnhancedRecognitionEditor
                     initialData={mockRecognitionData}
-                    onSave={handleSave}
+                    onSave={handleSave as any}
                     mealType={mealType}
                     mealDate={mealDate}
                     photoUrl={photoUrl}
@@ -192,7 +185,7 @@ export default function RecognitionPage() {
                 <div className="max-w-4xl mx-auto">
                     <RecognitionEditor
                         initialData={mockLegacyRecognitionData as any}
-                        onSave={handleSave}
+                        onSave={handleSave as any}
                         mealType={mealType}
                         mealDate={mealDate}
                         photoUrl={photoUrl}

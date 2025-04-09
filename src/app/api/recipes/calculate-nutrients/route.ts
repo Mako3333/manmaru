@@ -1,7 +1,7 @@
 //src\app\api\recipes\calculate-nutrients\route.ts
 import { NextResponse, NextRequest } from 'next/server';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { IAIService } from '@/lib/ai/ai-service.interface';
+// import { IAIService } from '@/lib/ai/ai-service.interface'; // 未使用のため削除
 import { withErrorHandling } from '@/lib/api/middleware';
 import { createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
 import { AppError, ErrorCode } from '@/lib/error';
@@ -63,7 +63,8 @@ export const POST = withErrorHandling(
                 reliability: nutritionResult.reliability,
                 // 1人前データ（オプション）
                 perServing: perServingNutrition,
-                legacyPerServing: perServingNutrition ? nutritionResult.nutrition : undefined
+                // 1人前データが存在する場合、legacyPerServing にも 1人前データを設定
+                legacyPerServing: perServingNutrition
             }
         }));
     }

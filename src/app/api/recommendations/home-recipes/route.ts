@@ -25,7 +25,9 @@ type RecipeRecord = {
     created_at?: string;
     updated_at?: string;
     user_id?: string;
-    [key: string]: any; // その他のフィールド
+    clipped_at?: string;
+    recipe_type?: string;
+    source_url?: string;
 };
 
 export async function GET(req: NextRequest) {
@@ -92,12 +94,15 @@ export async function GET(req: NextRequest) {
         const recipes: Recipe[] = [];
 
         if (clippedRecipes) {
-            for (const record of clippedRecipes) {
-                if (!record) continue;
+            // filter(Boolean) を使って null/undefined を除去し、型ガードを行う
+            const validRecords = clippedRecipes.filter(Boolean);
+
+            for (const record of validRecords) { // RecipeRecord 型として扱われることを期待
+                // if (!record) continue; // filter で除去済みのため不要
 
                 // 必須フィールドを保証して変換
                 recipes.push({
-                    id: record.id,
+                    id: record.id, // record.id は string であると仮定
                     title: record.title || '無題のレシピ',
                     image_url: record.image_url || '/images/placeholder-recipe.jpg',
                     is_favorite: !!record.is_favorite,
@@ -109,84 +114,71 @@ export async function GET(req: NextRequest) {
         }
 
         const clippedCount = recipes.length;
-        let recommendedRecipes: Recipe[] = [];
+        // let recommendedRecipes: Recipe[] = []; // const に変更
 
         // 4. レコメンデーションロジック
-        // 4.1 クリップされたレシピがない場合
-        if (clippedCount === 0) {
-            return NextResponse.json({ status: 'no_clips', recipes: [] });
-        } else if (clippedCount < 5) {
-            if (recipes.length > 0) {
-                const firstRecipe = recipes[0];
-                if (firstRecipe) {
-                    recommendedRecipes = [firstRecipe];
+        const recommendedRecipes: Recipe[] = (() => {
+            // 4.1 クリップされたレシピがない場合
+            if (clippedCount === 0) {
+                // status はレスポンスで設定するためここではレシピ配列のみ返す
+                return [];
+            } else if (clippedCount < 5) {
+                // recipes[0] は undefined の可能性があるが、空配列許容のためチェック不要
+                return recipes.slice(0, 1);
+            } else if (clippedCount < 10) {
+                const availableRecipes = recipes.filter(r => !recentlyUsedIds.has(r.id));
+                const recipesToUse = availableRecipes.length > 0 ? availableRecipes : recipes;
+                const favoriteRecipes = recipesToUse.filter(r => r.is_favorite);
+
+                if (favoriteRecipes.length >= 2) {
+                    return shuffleArray(favoriteRecipes).slice(0, 2);
+                } else if (favoriteRecipes.length === 1) {
+                    const firstFavorite = favoriteRecipes[0]; // undefined の可能性あり
+                    const nonFavorites = recipesToUse.filter(r => !r.is_favorite);
+                    const firstNonFavorite = nonFavorites[0]; // undefined の可能性あり
+                    const otherAvailable = recipesToUse.filter(r => r.id !== firstFavorite?.id); // Optional chaining
+                    const firstOther = otherAvailable[0]; // undefined の可能性あり
+
+                    const recs: Recipe[] = [];
+                    if (firstFavorite) recs.push(firstFavorite);
+                    if (firstNonFavorite) recs.push(firstNonFavorite);
+                    else if (firstOther) recs.push(firstOther);
+
+                    return recs.slice(0, 2); // 最大2件まで
+                } else {
+                    return recipesToUse.slice(0, Math.min(2, recipesToUse.length));
                 }
             }
-            return NextResponse.json({ status: 'few_clips', recipes: recommendedRecipes });
-        } else if (clippedCount < 10) {
-            let availableRecipes = recipes.filter(r => !recentlyUsedIds.has(r.id));
-            if (availableRecipes.length === 0) availableRecipes = recipes;
-            const favoriteRecipes = availableRecipes.filter(r => r.is_favorite);
 
-            if (favoriteRecipes.length >= 2) {
-                recommendedRecipes = shuffleArray(favoriteRecipes).slice(0, 2);
-            } else if (favoriteRecipes.length === 1) {
-                const firstFavorite = favoriteRecipes[0];
-                if (firstFavorite) {
-                    recommendedRecipes = [firstFavorite];
-                    const nonFavorites = availableRecipes.filter(r => !r.is_favorite);
-                    if (nonFavorites.length > 0) {
-                        const firstNonFavorite = nonFavorites[0];
-                        if (firstNonFavorite) {
-                            recommendedRecipes.push(firstNonFavorite);
-                        }
-                    } else if (availableRecipes.length > 1) {
-                        const otherAvailable = availableRecipes.filter(r => r.id !== firstFavorite.id);
-                        if (otherAvailable.length > 0) {
-                            const firstOther = otherAvailable[0];
-                            if (firstOther) {
-                                recommendedRecipes.push(firstOther);
-                            }
-                        }
-                    }
-                }
+            // 4.2 十分なクリップ数がある場合
+            const availableRecipesFull = recipes.filter(r => !recentlyUsedIds.has(r.id));
+            const recipesToUseFull = availableRecipesFull.length < 3 ? recipes : availableRecipesFull;
+
+            const favoriteRecipesFull = recipesToUseFull.filter(r => r.is_favorite);
+            if (favoriteRecipesFull.length >= 3) {
+                return shuffleArray(favoriteRecipesFull).slice(0, 3);
             } else {
-                if (availableRecipes.length > 0) {
-                    const sliceLength = Math.min(2, availableRecipes.length);
-                    recommendedRecipes = availableRecipes.slice(0, sliceLength);
+                let combinedRecs = [...favoriteRecipesFull];
+                const nonFavoritesFull = recipesToUseFull.filter(r => !r.is_favorite);
+                if (nonFavoritesFull.length > 0) {
+                    const remainingCount = 3 - combinedRecs.length;
+                    const additionalRecipes = shuffleArray(nonFavoritesFull).slice(0, remainingCount);
+                    combinedRecs = [...combinedRecs, ...additionalRecipes];
                 }
+                return combinedRecs;
             }
-            return NextResponse.json({ status: 'few_more_clips', recipes: recommendedRecipes, total_clips: clippedCount });
-        }
+        })();
 
-        // 4.2 十分なクリップ数がある場合
-        // 優先度: 1. 最近使用していない 2. お気に入り
-        let availableRecipes = recipes.filter(r => !recentlyUsedIds.has(r.id));
-
-        // 直近で使われたレシピを除外した結果、利用可能なレシピが少なすぎる場合はすべて対象に
-        if (availableRecipes.length < 3) {
-            availableRecipes = recipes;
-        }
-
-        // お気に入りレシピを優先
-        const favoriteRecipes = availableRecipes.filter(r => r.is_favorite);
-        if (favoriteRecipes.length >= 3) {
-            recommendedRecipes = shuffleArray(favoriteRecipes).slice(0, 3);
-        } else {
-            // お気に入りと非お気に入りを組み合わせる
-            recommendedRecipes = [...favoriteRecipes];
-
-            // 残りの枠はお気に入りでないレシピから
-            const nonFavorites = availableRecipes.filter(r => !r.is_favorite);
-            if (nonFavorites.length > 0) {
-                const remainingCount = 3 - recommendedRecipes.length;
-                const additionalRecipes = shuffleArray(nonFavorites).slice(0, remainingCount);
-                recommendedRecipes = [...recommendedRecipes, ...additionalRecipes];
-            }
-        }
+        // ステータスを決定
+        const status = (() => {
+            if (clippedCount === 0) return 'no_clips';
+            if (clippedCount < 5) return 'few_clips';
+            if (clippedCount < 10) return 'few_more_clips';
+            return 'success';
+        })();
 
         return NextResponse.json({
-            status: 'success',
+            status: status,
             recipes: recommendedRecipes,
             total_clips: clippedCount
         });

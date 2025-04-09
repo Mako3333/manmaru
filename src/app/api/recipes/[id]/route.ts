@@ -4,15 +4,38 @@ import { withAuthAndErrorHandling, createSuccessResponse } from '@/lib/api/api-h
 import { AppError, ErrorCode } from '@/lib/error';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { User } from '@supabase/supabase-js'; // User 型をインポート
 
-// Define context type
-type RouteContext = {
-    params: { id: string };
+// Define context type -> 未使用のため削除
+// type RouteContext = {
+//     params: { id: string };
+// };
+
+// Supabaseクライアント作成関数 (async に変更)
+const createSupabaseClient = async () => {
+    const cookieStore = await cookies(); // await を追加
+    return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) {
+                    cookieStore.set({ name, value, ...options });
+                },
+                remove(name: string, options: CookieOptions) {
+                    cookieStore.delete({ name, ...options });
+                },
+            },
+        }
+    );
 };
 
 // レシピの取得
 export const GET = withAuthAndErrorHandling(
-    async (req: NextRequest, { params, user }) => {
+    async (req: NextRequest, { params, user }: { params: Record<string, string>, user: User }) => {
         const { id } = params;
 
         // IDの検証
@@ -32,7 +55,7 @@ export const GET = withAuthAndErrorHandling(
 
 // レシピの更新
 export const PATCH = withAuthAndErrorHandling(
-    async (req: NextRequest, { params, user }) => {
+    async (req: NextRequest, { params, user }: { params: Record<string, string>, user: User }) => {
         const { id } = params;
 
         // IDの検証
@@ -45,31 +68,15 @@ export const PATCH = withAuthAndErrorHandling(
         }
 
         try {
-            // レシピの存在確認
+            // レシピの存在確認 (RecipeServiceを使用)
             await RecipeService.getRecipeById(id, user.id);
 
-            // Supabaseクライアント初期化
-            const cookieStore = await cookies();
-            const supabase = createServerClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-                {
-                    cookies: {
-                        get(name: string) {
-                            return cookieStore.get(name)?.value;
-                        },
-                        set(name: string, value: string, options: CookieOptions) {
-                            cookieStore.set({ name, value, ...options });
-                        },
-                        remove(name: string, options: CookieOptions) {
-                            cookieStore.delete({ name, ...options });
-                        },
-                    },
-                }
-            );
+            // Supabaseクライアント初期化 (共通関数を使用, await を追加)
+            const supabase = await createSupabaseClient();
 
             // リクエストボディからレシピ更新用データを取得
-            const updateData = await req.json();
+            // TODO: より安全な型検証（例: zod）と具体的な型定義を導入することを推奨
+            const updateData = await req.json() as Record<string, unknown>;
 
             // データ更新
             const { data: updatedRecipe, error } = await supabase
@@ -102,7 +109,7 @@ export const PATCH = withAuthAndErrorHandling(
 
 // レシピの削除
 export const DELETE = withAuthAndErrorHandling(
-    async (req: NextRequest, { params, user }) => {
+    async (req: NextRequest, { params, user }: { params: Record<string, string>, user: User }) => {
         const { id } = params;
 
         // IDの検証
@@ -115,27 +122,11 @@ export const DELETE = withAuthAndErrorHandling(
         }
 
         try {
-            // レシピの存在確認
+            // レシピの存在確認 (RecipeServiceを使用)
             await RecipeService.getRecipeById(id, user.id);
 
-            const cookieStore = await cookies();
-            const supabase = createServerClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-                {
-                    cookies: {
-                        get(name: string) {
-                            return cookieStore.get(name)?.value;
-                        },
-                        set(name: string, value: string, options: CookieOptions) {
-                            cookieStore.set({ name, value, ...options });
-                        },
-                        remove(name: string, options: CookieOptions) {
-                            cookieStore.delete({ name, ...options });
-                        },
-                    },
-                }
-            );
+            // Supabaseクライアント初期化 (共通関数を使用, await を追加)
+            const supabase = await createSupabaseClient();
 
             // レシピ削除
             const { error } = await supabase

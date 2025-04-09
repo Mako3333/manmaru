@@ -24,7 +24,7 @@ export default function RegisterPage() {
         if (!termsAgreed) {
             router.push('/terms')
         }
-    }, [])
+    }, [router])
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault()

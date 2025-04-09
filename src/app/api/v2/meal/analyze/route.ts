@@ -3,12 +3,12 @@ import { withErrorHandling } from '@/lib/api/middleware';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
-import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-parser';
+import type { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
-import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { createSuccessResponse } from '@/lib/api/response';
 
 // リクエストの検証スキーマ
@@ -86,11 +86,11 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
         const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
 
-        // 食品名と量の配列に変換
+        // 食品名と量の配列に変換 (undefined の場合は quantity プロパティを含めない)
         const nameQuantityPairs = foods.map((item: FoodInputParseResult) => ({
             name: item.foodName,
-            quantity: item.quantityText || undefined
-        })) as Array<{ name: string; quantity?: string }>;
+            ...(item.quantityText ? { quantity: item.quantityText } : {}),
+        }));
 
         // 栄養計算を実行
         const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
@@ -102,10 +102,12 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
 
         // 結果を返却
-        let warningMessage;
-        if (nutritionResult.reliability.confidence < 0.7) {
-            warningMessage = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
-        }
+        const warningMessage: string | undefined = (() => {
+            if (nutritionResult.reliability.confidence < 0.7) {
+                return '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
+            }
+            return undefined;
+        })();
 
         // レスポンスデータを構築
         const responseData = {
@@ -138,7 +140,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '入力データが無効です',
                 details: {
-                    reason: error.errors.map(err => `${err.path}: ${err.message}`).join(', '),
+                    reason: error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', '),
                     originalError: error
                 }
             });

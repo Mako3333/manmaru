@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
-import { IAIService } from '@/lib/ai/ai-service.interface';
+// import { IAIService } from '@/lib/ai/ai-service.interface'; // 未使用のため削除
 import { AIModelFactory } from '@/lib/ai/core/ai-model-factory';
 import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
 import { getCurrentSeason } from '@/lib/date-utils';
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
             .single();
 
         // 2. ユーザープロファイルを取得（妊娠週数など）
-        const { data: userProfile, error: profileError } = await supabase
+        const { data: userProfile } = await supabase
             .from('user_profiles')
             .select('pregnancy_week, dietary_restrictions')
             .eq('id', userId)
@@ -36,38 +36,31 @@ export async function POST(req: Request) {
         const allExcludeIngredients = [...excludeIngredients, ...dietaryRestrictions];
 
         // 栄養データがない場合は、妊娠週数に基づいたデフォルト値を使用
-        let deficientNutrients: string[] = [];
         const isFirstTimeUser = logError || !nutritionLog;
 
-        if (isFirstTimeUser) {
-            // 妊娠期間に基づいたデフォルトの栄養ニーズを設定
-            if (pregnancyWeek <= 12) {
-                // 妊娠初期（1-12週）
-                deficientNutrients = ['葉酸', '鉄分', 'ビタミンB6'];
-            } else if (pregnancyWeek <= 27) {
-                // 妊娠中期（13-27週）
-                deficientNutrients = ['カルシウム', '鉄分', 'タンパク質'];
+        // deficientNutrients を const で定義
+        const deficientNutrients: string[] = (() => {
+            if (isFirstTimeUser) {
+                console.log(`栄養データが見つからないため、妊娠${pregnancyWeek}週に基づいたデフォルト値を使用します。`);
+                // 妊娠期間に基づいたデフォルトの栄養ニーズを設定
+                if (pregnancyWeek <= 12) return ['葉酸', '鉄分', 'ビタミンB6'];
+                if (pregnancyWeek <= 27) return ['カルシウム', '鉄分', 'タンパク質'];
+                return ['鉄分', 'カルシウム', 'ビタミンD', 'DHA'];
             } else {
-                // 妊娠後期（28週以降）
-                deficientNutrients = ['鉄分', 'カルシウム', 'ビタミンD', 'DHA'];
-            }
-
-            console.log(`栄養データが見つからないため、妊娠${pregnancyWeek}週に基づいたデフォルト値を使用します: ${deficientNutrients.join(', ')}`);
-        } else {
-            deficientNutrients = nutritionLog.nutrition_data.deficient_nutrients || [];
-
-            // 不足栄養素がない場合も、妊娠週数に基づいたデフォルト値を提供
-            if (deficientNutrients.length === 0) {
-                if (pregnancyWeek <= 12) {
-                    deficientNutrients = ['葉酸', '鉄分'];
-                } else if (pregnancyWeek <= 27) {
-                    deficientNutrients = ['カルシウム', '鉄分'];
+                const nutrients = nutritionLog.nutrition_data.deficient_nutrients || [];
+                if (nutrients.length > 0) {
+                    return nutrients;
                 } else {
-                    deficientNutrients = ['鉄分', 'カルシウム', 'DHA'];
+                    console.log(`不足栄養素が特定されていないため、妊娠${pregnancyWeek}週に基づいたデフォルト値を使用します。`);
+                    // 不足栄養素がない場合も、妊娠週数に基づいたデフォルト値を提供
+                    if (pregnancyWeek <= 12) return ['葉酸', '鉄分'];
+                    if (pregnancyWeek <= 27) return ['カルシウム', '鉄分'];
+                    return ['鉄分', 'カルシウム', 'DHA'];
                 }
-                console.log(`不足栄養素が特定されていないため、妊娠${pregnancyWeek}週に基づいたデフォルト値を使用します: ${deficientNutrients.join(', ')}`);
             }
-        }
+        })();
+
+        console.log(`提案に使用する不足栄養素: ${deficientNutrients.join(', ')}`);
 
         // 現在の季節を取得
         const currentSeason = getCurrentSeason();
@@ -118,6 +111,8 @@ export async function POST(req: Request) {
                 jsonContent = responseText;
             }
 
+            // TODO: AIからの応答形式に合わせて、より具体的な型定義（例: RecommendedRecipe[]）を使用し、
+            // 型アサーションやzod等での検証を行うことを推奨
             const recipes = JSON.parse(jsonContent);
 
             // レスポンスを構築
