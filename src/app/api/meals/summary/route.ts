@@ -18,6 +18,29 @@ interface DailySummary {
     nutrients: Record<string, NutrientSummary>;
 }
 
+// 食事データとそれに関連する型の定義
+interface Nutrient {
+    id: number;
+    name: string;
+    unit: string;
+    category: string;
+}
+
+interface MealNutrient {
+    id: number;
+    nutrient_id: number;
+    amount: number;
+    nutrients: Nutrient;
+}
+
+interface Meal {
+    id: number;
+    meal_type: string;
+    meal_date: string;
+    servings: number | null;
+    meal_nutrients: MealNutrient[] | null;
+}
+
 export async function GET(request: Request) {
     try {
         // URLからクエリパラメータを取得
@@ -110,6 +133,7 @@ export async function GET(request: Request) {
         };
 
         // 各食事の栄養素を集計
+        // TODO: Supabaseからの戻り値の正確な型定義を行い、any型を置き換える
         meals.forEach((meal: any) => {
             const servings = meal.servings || 1;
 

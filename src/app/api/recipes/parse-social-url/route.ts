@@ -17,8 +17,11 @@ export const POST = withAuthAndErrorHandling(
         const recipeData = await RecipeService.parseRecipeFromUrl(url);
 
         // nutrition_per_serving を StandardizedMealNutrition に変換
+        // TODO: convertToStandardizedNutrition関数の引数型を拡張するか、
+        // 正確な変換関数を実装して、この型アサーションを削除する
         const standardizedNutrition = recipeData.nutrition_per_serving
-            ? convertToStandardizedNutrition(recipeData.nutrition_per_serving as any)
+            // @ts-expect-error 現在の型定義ではNutritionData型しか受け付けないが、実際には他の形式も変換可能
+            ? convertToStandardizedNutrition(recipeData.nutrition_per_serving)
             : createEmptyStandardizedNutrition();
 
         // レスポンスデータを作成

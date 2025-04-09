@@ -1,7 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { MealType } from "@/types/nutrition";
 import { RecipeToMealData } from "@/types/recipe";
 
 export async function POST(req: Request) {
@@ -65,7 +64,7 @@ export async function POST(req: Request) {
         }
 
         // 分量に応じた栄養素の計算
-        const calculatedNutrition: Record<string, any> = {};
+        const calculatedNutrition: Record<string, number | string | object | unknown> = {};
         if (recipe.nutrition_per_serving) {
             Object.entries(recipe.nutrition_per_serving).forEach(([key, value]) => {
                 if (typeof value === 'number') {

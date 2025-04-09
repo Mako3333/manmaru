@@ -1,8 +1,28 @@
 import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 
+// 栄養素データの型定義
+interface NutritionData {
+    calories: number;
+    protein: number;
+    iron: number;
+    folic_acid: number;
+    calcium: number;
+}
+
+// 食事データの型定義
+interface MealData {
+    food_description?: {
+        items?: any[];
+        nutrition?: Partial<NutritionData>;
+    };
+    meal_type?: string;
+    servings?: number;
+    nutrition_data?: Partial<NutritionData>;
+}
+
 // 基準栄養素量（一般的な妊婦の目安）
-const DEFAULT_NUTRITION_TARGETS = {
+const DEFAULT_NUTRITION_TARGETS: NutritionData = {
     calories: 2200,
     protein: 80,
     iron: 10,
@@ -93,8 +113,8 @@ export async function POST(req: Request) {
 }
 
 // 日次栄養摂取量の計算
-function calculateDailyNutrition(meals: any[]) {
-    let totalNutrition = {
+function calculateDailyNutrition(meals: MealData[]): NutritionData {
+    let totalNutrition: NutritionData = {
         calories: 0,
         protein: 0,
         iron: 0,
@@ -126,9 +146,9 @@ function calculateDailyNutrition(meals: any[]) {
 }
 
 // 不足栄養素の特定
-function identifyDeficientNutrients(nutritionSummary: any) {
+function identifyDeficientNutrients(nutritionSummary: NutritionData): string[] {
     // 妊婦の1日の推奨栄養摂取量（例）
-    const recommendedIntake = {
+    const recommendedIntake: NutritionData = {
         calories: 2000, // kcal
         protein: 60,    // g
         iron: 27,       // mg
@@ -136,7 +156,7 @@ function identifyDeficientNutrients(nutritionSummary: any) {
         calcium: 1000    // mg
     };
 
-    const deficientNutrients = [];
+    const deficientNutrients: string[] = [];
 
     // 各栄養素の充足率をチェック
     if (nutritionSummary.calories < recommendedIntake.calories * 0.8) {
@@ -162,16 +182,15 @@ function identifyDeficientNutrients(nutritionSummary: any) {
     return deficientNutrients;
 }
 
-// プロフィールから目標栄養素量を計算
-function calculateTargetNutrition(profile: any) {
-    // MVPではシンプルな実装
-    // 将来的には年齢、妊娠週数、身長、体重などから詳細に計算
+// 目標栄養量の計算
+function calculateTargetNutrition(userPreferences: Record<string, unknown>): NutritionData {
+    // ここではデフォルト値を返すが、実際のアプリではユーザーの妊娠週や体重などから計算
     return { ...DEFAULT_NUTRITION_TARGETS };
 }
 
-// 食事記録から総栄養素量を計算
-function calculateTotalNutrition(meals: any[]) {
-    const total = {
+// 合計栄養素の計算
+function calculateTotalNutrition(nutritionLogs: Record<string, any>[]): NutritionData {
+    let totalNutrition: NutritionData = {
         calories: 0,
         protein: 0,
         iron: 0,
@@ -179,49 +198,46 @@ function calculateTotalNutrition(meals: any[]) {
         calcium: 0
     };
 
-    meals.forEach(meal => {
-        if (meal.nutrition_data) {
-            // 何人前で割るか計算
-            const divider = meal.servings || 1;
-
-            total.calories += (meal.nutrition_data.calories || 0) / divider;
-            total.protein += (meal.nutrition_data.protein || 0) / divider;
-            total.iron += (meal.nutrition_data.iron || 0) / divider;
-            total.folic_acid += (meal.nutrition_data.folic_acid || 0) / divider;
-            total.calcium += (meal.nutrition_data.calcium || 0) / divider;
+    // 各ログの栄養素を合計
+    nutritionLogs.forEach(log => {
+        if (log.nutrition) {
+            const nutrition = log.nutrition as Partial<NutritionData>;
+            totalNutrition.calories += nutrition.calories || 0;
+            totalNutrition.protein += nutrition.protein || 0;
+            totalNutrition.iron += nutrition.iron || 0;
+            totalNutrition.folic_acid += nutrition.folic_acid || 0;
+            totalNutrition.calcium += nutrition.calcium || 0;
         }
     });
 
-    // 値を丸める
-    return {
-        calories: Math.round(total.calories),
-        protein: Math.round(total.protein * 10) / 10,
-        iron: Math.round(total.iron * 10) / 10,
-        folic_acid: Math.round(total.folic_acid),
-        calcium: Math.round(total.calcium)
-    };
+    return totalNutrition;
 }
 
 // 達成率の計算
-function calculateAchievementRates(total: any, target: any) {
-    return {
-        calories: Math.round((total.calories / target.calories) * 100),
-        protein: Math.round((total.protein / target.protein) * 100),
-        iron: Math.round((total.iron / target.iron) * 100),
-        folic_acid: Math.round((total.folic_acid / target.folic_acid) * 100),
-        calcium: Math.round((total.calcium / target.calcium) * 100)
-    };
+function calculateAchievementRates(totalNutrition: NutritionData, targetNutrition: NutritionData): Record<string, number> {
+    const rates: Record<string, number> = {};
+
+    // 各栄養素の達成率を計算
+    rates.calories = (totalNutrition.calories / targetNutrition.calories) * 100;
+    rates.protein = (totalNutrition.protein / targetNutrition.protein) * 100;
+    rates.iron = (totalNutrition.iron / targetNutrition.iron) * 100;
+    rates.folic_acid = (totalNutrition.folic_acid / targetNutrition.folic_acid) * 100;
+    rates.calcium = (totalNutrition.calcium / targetNutrition.calcium) * 100;
+
+    return rates;
 }
 
 // 不足栄養素の計算
-function calculateDeficientNutrients(achievementRates: any) {
-    const deficientNutrients = [];
-    const THRESHOLD = 90; // 90%未満を不足とみなす
+function calculateDeficientNutrients(achievementRates: Record<string, number>): string[] {
+    const deficientNutrients: string[] = [];
+    const threshold = 80; // 80%未満を不足とみなす
 
-    if (achievementRates.iron < THRESHOLD) deficientNutrients.push('鉄分');
-    if (achievementRates.folic_acid < THRESHOLD) deficientNutrients.push('葉酸');
-    if (achievementRates.calcium < THRESHOLD) deficientNutrients.push('カルシウム');
-    if (achievementRates.protein < THRESHOLD) deficientNutrients.push('タンパク質');
+    // プロパティの存在を確認してからアクセス
+    if (achievementRates.calories && achievementRates.calories < threshold) deficientNutrients.push('カロリー');
+    if (achievementRates.protein && achievementRates.protein < threshold) deficientNutrients.push('タンパク質');
+    if (achievementRates.iron && achievementRates.iron < threshold) deficientNutrients.push('鉄分');
+    if (achievementRates.folic_acid && achievementRates.folic_acid < threshold) deficientNutrients.push('葉酸');
+    if (achievementRates.calcium && achievementRates.calcium < threshold) deficientNutrients.push('カルシウム');
 
     return deficientNutrients;
 } 

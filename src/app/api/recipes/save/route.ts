@@ -2,6 +2,35 @@ import { NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { RecipeUrlClipResponse } from '@/types/recipe';
+import { StandardizedMealNutrition } from '@/types/nutrition';
+
+// レシピ保存用の拡張型定義
+interface RecipeSaveData {
+    title: string;
+    image_url?: string;
+    source_url?: string;
+    source_platform?: string;
+    content_id?: string;
+    recipe_type?: string;
+    ingredients: RecipeUrlClipResponse['ingredients'];
+    nutrition_per_serving: RecipeUrlClipResponse['nutrition_per_serving'];
+    caution_foods?: string[];
+    caution_level?: 'low' | 'medium' | 'high';
+    servings?: number;
+    use_placeholder?: boolean;
+    is_social_media?: boolean;
+    user_id?: string;
+    clipped_at?: string;
+    updated_at?: string;
+    is_favorite?: boolean;
+}
+
+// リクエストボディの拡張型定義
+interface RecipeSaveRequest extends RecipeUrlClipResponse {
+    recipe_type?: string;
+    servings?: number;
+    use_placeholder?: boolean;
+}
 
 export async function POST(req: Request) {
     try {
@@ -35,7 +64,7 @@ export async function POST(req: Request) {
         }
 
         // リクエストボディからレシピデータを取得
-        const recipeData = await req.json() as RecipeUrlClipResponse & { recipe_type?: string; servings?: number; use_placeholder?: boolean };
+        const recipeData = await req.json() as RecipeSaveRequest;
 
         console.log('保存するレシピデータ:', JSON.stringify(recipeData, null, 2));
 
@@ -78,7 +107,9 @@ export async function POST(req: Request) {
             .maybeSingle();
 
         // 保存用のデータを準備 - 基本情報（すべてのテーブルに存在するカラム）
-        const saveData: Record<string, any> = {
+        // TODO: より具体的な型定義を使用することが望ましいですが、
+        // Supabaseの動的なスキーマに対応するため、現時点ではRecord型を使用
+        const saveData: Record<string, unknown> = {
             title: recipeData.title,
             image_url: recipeData.image_url,
             source_platform: recipeData.source_platform,
