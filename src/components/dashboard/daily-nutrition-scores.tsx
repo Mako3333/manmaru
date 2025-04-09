@@ -101,9 +101,13 @@ export default function DailyNutritionScores({ userId }: DailyNutritionScoresPro
                 const scoreResults = await Promise.all(scorePromises);
                 setScores(scoreResults.filter(Boolean) as NutritionScore[]);
 
-            } catch (error: any) {
-                console.error('栄養スコアの取得エラー:', error.message);
-                setError('栄養スコアを取得できませんでした。');
+            } catch (error) {
+                console.error("Error fetching daily scores:", error);
+                setError(
+                    error instanceof Error
+                        ? error.message
+                        : "スコア履歴の取得に失敗しました。"
+                );
             } finally {
                 setLoading(false);
             }

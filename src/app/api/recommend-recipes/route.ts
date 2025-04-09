@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AIModelFactory } from '@/lib/ai/core/ai-model-factory';
 import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
 import { getCurrentSeason } from '@/lib/date-utils';
+import { GeminiService } from "@/lib/ai/gemini/gemini-service";
 
 export async function POST(req: Request) {
     try {

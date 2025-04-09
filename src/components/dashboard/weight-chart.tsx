@@ -55,9 +55,13 @@ export default function WeightChart({ userId }: WeightChartProps) {
                 }
 
                 setWeightData(records || []);
-            } catch (error: any) {
-                console.error('体重データの取得エラー:', error.message);
-                setError('体重データを取得できませんでした。');
+            } catch (error) {
+                console.error("Error fetching weight data:", error);
+                setError(
+                    error instanceof Error
+                        ? error.message
+                        : "体重データの取得に失敗しました。"
+                );
             } finally {
                 setLoading(false);
             }

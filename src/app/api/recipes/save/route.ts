@@ -2,28 +2,9 @@ import { NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { RecipeUrlClipResponse } from '@/types/recipe';
-// import { StandardizedMealNutrition } from '@/types/nutrition'; // 未使用のため削除 (RecipeUrlClipResponse経由でのみ使用)
-
-// レシピ保存用の拡張型定義 -> 不要のため削除
-// interface RecipeSaveData {
-//     title: string;
-//     image_url?: string;
-//     source_url?: string;
-//     source_platform?: string;
-//     content_id?: string;
-//     recipe_type?: string;
-//     ingredients: RecipeUrlClipResponse['ingredients'];
-//     nutrition_per_serving: RecipeUrlClipResponse['nutrition_per_serving'];
-//     caution_foods?: string[];
-//     caution_level?: 'low' | 'medium' | 'high';
-//     servings?: number;
-//     use_placeholder?: boolean;
-//     is_social_media?: boolean;
-//     user_id?: string;
-//     clipped_at?: string;
-//     updated_at?: string;
-//     is_favorite?: boolean;
-// }
+import { handleApiError } from "@/lib/error/handle-api-error";
+import { logger } from "@/lib/logger";
+import { saveMeal } from "@/lib/meal/meal-service";
 
 // リクエストボディの拡張型定義
 interface RecipeSaveRequest extends RecipeUrlClipResponse {

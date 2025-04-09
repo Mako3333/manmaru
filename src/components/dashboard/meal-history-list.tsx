@@ -48,9 +48,13 @@ export default function MealHistoryList({ userId }: MealHistoryListProps) {
                 }
 
                 setMeals(mealRecords || []);
-            } catch (error: any) {
-                console.error('食事履歴の取得エラー:', error.message);
-                setError('食事履歴を取得できませんでした。');
+            } catch (error) {
+                console.error("Error fetching meal history:", error);
+                setError(
+                    error instanceof Error
+                        ? error.message
+                        : "食事履歴の取得に失敗しました。"
+                );
             } finally {
                 setLoading(false);
             }

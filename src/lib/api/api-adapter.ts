@@ -1,7 +1,22 @@
 import { StandardApiResponse } from '@/types/api-interfaces';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import { NutritionData, StandardizedMealNutrition } from '@/types/nutrition';
+import { NutritionData, StandardizedMealNutrition, FoodItemNutrition } from '@/types/nutrition';
 import { convertToLegacyNutrition, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+
+// Helper type guard to check if an object has a specific property
+function hasProperty<K extends string>(obj: unknown, key: K): obj is { [P in K]: unknown } {
+    return typeof obj === 'object' && obj !== null && key in obj;
+}
+
+// Helper type guard to check if a value is a string
+function isString(value: unknown): value is string {
+    return typeof value === 'string';
+}
+
+// Helper type guard to check if a value is an object (and not null)
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * APIアダプターユーティリティクラス
@@ -10,24 +25,55 @@ import { convertToLegacyNutrition, convertToStandardizedNutrition } from '@/lib/
 export class ApiAdapter {
     /**
      * 旧API形式から新API形式（StandardApiResponse）への変換
-     * 
-     * @param legacyResponse 旧形式のレスポンス
+     *
+     * @param legacyResponse 旧形式のレスポンス (型は不明)
      * @returns 標準API形式のレスポンス
      */
-    static convertLegacyToStandard<T>(legacyResponse: any): StandardApiResponse<T> {
+    static convertLegacyToStandard<T>(legacyResponse: unknown): StandardApiResponse<T> {
         const startTime = performance.now();
 
-        // エラーの検出
-        const isError = legacyResponse.error || legacyResponse.errorCode;
+        // エラーコードとメッセージを取得するヘルパー関数
+        const getLegacyError = (): { code: string; message: string; details: unknown; suggestions: string[] } => {
+            let code: string = ErrorCode.Base.UNKNOWN_ERROR;
+            let message = '不明なエラーが発生しました';
+            let details: unknown = {};
+            let suggestions: string[] = [];
+
+            if (isObject(legacyResponse)) {
+                if (hasProperty(legacyResponse, 'errorCode') && isString(legacyResponse.errorCode) && legacyResponse.errorCode) {
+                    code = legacyResponse.errorCode;
+                }
+                if (hasProperty(legacyResponse, 'error') && isString(legacyResponse.error) && legacyResponse.error) {
+                    message = legacyResponse.error;
+                } else if (hasProperty(legacyResponse, 'message') && isString(legacyResponse.message) && legacyResponse.message) {
+                    message = legacyResponse.message;
+                }
+                if (hasProperty(legacyResponse, 'details')) {
+                    details = legacyResponse.details;
+                }
+                if (hasProperty(legacyResponse, 'suggestions') && Array.isArray(legacyResponse.suggestions)) {
+                    suggestions = legacyResponse.suggestions.filter(isString);
+                }
+            }
+            return { code, message, details, suggestions };
+        };
+
+        // エラーの検出 (errorCode または error プロパティの存在を確認)
+        const isError = isObject(legacyResponse) && (
+            (hasProperty(legacyResponse, 'errorCode') && legacyResponse.errorCode) ||
+            (hasProperty(legacyResponse, 'error') && legacyResponse.error)
+        );
+
 
         if (isError) {
+            const { code, message, details, suggestions } = getLegacyError();
             return {
                 success: false,
                 error: {
-                    code: legacyResponse.errorCode || ErrorCode.Base.UNKNOWN_ERROR,
-                    message: legacyResponse.error || '不明なエラーが発生しました',
-                    details: legacyResponse.details || {},
-                    suggestions: legacyResponse.suggestions || []
+                    code,
+                    message,
+                    details,
+                    suggestions
                 },
                 meta: {
                     processingTimeMs: Math.round(performance.now() - startTime)
@@ -35,81 +81,136 @@ export class ApiAdapter {
             };
         }
 
+        // 警告メッセージの取得
+        const warning = (isObject(legacyResponse) && hasProperty(legacyResponse, 'warning') && isString(legacyResponse.warning))
+            ? legacyResponse.warning
+            : undefined;
+
         // 成功レスポンスの変換
+        // T 型へのキャストは呼び出し元の責任とするが、基本的な構造は保証する
+        const data = (isObject(legacyResponse) && hasProperty(legacyResponse, 'data'))
+            ? legacyResponse.data
+            : legacyResponse; // data プロパティがない場合は legacyResponse 全体を data とする
+
         return {
             success: true,
-            data: legacyResponse.data || legacyResponse as T,
+            data: data as T, // キャストは必要だが、型安全ではない点に注意
             meta: {
                 processingTimeMs: Math.round(performance.now() - startTime),
-                ...(legacyResponse.warning ? { warning: legacyResponse.warning } : {})
+                ...(warning ? { warning } : {})
             }
         };
     }
 
     /**
      * 新API形式（StandardApiResponse）から旧API形式への変換
-     * 
+     *
      * @param standardResponse 標準API形式のレスポンス
-     * @returns 旧形式のレスポンス
+     * @returns 旧形式のレスポンス (型は保証されない)
      */
-    static convertStandardToLegacy<T>(standardResponse: StandardApiResponse<T>): any {
+    static convertStandardToLegacy<T>(standardResponse: StandardApiResponse<T>): Record<string, unknown> {
         if (!standardResponse.success) {
-            return {
+            // エラー情報を旧形式にマッピング
+            const errorData: Record<string, unknown> = {
                 error: standardResponse.error?.message || '不明なエラーが発生しました',
-                errorCode: standardResponse.error?.code || 'UNKNOWN_ERROR',
-                details: standardResponse.error?.details
+                errorCode: standardResponse.error?.code || ErrorCode.Base.UNKNOWN_ERROR
             };
+            if (standardResponse.error?.details) {
+                errorData.details = standardResponse.error.details;
+            }
+            if (standardResponse.error?.suggestions && standardResponse.error.suggestions.length > 0) {
+                errorData.suggestions = standardResponse.error.suggestions;
+            }
+            return errorData;
         }
 
-        return standardResponse.data;
+        // 成功時、data フィールドの内容を返す
+        // data がオブジェクトでない場合もそのまま返す (旧APIの仕様に依存)
+        return isObject(standardResponse.data)
+            ? { ...standardResponse.data } // スプレッド構文でオブジェクトとして返す
+            : { data: standardResponse.data }; // オブジェクトでない場合は data プロパティに入れる (旧API形式に合わせる必要があるか要確認)
     }
+
 
     /**
      * 栄養データの標準形式への変換（特化型ヘルパー）
-     * 
-     * @param nutritionData 任意の形式の栄養データ
-     * @returns 標準化された栄養データ
+     * 旧形式の NutritionData (プロパティが snake_case や camelCase が混在) を
+     * NutritionData (camelCase) に正規化する。
+     *
+     * @param nutritionData 任意の形式の栄養データ (型は不明)
+     * @returns NutritionData (camelCase) 形式の栄養データ
      */
-    static convertToStandardNutrition(nutritionData: any): NutritionData {
-        const data = nutritionData || {};
+    static convertToStandardNutrition(nutritionData: unknown): NutritionData {
+        const data = isObject(nutritionData) ? nutritionData : {}; // オブジェクトでなければ空オブジェクト
 
-        // 拡張栄養素を先に展開しておく
-        const extended = data.extended_nutrients || {};
-        const minerals = extended.minerals || data.minerals || {};
-        const vitamins = extended.vitamins || data.vitamins || {};
+        // 安全に値を取得するヘルパー関数
+        const safeGetNumber = (obj: Record<string, unknown>, ...keys: string[]): number => {
+            for (const key of keys) {
+                if (hasProperty(obj, key) && typeof obj[key] === 'number') {
+                    return obj[key] as number;
+                }
+            }
+            return 0;
+        };
+        const safeGetArray = <ItemType>(obj: Record<string, unknown>, ...keys: string[]): ItemType[] => {
+            for (const key of keys) {
+                if (hasProperty(obj, key) && Array.isArray(obj[key])) {
+                    return obj[key] as ItemType[];
+                }
+            }
+            return [];
+        };
+        const safeGetObject = (obj: Record<string, unknown>, ...keys: string[]): Record<string, unknown> => {
+            for (const key of keys) {
+                if (hasProperty(obj, key) && isObject(obj[key])) {
+                    return obj[key] as Record<string, unknown>;
+                }
+            }
+            return {};
+        };
+
+
+        // 拡張栄養素オブジェクトを安全に取得
+        const extended = safeGetObject(data, 'extended_nutrients', 'extendedNutrients');
+        const minerals = safeGetObject(extended, 'minerals');
+        const vitamins = safeGetObject(extended, 'vitamins');
 
         return {
-            calories: data.calories ?? data.energy ?? 0,
-            protein: data.protein ?? 0,
-            fat: data.fat ?? extended.fat ?? 0,
-            carbohydrate: data.carbohydrate ?? extended.carbohydrate ?? 0,
-            iron: data.iron ?? minerals.iron ?? 0,
-            folic_acid: data.folic_acid ?? vitamins.folic_acid ?? vitamins.folate ?? 0,
-            calcium: data.calcium ?? minerals.calcium ?? 0,
-            vitamin_d: data.vitamin_d ?? data.vitaminD ?? vitamins.vitamin_d ?? vitamins.vitaminD ?? 0,
-            dietaryFiber: data.dietaryFiber ?? data.dietary_fiber ?? extended.dietary_fiber ?? 0,
-            sugars: data.sugars ?? extended.sugars ?? 0,
-            salt: data.salt ?? extended.salt ?? 0,
-            confidence_score: data.confidence_score ?? data.confidence ?? 0.8,
-            not_found_foods: data.not_found_foods ?? data.notFoundFoods ?? [],
+            calories: safeGetNumber(data, 'calories', 'energy'),
+            protein: safeGetNumber(data, 'protein'),
+            fat: safeGetNumber(data, 'fat') || safeGetNumber(extended, 'fat'), // extendedからも取得
+            carbohydrate: safeGetNumber(data, 'carbohydrate') || safeGetNumber(extended, 'carbohydrate'),
+            iron: safeGetNumber(data, 'iron') || safeGetNumber(minerals, 'iron'),
+            folic_acid: safeGetNumber(data, 'folic_acid', 'folicAcid') || safeGetNumber(vitamins, 'folic_acid', 'folicAcid', 'folate'),
+            calcium: safeGetNumber(data, 'calcium') || safeGetNumber(minerals, 'calcium'),
+            vitamin_d: safeGetNumber(data, 'vitamin_d', 'vitaminD') || safeGetNumber(vitamins, 'vitamin_d', 'vitaminD'),
+            // dietaryFiber は NutritionData 型に存在しない -> extended_nutrients 内に移動
+            // sugars は NutritionData 型に存在しない -> extended_nutrients 内に移動
+            // salt は NutritionData 型に存在しない -> extended_nutrients 内に移動
+            confidence_score: safeGetNumber(data, 'confidence_score', 'confidence') || 0.8, // デフォルト値も設定
+            not_found_foods: safeGetArray<string>(data, 'not_found_foods', 'notFoundFoods'),
 
             extended_nutrients: {
+                // NutritionData 型に合わせて camelCase で統一
+                dietaryFiber: safeGetNumber(data, 'dietaryFiber', 'dietary_fiber') || safeGetNumber(extended, 'dietary_fiber', 'dietaryFiber'),
+                sugars: safeGetNumber(data, 'sugars') || safeGetNumber(extended, 'sugars'),
+                salt: safeGetNumber(data, 'salt') || safeGetNumber(extended, 'salt'),
                 minerals: {
-                    sodium: minerals.sodium ?? 0,
-                    potassium: minerals.potassium ?? 0,
-                    magnesium: minerals.magnesium ?? 0,
-                    phosphorus: minerals.phosphorus ?? 0,
-                    zinc: minerals.zinc ?? 0,
+                    sodium: safeGetNumber(minerals, 'sodium'),
+                    potassium: safeGetNumber(minerals, 'potassium'),
+                    magnesium: safeGetNumber(minerals, 'magnesium'),
+                    phosphorus: safeGetNumber(minerals, 'phosphorus'),
+                    zinc: safeGetNumber(minerals, 'zinc'),
                 },
                 vitamins: {
-                    vitamin_a: vitamins.vitamin_a ?? vitamins.vitaminA ?? 0,
-                    vitamin_b1: vitamins.vitamin_b1 ?? vitamins.vitaminB1 ?? 0,
-                    vitamin_b2: vitamins.vitamin_b2 ?? vitamins.vitaminB2 ?? 0,
-                    vitamin_b6: vitamins.vitamin_b6 ?? vitamins.vitaminB6 ?? 0,
-                    vitamin_b12: vitamins.vitamin_b12 ?? vitamins.vitaminB12 ?? 0,
-                    vitamin_c: vitamins.vitamin_c ?? vitamins.vitaminC ?? 0,
-                    vitamin_e: vitamins.vitamin_e ?? vitamins.vitaminE ?? 0,
-                    vitamin_k: vitamins.vitamin_k ?? vitamins.vitaminK ?? 0,
+                    vitaminA: safeGetNumber(vitamins, 'vitamin_a', 'vitaminA'),
+                    vitaminB1: safeGetNumber(vitamins, 'vitamin_b1', 'vitaminB1'),
+                    vitaminB2: safeGetNumber(vitamins, 'vitamin_b2', 'vitaminB2'),
+                    vitaminB6: safeGetNumber(vitamins, 'vitamin_b6', 'vitaminB6'),
+                    vitaminB12: safeGetNumber(vitamins, 'vitamin_b12', 'vitaminB12'),
+                    vitaminC: safeGetNumber(vitamins, 'vitamin_c', 'vitaminC'),
+                    vitaminE: safeGetNumber(vitamins, 'vitamin_e', 'vitaminE'),
+                    vitaminK: safeGetNumber(vitamins, 'vitamin_k', 'vitaminK'),
                 },
             },
         };
@@ -135,137 +236,181 @@ export class ApiAdapter {
 
     /**
      * 食事解析APIのレスポンスを変換（旧形式→新形式）
-     * @param legacyAnalysisResponse 旧形式の食事解析レスポンス
-     * @returns 標準API形式の食事解析レスポンス
+     * @param legacyAnalysisResponse 旧形式の食事解析レスポンス (型は不明)
+     * @returns 標準API形式の食事解析レスポンス (データ型は StandardizedMealNutrition | null)
      */
-    static convertMealAnalysisResponse(legacyAnalysisResponse: any): StandardApiResponse<any> {
+    static convertMealAnalysisResponse(legacyAnalysisResponse: unknown): StandardApiResponse<StandardizedMealNutrition | null> {
         const startTime = performance.now();
 
-        // エラーチェック
-        if (legacyAnalysisResponse.error) {
+        // オブジェクトでない場合はエラーとして扱う
+        if (!isObject(legacyAnalysisResponse)) {
             return {
                 success: false,
                 error: {
-                    code: legacyAnalysisResponse.errorCode || ErrorCode.AI.ANALYSIS_ERROR,
-                    message: legacyAnalysisResponse.error,
-                    details: legacyAnalysisResponse.details
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: '無効なレスポンス形式です (オブジェクトではありません)',
                 },
-                meta: {
-                    processingTimeMs: Math.round(performance.now() - startTime)
-                }
+                meta: { processingTimeMs: Math.round(performance.now() - startTime) }
+            };
+        }
+
+        // エラーチェック
+        const isError = (hasProperty(legacyAnalysisResponse, 'error') && legacyAnalysisResponse.error) ||
+            (hasProperty(legacyAnalysisResponse, 'errorCode') && legacyAnalysisResponse.errorCode);
+
+        if (isError) {
+            const code = (hasProperty(legacyAnalysisResponse, 'errorCode') && isString(legacyAnalysisResponse.errorCode))
+                ? legacyAnalysisResponse.errorCode
+                : ErrorCode.AI.ANALYSIS_ERROR;
+            const message = (hasProperty(legacyAnalysisResponse, 'error') && isString(legacyAnalysisResponse.error))
+                ? legacyAnalysisResponse.error
+                : '食事解析中にエラーが発生しました';
+            const details = hasProperty(legacyAnalysisResponse, 'details') ? legacyAnalysisResponse.details : undefined;
+
+            return {
+                success: false,
+                error: { code, message, details },
+                meta: { processingTimeMs: Math.round(performance.now() - startTime) }
             };
         }
 
         // 警告メッセージの抽出
-        let warning = undefined;
-        // 既存の警告チェックに加え、nutritionResultやnutritionが存在しない場合も考慮
-        const nutritionResultData = legacyAnalysisResponse.nutritionResult;
-        const nutritionData = nutritionResultData?.nutrition || legacyAnalysisResponse.nutrition;
-        const confidence = nutritionResultData?.reliability?.confidence ?? legacyAnalysisResponse.confidence;
+        let warning: string | undefined = undefined;
+        // 確信度を安全に取得
+        const confidence = (hasProperty(legacyAnalysisResponse, 'nutritionResult') && isObject(legacyAnalysisResponse.nutritionResult) &&
+            hasProperty(legacyAnalysisResponse.nutritionResult, 'reliability') && isObject(legacyAnalysisResponse.nutritionResult.reliability) &&
+            hasProperty(legacyAnalysisResponse.nutritionResult.reliability, 'confidence') && typeof legacyAnalysisResponse.nutritionResult.reliability.confidence === 'number')
+            ? legacyAnalysisResponse.nutritionResult.reliability.confidence
+            : (hasProperty(legacyAnalysisResponse, 'confidence') && typeof legacyAnalysisResponse.confidence === 'number')
+                ? legacyAnalysisResponse.confidence
+                : undefined;
 
-        if (legacyAnalysisResponse.warning || (confidence != null && confidence < 0.7)) {
-            warning = legacyAnalysisResponse.warning ||
-                '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
+        if (hasProperty(legacyAnalysisResponse, 'warning') && isString(legacyAnalysisResponse.warning)) {
+            warning = legacyAnalysisResponse.warning;
+        } else if (confidence != null && confidence < 0.7) {
+            warning = '一部の食品の確信度が低いため、栄養計算の結果が不正確な可能性があります。';
         }
 
-        // 処理時間の抽出 (より堅牢に)
+        // 処理時間を安全に取得
         const processingTimeMs = Math.round(
-            legacyAnalysisResponse.processingTimeMs ??
-            legacyAnalysisResponse.duration ??
-            legacyAnalysisResponse.processingTime ??
-            (performance.now() - startTime) // フォールバック
+            (hasProperty(legacyAnalysisResponse, 'processingTimeMs') && typeof legacyAnalysisResponse.processingTimeMs === 'number') ? legacyAnalysisResponse.processingTimeMs :
+                (hasProperty(legacyAnalysisResponse, 'duration') && typeof legacyAnalysisResponse.duration === 'number') ? legacyAnalysisResponse.duration :
+                    (hasProperty(legacyAnalysisResponse, 'processingTime') && typeof legacyAnalysisResponse.processingTime === 'number') ? legacyAnalysisResponse.processingTime :
+                        (performance.now() - startTime) // フォールバック
         );
 
-        // 栄養データをStandardizedMealNutrition形式に変換
+        // 栄養データを StandardizedMealNutrition 形式に変換
         let standardizedNutrition: StandardizedMealNutrition | null = null;
-        let legacyNutritionDataForResponse: NutritionData | null = null;
+        const nutritionResultData = (hasProperty(legacyAnalysisResponse, 'nutritionResult') && isObject(legacyAnalysisResponse.nutritionResult))
+            ? legacyAnalysisResponse.nutritionResult : null;
+        const nutritionData = nutritionResultData && hasProperty(nutritionResultData, 'nutrition')
+            ? nutritionResultData.nutrition
+            : (hasProperty(legacyAnalysisResponse, 'nutrition')) ? legacyAnalysisResponse.nutrition : null;
 
         if (nutritionData) {
-            // どのような形式の入力であっても StandardizedMealNutrition 形式に変換を試みる
-            // (内部で NutritionData への変換を経由する可能性がある)
+            // どのような形式の入力であっても NutritionData (camelCase) 形式に変換を試みる
             const intermediateLegacyNutrition = ApiAdapter.convertToStandardNutrition(nutritionData);
+            // その後、StandardizedMealNutrition 形式に変換
             standardizedNutrition = ApiAdapter.convertToStandardizedNutritionFormat(intermediateLegacyNutrition);
-
-            // legacyNutrition フィールドは削除済みのため、関連コードをコメントアウトまたは削除
-            // legacyNutritionDataForResponse = nutritionData; 
-            // if (typeof legacyNutritionDataForResponse !== 'object' || legacyNutritionDataForResponse === null) {
-            //     legacyNutritionDataForResponse = intermediateLegacyNutrition;
-            // }
         }
 
-        // 食品リストの取得 (より堅牢に)
-        const foods = legacyAnalysisResponse.foods ?? legacyAnalysisResponse.recognizedFoods ?? [];
+        // 食品リストを安全に取得
+        const foods = (hasProperty(legacyAnalysisResponse, 'foods') && Array.isArray(legacyAnalysisResponse.foods))
+            ? legacyAnalysisResponse.foods
+            : (hasProperty(legacyAnalysisResponse, 'recognizedFoods') && Array.isArray(legacyAnalysisResponse.recognizedFoods))
+                ? legacyAnalysisResponse.recognizedFoods
+                : [];
+
+        // standardizedNutrition の foodItems を更新（もし foods があれば）
+        if (standardizedNutrition && foods.length > 0) {
+            standardizedNutrition.foodItems = foods.map(food => food as any);
+        }
+
 
         // 標準形式への変換
         return {
             success: true,
-            data: {
-                // foodsが常に配列であることを保証
-                foods: Array.isArray(foods) ? foods : [],
-                nutritionResult: {
-                    nutrition: standardizedNutrition, // 標準化形式
-                    // legacyNutrition フィールドは削除
-                    // legacyNutrition: legacyNutritionDataForResponse,
-                    reliability: nutritionResultData?.reliability || {
-                        confidence: confidence ?? 0.8, // confidenceの取得元を修正
-                        balanceScore: nutritionResultData?.balanceScore ?? legacyAnalysisResponse.balanceScore ?? 50,
-                        completeness: nutritionResultData?.completeness ?? legacyAnalysisResponse.completeness ?? 0.7
-                    },
-                },
-                // processingTimeMs が常に存在するように
-                processingTimeMs: processingTimeMs,
-            },
+            data: standardizedNutrition, // 変換後のデータ
             meta: {
                 processingTimeMs,
                 ...(warning ? { warning } : {})
+                // foods は StandardizedMealNutrition.foodItems に含まれるため、metaからは削除しても良いか検討
+                // ...(foods.length > 0 ? { recognizedFoods: foods } : {})
             }
         };
     }
 
     /**
-     * 食品テキスト解析APIのレスポンスを変換（旧形式→新形式）
-     * @param legacyFoodParseResponse 旧形式の食品テキスト解析レスポンス
-     * @returns 標準API形式の食品テキスト解析レスポンス
+     * 食品解析APIのレスポンスを変換（旧形式→新形式）
+     * @param legacyFoodParseResponse 旧形式の食品解析レスポンス (型は不明)
+     * @returns 標準API形式の食品解析レスポンス (データ型はFoodItemNutrition[])
      */
-    static convertFoodParseResponse(legacyFoodParseResponse: any): StandardApiResponse<any> {
-        if (legacyFoodParseResponse.error) {
+    static convertFoodParseResponse(legacyFoodParseResponse: unknown): StandardApiResponse<FoodItemNutrition[]> {
+        const startTime = performance.now();
+
+        // オブジェクトでない場合はエラー
+        if (!isObject(legacyFoodParseResponse)) {
             return {
                 success: false,
                 error: {
-                    code: legacyFoodParseResponse.errorCode || ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR,
-                    message: legacyFoodParseResponse.error,
-                    details: legacyFoodParseResponse.details
-                }
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: '無効なレスポンス形式です (オブジェクトではありません)',
+                },
+                meta: { processingTimeMs: Math.round(performance.now() - startTime) }
             };
         }
 
+        // エラーチェック
+        const isError = (hasProperty(legacyFoodParseResponse, 'error') && legacyFoodParseResponse.error) ||
+            (hasProperty(legacyFoodParseResponse, 'errorCode') && legacyFoodParseResponse.errorCode);
+
+        if (isError) {
+            const code = (hasProperty(legacyFoodParseResponse, 'errorCode') && isString(legacyFoodParseResponse.errorCode))
+                ? legacyFoodParseResponse.errorCode
+                : ErrorCode.AI.PARSING_ERROR;
+            const message = (hasProperty(legacyFoodParseResponse, 'error') && isString(legacyFoodParseResponse.error))
+                ? legacyFoodParseResponse.error
+                : '食品解析中にエラーが発生しました';
+            return {
+                success: false,
+                error: { code, message },
+                meta: { processingTimeMs: Math.round(performance.now() - startTime) }
+            };
+        }
+
+        // 食品リストを安全に取得
+        const foodItems = (hasProperty(legacyFoodParseResponse, 'foods') && Array.isArray(legacyFoodParseResponse.foods))
+            ? legacyFoodParseResponse.foods
+            : (hasProperty(legacyFoodParseResponse, 'parsed_foods') && Array.isArray(legacyFoodParseResponse.parsed_foods))
+                ? legacyFoodParseResponse.parsed_foods
+                : [];
+
+        // foodItems を FoodItemNutrition[] にキャスト (適切な変換が必要だが、一旦 any キャストで対応)
+        // TODO: foodItems の各要素を FoodItemNutrition に変換する関数を実装する
+        const standardizedFoodItems: FoodItemNutrition[] = foodItems.map(item => item as any); // any キャストは一時的
+
+
         return {
             success: true,
-            data: {
-                foods: legacyFoodParseResponse.foods || legacyFoodParseResponse.parsedFoods,
-                originalText: legacyFoodParseResponse.originalText || legacyFoodParseResponse.text,
-                confidence: legacyFoodParseResponse.confidence ||
-                    legacyFoodParseResponse.reliability?.confidence ||
-                    0.9
-            },
+            data: standardizedFoodItems,
             meta: {
-                processingTimeMs: legacyFoodParseResponse.processingTimeMs ||
-                    legacyFoodParseResponse.duration
+                processingTimeMs: Math.round(performance.now() - startTime)
             }
         };
     }
 
+
     /**
-     * エラーレスポンスを生成
+     * 標準化されたエラーレスポンスを作成
      * @param message エラーメッセージ
-     * @param code エラーコード
-     * @param details 詳細情報
+     * @param code エラーコード (デフォルト: UNKNOWN_ERROR)
+     * @param details エラー詳細 (任意)
      * @returns 標準API形式のエラーレスポンス
      */
     static createErrorResponse(
         message: string,
         code: string = ErrorCode.Base.UNKNOWN_ERROR,
-        details?: any
+        details?: unknown // details は任意の型を受け入れる
     ): StandardApiResponse<null> {
         return {
             success: false,
@@ -273,6 +418,9 @@ export class ApiAdapter {
                 code,
                 message,
                 details
+            },
+            meta: {
+                processingTimeMs: 0 // エラー生成時は0でよいか、または計測するか
             }
         };
     }

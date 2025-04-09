@@ -14,17 +14,17 @@ export interface GeminiDebugInfo {
  * AI応答の解析結果を表す型
  */
 export interface GeminiParseResult {
-    foods?: FoodInputParseResult[]; // オプショナルに変更
-    confidence?: number; // オプショナルに戻す
+    foods?: FoodInputParseResult[];
+    confidence?: number; // Optional number
     title?: string;
     servings?: string;
-    nutrition: { [key: string]: number | string } | undefined; // 栄養情報（キーは栄養素名、値は数値または文字列）
-    // アドバイス用プロパティを追加
+    // nutrition プロパティは必須だが、値は undefined になりうる
+    nutrition: { [key: string]: number | string } | undefined;
     advice_summary?: string;
     advice_detail?: string;
-    recommended_foods?: { name: string; description: string | undefined }[]; // recommended_foods の型を詳細化
+    recommended_foods?: { name: string; description: string | undefined }[];
     error?: string;
-    debug?: GeminiDebugInfo; // デバッグ情報用
+    debug?: GeminiDebugInfo;
 }
 
 /**
@@ -66,13 +66,16 @@ export class GeminiResponseParser {
                     // パース失敗ならJSONではないと判断
                     console.error('[GeminiResponseParser] Failed to find or parse JSON block:', responseText);
                     return {
+                        // nutrition プロパティを追加
+                        nutrition: undefined,
                         error: 'AIの応答から有効なJSONデータが見つかりませんでした。'
                     };
                 }
             }
 
             if (!jsonStr) {
-                return { error: '抽出されたJSON文字列が空です。' }; // foods を削除
+                // nutrition プロパティを追加
+                return { nutrition: undefined, error: '抽出されたJSON文字列が空です。' };
             }
 
             console.log(`[GeminiResponseParser] Extracted JSON string (preview): ${jsonStr.substring(0, 100)}...`);
@@ -88,10 +91,16 @@ export class GeminiResponseParser {
                         description: typeof item?.description === 'string' ? item.description : undefined
                     })) : undefined;
 
+                // Optional プロパティを安全に取得
+                const advice_summary = typeof parsedData.advice_summary === 'string' ? parsedData.advice_summary : undefined;
+                const advice_detail = typeof parsedData.advice_detail === 'string' ? parsedData.advice_detail : undefined;
+
                 return {
-                    advice_summary: typeof parsedData.advice_summary === 'string' ? parsedData.advice_summary : undefined,
-                    advice_detail: typeof parsedData.advice_detail === 'string' ? parsedData.advice_detail : undefined,
-                    recommended_foods: recommended_foods,
+                    nutrition: undefined,
+                    // 値が undefined でない場合のみプロパティを追加
+                    ...(advice_summary !== undefined && { advice_summary }),
+                    ...(advice_detail !== undefined && { advice_detail }),
+                    ...(recommended_foods !== undefined && { recommended_foods }),
                     debug: { parsedData, sourceFormat: 'nutrition_advice' }
                 };
             }
@@ -102,9 +111,11 @@ export class GeminiResponseParser {
                     (parsedData.ingredients || []).map((item: Record<string, unknown>) => ({
                         foodName: item.name as string || '',
                         quantityText: item.quantity as string | null || null,
-                        confidence: 0.8
+                        confidence: 0.8 // レシピの材料には信頼度がないためデフォルト値
                     })) : [];
                 return {
+                    // nutrition プロパティを追加
+                    nutrition: undefined,
                     foods,
                     title: parsedData.title as string,
                     servings: parsedData.servings as string,
@@ -118,15 +129,18 @@ export class GeminiResponseParser {
                     (parsedData.foods || []).map((item: Record<string, unknown>) => ({
                         foodName: item.name as string || '',
                         quantityText: item.quantity as string | null || null,
+                        // confidence は item に存在すれば number、なければ default 値
                         confidence: typeof item.confidence === 'number' ? item.confidence : 0.7
                     })) : [];
+                // confidence は parsedData に number として存在すればその値、なければ undefined
                 const confidence = typeof parsedData.confidence === 'number' ? parsedData.confidence : undefined;
                 const nutrition = typeof parsedData.nutrition === 'object' && parsedData.nutrition !== null ?
                     parsedData.nutrition as Record<string, number | string> : undefined;
                 return {
                     foods,
-                    confidence,
-                    nutrition,
+                    // confidence が undefined でない場合のみプロパティを追加
+                    ...(confidence !== undefined && { confidence }),
+                    nutrition, // nutrition は必須
                     debug: { parsedData, sourceFormat: 'food/text/image' }
                 };
             }
@@ -134,7 +148,9 @@ export class GeminiResponseParser {
             else {
                 console.warn('[GeminiResponseParser] Unknown JSON structure:', parsedData);
                 return {
-                    error: 'AIの応答JSONの構造が予期しない形式でした。' // foods を削除
+                    // nutrition プロパティを追加
+                    nutrition: undefined,
+                    error: 'AIの応答JSONの構造が予期しない形式でした。'
                 };
             }
 
@@ -142,7 +158,9 @@ export class GeminiResponseParser {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error('[GeminiResponseParser] Error parsing response:', error, { responseText });
             return {
-                error: `AI応答の解析中にエラーが発生しました: ${errorMessage}` // foods を削除
+                // nutrition プロパティを追加
+                nutrition: undefined,
+                error: `AI応答の解析中にエラーが発生しました: ${errorMessage}`
             };
         }
     }

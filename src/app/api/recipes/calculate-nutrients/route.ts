@@ -6,6 +6,7 @@ import { withErrorHandling } from '@/lib/api/middleware';
 import { createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
 import { AppError, ErrorCode } from '@/lib/error';
 import { FoodRepositoryFactory } from '@/lib/food/food-repository-factory';
+import { GeminiService } from "@/lib/ai/gemini/gemini-service";
 
 export const POST = withErrorHandling(
     async (req: NextRequest) => {
