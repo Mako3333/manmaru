@@ -9,12 +9,13 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { UserProfile } from '@/types/user';
 
 interface AdviceCardProps {
     date?: string;
     className?: string;
     forceUpdate?: boolean;
-    profile?: any;
+    profile?: UserProfile | null | undefined;
 }
 
 // 修正: APIレスポンスの型を仮定 (必要に応じて調整)

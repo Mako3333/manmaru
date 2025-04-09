@@ -16,8 +16,9 @@ export class CookpadParser implements RecipeParser {
             ingredientSections.forEach((section) => {
                 const groupNameElement = section.querySelector('.ingredient_group_name');
                 // 現在は使用していないが、将来的にグループ情報を活用する可能性があるため保持
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const _groupName = groupNameElement?.textContent?.trim() || undefined;
+                // 未使用であることを示す命名規則（アンダースコア）を使用
+                // 将来使用する際にコードで活用できるよう、コメントで残す
+                // const groupName = groupNameElement?.textContent?.trim() || undefined;
 
                 const items = section.querySelectorAll('.ingredient');
                 items.forEach((item) => {

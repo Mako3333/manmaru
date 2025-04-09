@@ -5,6 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, differenceInWeeks, addWeeks } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
+import { UserProfile } from '@/types/user';
 
 interface PregnancyWeekInfoProps {
     className?: string;
@@ -33,8 +34,16 @@ const TRIMESTER_INFO = {
     3: { name: '第3期', weeks: '28-40週', description: '赤ちゃんが最終的な準備をする時期です。', color: 'bg-purple-500' },
 };
 
+// Supabaseテーブルのプロファイルデータ型（テーブル構造に基づく）
+interface DatabaseProfile {
+    id: string;
+    user_id: string;
+    due_date?: string | null;
+    // 必要に応じて他のフィールドを追加
+}
+
 export default function PregnancyWeekInfo({ className, dueDate: propDueDate }: PregnancyWeekInfoProps) {
-    const [profile, setProfile] = useState<any>(null);
+    const [profile, setProfile] = useState<UserProfile | null>(null);
     const [pregnancyWeek, setPregnancyWeek] = useState<number | null>(null);
     const [dueDate, setDueDate] = useState<Date | null>(propDueDate ? propDueDate : null);
     const [loading, setLoading] = useState(true);
@@ -68,27 +77,32 @@ export default function PregnancyWeekInfo({ className, dueDate: propDueDate }: P
                     throw profileError;
                 }
 
-                setProfile(data);
+                // 型安全のためにデータを確認してから設定
+                if (data) {
+                    // DatabaseProfile 型として扱い、必要なプロパティにアクセス
+                    const profileData = data as DatabaseProfile;
+                    setProfile(profileData as unknown as UserProfile); // 暫定的な型変換（将来的には適切な変換関数を実装）
 
-                // 出産予定日がある場合、妊娠週数を計算
-                if (data.due_date) {
-                    const dueDateObj = new Date(data.due_date);
-                    setDueDate(dueDateObj);
+                    // 出産予定日がある場合、妊娠週数を計算
+                    if (profileData.due_date) {
+                        const dueDateObj = new Date(profileData.due_date);
+                        setDueDate(dueDateObj);
 
-                    // 妊娠週数の計算（出産予定日から逆算：出産予定日は妊娠40週目）
-                    const today = new Date();
-                    const conceptionDate = addWeeks(dueDateObj, -40);
-                    const weeksPregnant = differenceInWeeks(today, conceptionDate);
+                        // 妊娠週数の計算（出産予定日から逆算：出産予定日は妊娠40週目）
+                        const today = new Date();
+                        const conceptionDate = addWeeks(dueDateObj, -40);
+                        const weeksPregnant = differenceInWeeks(today, conceptionDate);
 
-                    // 妊娠週数が正の値かつ41未満の場合のみ設定
-                    if (weeksPregnant >= 0 && weeksPregnant <= 40) {
-                        setPregnancyWeek(weeksPregnant);
-                    } else if (weeksPregnant > 40) {
-                        // 出産予定日を過ぎている場合
-                        setPregnancyWeek(40);
-                    } else {
-                        // まだ妊娠していない場合（将来の出産予定日）
-                        setPregnancyWeek(0);
+                        // 妊娠週数が正の値かつ41未満の場合のみ設定
+                        if (weeksPregnant >= 0 && weeksPregnant <= 40) {
+                            setPregnancyWeek(weeksPregnant);
+                        } else if (weeksPregnant > 40) {
+                            // 出産予定日を過ぎている場合
+                            setPregnancyWeek(40);
+                        } else {
+                            // まだ妊娠していない場合（将来の出産予定日）
+                            setPregnancyWeek(0);
+                        }
                     }
                 }
             } catch (err) {

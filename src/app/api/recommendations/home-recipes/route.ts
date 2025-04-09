@@ -199,11 +199,10 @@ function shuffleArray<T>(array: T[]): T[] {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        // @ts-ignore を削除し、Non-null assertion (!) を使用
+        // i と j はどちらも配列の有効な範囲内であることが保証されているため、
+        // 非 undefined アサーション (!) を使用して型システムに伝える
         const temp = shuffled[i]!;
-        // @ts-ignore を削除し、Non-null assertion (!) を使用
         shuffled[i] = shuffled[j]!;
-        // @ts-ignore を削除 (temp は既に T 型のため不要、shuffled[j] も範囲内)
         shuffled[j] = temp;
     }
     return shuffled;
