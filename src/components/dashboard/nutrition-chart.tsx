@@ -42,6 +42,23 @@ export interface NutritionChartProps {
     className?: string;
 }
 
+// グラフ表示用のデータ型
+interface ChartDataPoint {
+    name: string;
+    icon: string;
+    target: number;
+    actual: number;
+    percentage: number;
+    unit: string;
+}
+
+// カスタムツールチップコンポーネントのプロップス型
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{ payload: ChartDataPoint }>;
+    label?: string; // 未使用だが、rechartsの型に合わせておく
+}
+
 // 達成率に応じた色を返す関数
 const getColorByPercentage = (percentage: number): string => {
     if (percentage < 70) return COLORS.deficient;
@@ -52,9 +69,10 @@ const getColorByPercentage = (percentage: number): string => {
 };
 
 // カスタムツールチップコンポーネント
-const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-        const nutrient = payload[0].payload;
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
+    if (active && payload && payload.length > 0) {
+        const nutrient = payload?.[0]?.payload;
+        if (!nutrient) return null;
         return (
             <div className="bg-white p-3 shadow-md rounded-md border text-sm">
                 <p className="font-bold mb-1">{nutrient.name}</p>
@@ -74,7 +92,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function NutritionChart({ date, className }: NutritionChartProps) {
-    const [nutritionData, setNutritionData] = useState<any[]>([]);
+    const [nutritionData, setNutritionData] = useState<ChartDataPoint[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const supabase = createBrowserClient(
@@ -191,7 +209,7 @@ export default function NutritionChart({ date, className }: NutritionChartProps)
     }, [date, supabase]);
 
     // データを正規化して表示用に整形するヘルパー関数
-    const normalizeData = (data: any[]) => {
+    const normalizeData = (data: ChartDataPoint[]): ChartDataPoint[] => {
         return data.map(item => ({
             ...item,
             // 値が0の場合は0にする（グラフ描画のため）
@@ -246,7 +264,7 @@ export default function NutritionChart({ date, className }: NutritionChartProps)
                                 dataKey="actual"
                                 radius={[0, 4, 4, 0]}
                             >
-                                {nutritionData.map((entry, index) => (
+                                {normalizeData(nutritionData).map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={getColorByPercentage(entry.percentage)} />
                                 ))}
                             </Bar>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
+// import { Card, CardContent } from '@/components/ui/card';
 import { addDaysToDate, formatDate } from '@/lib/date-utils';
 
 interface NutritionScore {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Food } from '@/types/food';
-import { FoodMatchingService } from '@/lib/food/food-matching-service';
+// import { FoodMatchingService } from '@/lib/food/food-matching-service';
 import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 import { FoodMatchBadge } from './food-match-badge';
 

@@ -11,7 +11,7 @@ import {
     createStandardizedMealNutrition,
     convertToLegacyNutrition
 } from '@/lib/nutrition/nutrition-type-utils';
-import { StandardizedMealNutrition, Nutrient, NutritionData } from '@/types/nutrition';
+import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
 import { IAIService } from '@/lib/ai/ai-service.interface';
 import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { JSDOM } from 'jsdom';
@@ -50,7 +50,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         // TODO: sanitizeAndValidateUrl がないので、一時的に簡易バリデーション
         try {
             new URL(url); // URL形式かチェック
-        } catch (_) {
+        } catch (error: unknown) {
             throw new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '無効な形式のURLです。',

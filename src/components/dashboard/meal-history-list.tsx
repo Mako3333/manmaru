@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate } from '@/lib/date-utils';
+// import { formatDate } from '@/lib/date-utils';
 
 interface MealRecord {
     id: string;

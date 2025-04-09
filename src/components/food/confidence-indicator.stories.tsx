@@ -1,9 +1,9 @@
-import React from 'react';
+// import React from 'react';
 import { Meta, StoryObj } from '@storybook/react';
 import { ConfidenceIndicator } from './confidence-indicator';
 
 // モック関数を使用してFoodMatchingServiceFactoryの実装をモック化
-import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
+// import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 
 // モックの確信度表示データ
 const mockDisplayData = {

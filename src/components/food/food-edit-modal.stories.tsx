@@ -1,9 +1,9 @@
-import React from 'react';
+// import React from 'react';
 import { Meta, StoryObj } from '@storybook/react';
 import { FoodEditModal } from './food-edit-modal';
 
 // FoodMatchingServiceFactoryのモック
-import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
+// import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 
 // モック検索結果
 const mockSearchResults = [

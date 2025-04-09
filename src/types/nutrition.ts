@@ -112,7 +112,7 @@ export interface NutritionData {
  */
 export interface NutritionProgress {
     user_id: string;
-    trimester: number;
+    // trimester: number; // 削除
     meal_date: string;
     // 目標値
     target_calories: number;

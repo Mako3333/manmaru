@@ -1,5 +1,5 @@
 import React from 'react';
-import { FoodMatchingService } from '@/lib/food/food-matching-service';
+// import { FoodMatchingService } from '@/lib/food/food-matching-service';
 import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 
 interface FoodMatchBadgeProps {

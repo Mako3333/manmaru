@@ -14,7 +14,7 @@ type NutritionTargets = typeof DEFAULT_NUTRITION_TARGETS;
 interface UserProfile {
     name?: string;
     pregnancy_week?: number;
-    due_date?: string;
+    due_date?: string | null;
 }
 
 interface NutritionSummaryProps {

@@ -248,28 +248,29 @@ const endpoints: ApiEndpoint[] = [
       "weekInfo": {
         "week": 24,
         "keyNutrients": ["iron", "calcium", "folic_acid"],
-        "developmentStage": "胎児は約30cmになり、肺の発達が進んでいます。"
+        "tip": "妊娠24週は胎児の成長が著しく、鉄分の必要量が特に増えます。鉄分を多く含む食品を意識して摂取しましょう。"
       }
     },
-    "timestamp": "2024-04-01T15:30:45Z"
+    "recommendedFoods": [
+      { "name": "ほうれん草のおひたし", "reason": "鉄分と葉酸が豊富です" },
+      { "name": "ひじきの煮物", "reason": "鉄分とカルシウムが含まれます" },
+      { "name": "ヨーグルト", "reason": "手軽にカルシウムを摂取できます" }
+    ]
   },
   "meta": {
-    "processingTimeMs": 520
+    "processingTimeMs": 350
   }
 }`
   }
 ];
 
-const errorCodes = [
-  { code: 'AUTH_REQUIRED', description: '認証が必要です' },
-  { code: 'AUTH_INVALID', description: '認証情報が無効です' },
-  { code: 'DATA_VALIDATION_ERROR', description: '入力データが無効です' },
-  { code: 'DATA_NOT_FOUND', description: '要求されたデータが見つかりません' },
-  { code: 'AI_ANALYSIS_ERROR', description: 'AI解析中にエラーが発生しました' },
-  { code: 'FOOD_NOT_FOUND', description: '食品データが見つかりません' },
-  { code: 'NUTRITION_CALCULATION_ERROR', description: '栄養計算中にエラーが発生しました' },
-  { code: 'FOOD_RECOGNITION_ERROR', description: '食品認識中にエラーが発生しました' }
-];
+// エラーコードの定義 (現在未使用)
+// const errorCodes = {
+//   400: '不正なリクエスト',
+//   401: '認証エラー',
+//   404: 'リソースが見つかりません',
+//   500: 'サーバー内部エラー'
+// };
 
 const ApiDocsComponent: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);

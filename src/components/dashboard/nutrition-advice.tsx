@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { AdviceState, AdviceType } from "@/types/nutrition";
+// import { AdviceState, AdviceType } from "@/types/nutrition";
 import ReactMarkdown from "react-markdown";
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -48,16 +48,8 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
     const [forceUpdate, setForceUpdate] = useState<boolean>(false);
     const [currentDate, setCurrentDate] = useState<string>(selectedDate || getJapanDate());
 
-    // 日付が変更されたときの処理
-    useEffect(() => {
-        if (selectedDate) {
-            setCurrentDate(selectedDate);
-            fetchDetailedAdvice(selectedDate, forceUpdate);
-        }
-    }, [selectedDate]);
-
-    // 2. データ取得関数
-    const fetchDetailedAdvice = async (date = currentDate, force = forceUpdate) => {
+    // 2. データ取得関数 (useCallback でメモ化)
+    const fetchDetailedAdvice = useCallback(async (date = currentDate, force = forceUpdate) => {
         try {
             setState(prev => ({ ...prev, loading: true, error: null }));
             console.log('DetailedNutritionAdvice: データ取得開始', { date, force });
@@ -196,30 +188,38 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
             toast.error(errorMessageString); // トーストにも反映
             setForceUpdate(false); // 強制更新フラグをリセット
         }
-    };
+    }, [currentDate, forceUpdate]); // 依存配列に currentDate と forceUpdate を追加
+
+    // 日付が変更されたときの処理
+    useEffect(() => {
+        if (selectedDate) {
+            setCurrentDate(selectedDate);
+            fetchDetailedAdvice(selectedDate, forceUpdate); // forceUpdate を渡す
+        }
+    }, [selectedDate, fetchDetailedAdvice, forceUpdate]); // 依存配列に fetchDetailedAdvice と forceUpdate を追加
 
     // 5. 初回読み込み
     useEffect(() => {
         console.log('DetailedNutritionAdvice: コンポーネントマウント'); // デバッグ用ログ
         fetchDetailedAdvice();
-    }, []);
+    }, [fetchDetailedAdvice]); // 依存配列に fetchDetailedAdvice を追加
 
     // 6. 強制更新ハンドラ
-    const handleForceUpdate = () => {
+    const handleForceUpdate = useCallback(() => { // useCallback でメモ化
         setForceUpdate(true);
         // 更新中のステータスをセット
         setState(prev => ({ ...prev, loading: true, error: null }));
         fetchDetailedAdvice(currentDate, true);
-    };
+    }, [currentDate, fetchDetailedAdvice]); // 依存配列に currentDate と fetchDetailedAdvice を追加
 
-    // 7. 日付選択ハンドラ
-    const handleDateChange = (date: string) => {
-        setCurrentDate(date);
-        if (onDateSelect) {
-            onDateSelect(date);
-        }
-        fetchDetailedAdvice(date, false);
-    };
+    // 7. 日付選択ハンドラ (削除)
+    // const handleDateChange = (date: string) => {
+    //     setCurrentDate(date);
+    //     if (onDateSelect) {
+    //         onDateSelect(date);
+    //     }
+    //     fetchDetailedAdvice(date, false);
+    // };
 
     // 8. UI描画
     return (

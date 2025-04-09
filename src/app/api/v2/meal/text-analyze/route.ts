@@ -5,7 +5,7 @@ import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-facto
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { z } from 'zod';
-import { parseFoodInputText, FoodParseServiceResult } from '@/lib/food/food-parsing-service';
+import { parseFoodInputText } from '@/lib/food/food-parsing-service';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({

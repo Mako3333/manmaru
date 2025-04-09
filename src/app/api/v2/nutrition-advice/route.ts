@@ -1,21 +1,21 @@
 import { NextRequest } from 'next/server';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr'; // type CookieOptions を削除
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from "next/headers";
 import { z } from 'zod';
-import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
+// import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { ErrorCode, AppError } from "@/lib/error";
 import { createSuccessResponse } from '@/lib/api/response';
-import { getJapanDate, getCurrentSeason, calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils'; // 日付・週数計算ユーティリティ
+import { getJapanDate } from '@/lib/date-utils'; // getCurrentSeason, calculatePregnancyWeek, getTrimesterNumber を削除
 import { format } from 'date-fns';
-import { ja } from 'date-fns/locale/ja'; // ja ロケールをインポート
-import {
-    getPastNutritionData,
-    identifyDeficientNutrients
-} from '@/lib/api/nutrition-advice-helpers';
+// import { ja } from 'date-fns/locale/ja'; // ja ロケールを削除
+// import {
+//     getPastNutritionData,
+//     identifyDeficientNutrients
+// } from '@/lib/api/nutrition-advice-helpers';
 import { AdviceType } from '@/types/advice'; // AdviceType をインポート
-import { PromptType } from '@/lib/ai/prompts/prompt-service'; // PromptType をインポート
+// import { PromptType } from '@/lib/ai/prompts/prompt-service'; // PromptType を削除
 
 // アドバイスタイプのリテラル型 (削除)
 // type AdviceType = 'DAILY_INITIAL' | 'AFTER_MEALS' | 'MANUAL_REFRESH';

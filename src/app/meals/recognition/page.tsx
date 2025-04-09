@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { EnhancedRecognitionEditor } from "@/components/meals/enhanced-recognition-editor";
 import { RecognitionEditor } from "@/components/meals/recognition-editor";
-import { StandardizedMealNutrition, Nutrient, NutrientUnit } from "@/types/nutrition";
+import { StandardizedMealNutrition } from "@/types/nutrition";
 
 // API食品アイテムの型定義
 interface ApiFood {
@@ -126,10 +126,15 @@ export default function RecognitionPage() {
         router.push(`/meals/recognition?${params.toString()}`);
     };
 
-    // 保存ハンドラーの型を修正
-    const handleSave = (data: RecognitionData | LegacyRecognitionData) => {
-        console.log(`保存データ (${editorVersion}):`, data);
-        // 保存後にリダイレクト
+    // Enhanced 用の保存ハンドラー
+    const handleEnhancedSave = (data: RecognitionData) => {
+        console.log(`保存データ (enhanced):`, data);
+        router.push("/home");
+    };
+
+    // Classic (Editor) 用の保存ハンドラー (StandardizedNutrition を受け取る)
+    const handleClassicSave = (data: StandardizedMealNutrition) => {
+        console.log(`保存データ (classic, standardized):`, data);
         router.push("/home");
     };
 
@@ -175,7 +180,7 @@ export default function RecognitionPage() {
             {editorVersion === "enhanced" ? (
                 <EnhancedRecognitionEditor
                     initialData={mockRecognitionData}
-                    onSave={handleSave as any}
+                    onSave={handleEnhancedSave}
                     mealType={mealType}
                     mealDate={mealDate}
                     photoUrl={photoUrl}
@@ -184,8 +189,8 @@ export default function RecognitionPage() {
             ) : (
                 <div className="max-w-4xl mx-auto">
                     <RecognitionEditor
-                        initialData={mockLegacyRecognitionData as any}
-                        onSave={handleSave as any}
+                        initialData={mockRecognitionData.nutrition}
+                        onSave={handleClassicSave}
                         mealType={mealType}
                         mealDate={mealDate}
                         photoUrl={photoUrl}

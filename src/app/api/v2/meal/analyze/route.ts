@@ -99,7 +99,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         const standardizedNutrition = nutritionResult.nutrition;
 
         // 後方互換性のために legacyNutrition も生成
-        const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
+        // const legacyNutrition = convertToLegacyNutrition(standardizedNutrition);
 
         // 結果を返却
         const warningMessage: string | undefined = (() => {

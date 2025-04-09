@@ -1,21 +1,21 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+// import { createBrowserClient } from '@supabase/ssr'; // 未使用なので削除
+import { Card, CardContent } from '@/components/ui/card'; // CardHeader を削除
 import type { NutritionAdvice } from '@/types/nutrition';
-import { AdviceType } from '@/types/nutrition';
-import { Loader2, AlertTriangle, Info, Check, RefreshCw } from "lucide-react";
+// import { AdviceType } from '@/types/nutrition';
+import { Loader2, AlertTriangle, Info, RefreshCw } from "lucide-react"; // Check を削除
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
+// import Link from 'next/link';
+// import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { UserProfile } from '@/types/user';
+import { UserProfile } from '@/types/user'; // 使用していないので削除 -> コメントアウト解除
+// import { cn } from '@/lib/utils';
 
 interface AdviceCardProps {
     date?: string;
-    className?: string;
+    // className?: string; // 未使用
     forceUpdate?: boolean;
-    profile?: UserProfile | null | undefined;
+    profile?: UserProfile | null | undefined; // コメントアウトを解除
 }
 
 // 修正: APIレスポンスの型を仮定 (必要に応じて調整)
@@ -32,17 +32,17 @@ interface AdviceApiResponse {
 
 export const AdviceCard: React.FC<AdviceCardProps> = ({
     date,
-    className = '',
+    // className = '',
     forceUpdate = false,
-    profile
+    profile,
 }) => {
     const [advice, setAdvice] = useState<NutritionAdvice | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
-    const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    // const supabase = createBrowserClient(
+    //     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    //     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    // ); // 未使用なので削除
 
     // 日付が提供されていない場合は現在の日付を使用
     const currentDate = date || format(new Date(), 'yyyy-MM-dd');
@@ -187,7 +187,7 @@ export const AdviceCard: React.FC<AdviceCardProps> = ({
                             <div className="bg-[#F0F7F4] rounded-xl p-4 pl-8 relative">
                                 {/* 引用符装飾 */}
                                 <div className="absolute top-2 left-3 text-[40px] leading-none text-[rgba(46,158,108,0.2)]">
-                                    "
+                                    &quot;
                                 </div>
                                 <p className="text-[15px] text-gray-700 leading-relaxed relative z-1">
                                     {advice.advice_summary || '今日のアドバイス概要はありません。'}

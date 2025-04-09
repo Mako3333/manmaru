@@ -30,13 +30,13 @@ interface MealData {
 }
 
 // 基準栄養素量（一般的な妊婦の目安）
-const DEFAULT_NUTRITION_TARGETS: NutritionData = {
-    calories: 2200,
-    protein: 80,
-    iron: 10,
-    folic_acid: 400,
-    calcium: 800
-};
+// const DEFAULT_NUTRITION_TARGETS: NutritionData = {
+//     calories: 2200,
+//     protein: 80,
+//     iron: 10,
+//     folic_acid: 400,
+//     calcium: 800
+// };
 
 export async function POST(req: Request) {
     try {

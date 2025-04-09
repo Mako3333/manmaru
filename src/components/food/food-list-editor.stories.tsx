@@ -1,10 +1,10 @@
-import React from 'react';
+// import React from 'react';
 import { Meta, StoryObj } from '@storybook/react';
 import { FoodListEditor } from './food-list-editor';
 import { FoodItem } from './food-edit-modal';
 
 // FoodMatchingServiceFactoryのモック
-import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
+// import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
 
 // モック検索結果と同様のデータ構造でモック食品データを作成
 const mockFoodItems: FoodItem[] = [
@@ -40,7 +40,7 @@ const mockFoodItems: FoodItem[] = [
 
 // モックサービスを作成（FoodEditModalと同様）
 const mockService = {
-    searchFoodsByName: jest.fn().mockImplementation((query) => {
+    searchFoodsByName: jest.fn().mockImplementation((_query) => {
         return Promise.resolve([
             {
                 matchedFood: {

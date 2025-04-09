@@ -13,24 +13,7 @@ interface Recipe {
     use_placeholder?: boolean;
 }
 
-// 型を削除する代わりに、実際に使用する
-// データベースからの生レコードの型
-type RecipeRecord = {
-    id: string;
-    title?: string;
-    image_url?: string;
-    is_favorite?: boolean;
-    source_platform?: string;
-    content_id?: string;
-    created_at?: string;
-    updated_at?: string;
-    user_id?: string;
-    clipped_at?: string;
-    recipe_type?: string;
-    source_url?: string;
-};
-
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
     try {
         const cookieStore = await cookies();
         const supabase = createServerClient(

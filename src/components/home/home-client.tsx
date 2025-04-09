@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,18 +16,21 @@ import { RecommendedRecipes } from './recommended-recipes';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, ChevronRight, Book, X } from 'lucide-react';
-import { StandardizedMealNutrition, Nutrient, NutritionTarget } from '@/types/nutrition';
+import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, Book, X } from 'lucide-react';
+import { StandardizedMealNutrition, NutritionTarget, NutritionProgress } from '@/types/nutrition';
 import { calculateNutritionScore, DEFAULT_NUTRITION_TARGETS } from '@/lib/nutrition/nutrition-display-utils';
 import { getJapanDate, calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
 import { OnboardingMessage } from './onboarding-message';
+import type { User } from '@supabase/supabase-js';
+import { UserProfile } from '@/types/user';
+import { ja } from 'date-fns/locale';
 
 // NutritionTargets 型 (DEFAULT_NUTRITION_TARGETS の型)
 // calculateNutritionScore や NutritionSummary が期待する形式
 type NutritionTargets = typeof DEFAULT_NUTRITION_TARGETS;
 
 interface HomeClientProps {
-    user: any;
+    user: User | null;
 }
 
 // GreetingMessageコンポーネントの型定義
@@ -37,30 +39,10 @@ interface GreetingMessageProps {
     name?: string;
 }
 
-// NutritionData の型定義を NutritionProgress に変更するか、Supabase の型を直接使う
-// (ここでは NutritionProgress が Supabase のテーブルに対応する型と仮定)
-interface NutritionProgress {
-    user_id: string;
-    meal_date: string;
-    target_calories: number;
-    actual_calories: number;
-    calories_percent: number;
-    target_protein: number;
-    actual_protein: number;
-    protein_percent: number;
-    target_iron: number;
-    actual_iron: number;
-    iron_percent: number;
-    target_folic_acid: number;
-    actual_folic_acid: number;
-    folic_acid_percent: number;
-    target_calcium: number;
-    actual_calcium: number;
-    calcium_percent: number;
-    target_vitamin_d: number;
-    actual_vitamin_d: number;
-    vitamin_d_percent: number;
-    // overall_score はここで計算するので不要かもしれない
+interface AdviceCardProps {
+    date?: string;
+    forceUpdate?: boolean;
+    profile?: UserProfile | null | undefined;
 }
 
 export default function HomeClient({ user }: HomeClientProps) {
@@ -69,15 +51,16 @@ export default function HomeClient({ user }: HomeClientProps) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
-    const [profile, setProfile] = useState<any>(null);
+    const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [currentDate] = useState(getJapanDate());
-    const [nutritionProgress, setNutritionProgress] = useState<any>(null);
+    const [nutritionProgress, setNutritionProgress] = useState<NutritionProgress | null>(null);
     const [standardizedNutrition, setStandardizedNutrition] = useState<StandardizedMealNutrition | null>(null);
     const [isMorningWithNoMeals, setIsMorningWithNoMeals] = useState<boolean>(false);
     const [isFirstTimeUser, setIsFirstTimeUser] = useState<boolean>(false);
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
     const [userTargets, setUserTargets] = useState<NutritionTargets>(DEFAULT_NUTRITION_TARGETS);
+    const [error, setError] = useState<string | null>(null);
 
     // コンポーネントマウント時に一度だけ初回ユーザー判定
     useEffect(() => {
@@ -91,202 +74,195 @@ export default function HomeClient({ user }: HomeClientProps) {
         checkOnboarding();
     }, []);
 
-    useEffect(() => {
-        const fetchProfile = async () => {
-            console.log('[fetchProfile] Start');
-            if (!user) {
-                console.log('[fetchProfile] No user, setting loading false');
-                setLoading(false);
-                return;
-            }
-            try {
-                const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('due_date')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
+    const fetchProfile = useCallback(async () => {
+        console.log('[fetchProfile] Start');
+        if (!user) {
+            console.log('[fetchProfile] No user, setting loading false');
+            setLoading(false);
+            return;
+        }
+        try {
+            const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('user_id', user.id)
+                .maybeSingle<UserProfile>();
 
-                if (profileError) {
-                    throw profileError;
-                }
-                console.log('[fetchProfile] Success, profile data:', profileData);
-                setProfile(profileData);
-            } catch (error) {
-                console.error('[fetchProfile] Error:', error);
-            } finally {
-                console.log('[fetchProfile] End');
+            if (profileError) {
+                throw profileError;
             }
-        };
+            console.log('[fetchProfile] Success, profile data:', profileData);
+            setProfile(profileData);
+        } catch (error) {
+            console.error('[fetchProfile] Error:', error);
+        } finally {
+            console.log('[fetchProfile] End');
+        }
+    }, [user, supabase]);
+
+    // fetchProfile の useEffect
+    useEffect(() => {
         fetchProfile();
-    }, [user, supabase, router]);
+    }, [fetchProfile]);
 
-    useEffect(() => {
-        const fetchNutritionData = async () => {
-            console.log('[fetchNutritionData] Start');
-            if (!user) {
-                console.log('[fetchNutritionData] No user, skipping');
-                setLoading(false);
+    const fetchNutritionData = useCallback(async () => {
+        console.log('[fetchNutritionData] Start');
+        if (!user) {
+            console.log('[fetchNutritionData] No user, skipping');
+            setLoading(false);
+            return;
+        }
+        if (profile === null || profile === undefined) {
+            console.log('[fetchNutritionData] Profile not loaded yet, waiting...');
+            if (profile === null) {
+                setUserTargets(DEFAULT_NUTRITION_TARGETS);
+                console.log('[fetchNutritionData] Profile is null, using default targets.');
+            } else {
                 return;
             }
-            if (profile === null || profile === undefined) {
-                console.log('[fetchNutritionData] Profile not loaded yet, waiting...');
-                if (profile === null) {
-                    setUserTargets(DEFAULT_NUTRITION_TARGETS);
-                    console.log('[fetchNutritionData] Profile is null, using default targets.');
-                } else {
-                    return;
-                }
-            } else {
-                try {
-                    // トライメスター計算: due_date が存在するか確認
-                    if (profile?.due_date) {
-                        const week = calculatePregnancyWeek(profile.due_date);
-                        const currentTrimester = getTrimesterNumber(week);
-
-                        console.log(`[fetchNutritionData] Fetching targets for trimester: ${currentTrimester}`);
-                        // DB から NutritionTarget 型 (id, trimester などを含む) で取得
-                        const { data: targetData, error: targetError } = await supabase
-                            .from('nutrition_targets')
-                            .select('*')
-                            .eq('trimester', currentTrimester)
-                            .maybeSingle<NutritionTarget>(); // DB の行の型
-
-                        if (targetError) {
-                            console.error('[fetchNutritionData] Error fetching targets:', targetError);
-                            setUserTargets(DEFAULT_NUTRITION_TARGETS); // エラー時はデフォルト
-                        } else if (targetData) {
-                            // DBから取得したデータ (NutritionTarget) から必要な目標値のみを抽出
-                            // して、NutritionTargets 型のオブジェクトを作成
-                            const extractedTargets: NutritionTargets = {
-                                calories: targetData.calories ?? DEFAULT_NUTRITION_TARGETS.calories,
-                                protein: targetData.protein ?? DEFAULT_NUTRITION_TARGETS.protein,
-                                iron: targetData.iron ?? DEFAULT_NUTRITION_TARGETS.iron,
-                                folic_acid: targetData.folic_acid ?? DEFAULT_NUTRITION_TARGETS.folic_acid,
-                                calcium: targetData.calcium ?? DEFAULT_NUTRITION_TARGETS.calcium,
-                                vitamin_d: targetData.vitamin_d ?? DEFAULT_NUTRITION_TARGETS.vitamin_d,
-                                // 必要に応じて他の栄養素も追加
-                            };
-                            setUserTargets(extractedTargets);
-                            console.log('[fetchNutritionData] User targets extracted and set:', extractedTargets);
-                        } else {
-                            setUserTargets(DEFAULT_NUTRITION_TARGETS); // データがない場合はデフォルト
-                            console.log('[fetchNutritionData] No specific targets found for trimester, using default.');
-                        }
-                    } else {
-                        // due_date がない場合もデフォルト目標値を使用
-                        setUserTargets(DEFAULT_NUTRITION_TARGETS);
-                        console.log('[fetchNutritionData] No due_date found in profile, using default targets.');
-                    }
-                } catch (error) {
-                    console.error('[fetchNutritionData] Error processing targets:', error);
-                    setUserTargets(DEFAULT_NUTRITION_TARGETS);
-                }
-            }
-
-            console.log('[fetchNutritionData] Setting loading true');
-            setLoading(true);
-
-            const defaultProgressData: NutritionProgress = {
-                user_id: user.id,
-                meal_date: currentDate,
-                target_calories: DEFAULT_NUTRITION_TARGETS.calories,
-                actual_calories: 0,
-                calories_percent: 0,
-                target_protein: DEFAULT_NUTRITION_TARGETS.protein,
-                actual_protein: 0,
-                protein_percent: 0,
-                target_iron: DEFAULT_NUTRITION_TARGETS.iron,
-                actual_iron: 0,
-                iron_percent: 0,
-                target_folic_acid: DEFAULT_NUTRITION_TARGETS.folic_acid,
-                actual_folic_acid: 0,
-                folic_acid_percent: 0,
-                target_calcium: DEFAULT_NUTRITION_TARGETS.calcium,
-                actual_calcium: 0,
-                calcium_percent: 0,
-                target_vitamin_d: DEFAULT_NUTRITION_TARGETS.vitamin_d,
-                actual_vitamin_d: 0,
-                vitamin_d_percent: 0
-            };
-
-            try {
-                console.log(`[fetchNutritionData] Fetching data for date: ${currentDate}`);
-                const { data, error } = await supabase
-                    .from('nutrition_goal_prog')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .eq('meal_date', currentDate)
-                    .maybeSingle<NutritionProgress>();
-
-                if (error) {
-                    throw error;
-                }
-                console.log('[fetchNutritionData] DB response data:', data);
-
-                const progressData: NutritionProgress = data || defaultProgressData;
-
-                const formattedNutritionData: StandardizedMealNutrition = {
-                    totalCalories: progressData.actual_calories,
-                    totalNutrients: [
-                        { name: 'protein', value: progressData.actual_protein, unit: 'g' },
-                        { name: 'iron', value: progressData.actual_iron, unit: 'mg' },
-                        { name: 'folic_acid', value: progressData.actual_folic_acid, unit: 'mcg' },
-                        { name: 'calcium', value: progressData.actual_calcium, unit: 'mg' },
-                        { name: 'vitamin_d', value: progressData.actual_vitamin_d, unit: 'mcg' },
-                    ],
-                    foodItems: [],
-                    pregnancySpecific: {
-                        folatePercentage: progressData.folic_acid_percent,
-                        ironPercentage: progressData.iron_percent,
-                        calciumPercentage: progressData.calcium_percent,
-                    },
-                    reliability: {
-                        confidence: data ? 0.8 : 0,
-                        balanceScore: 0,
-                        completeness: data ? 1 : 0
-                    }
-                };
-                console.log('[fetchNutritionData] Formatted data for score calculation:', formattedNutritionData);
-
-                const overall_score = calculateNutritionScore(formattedNutritionData, userTargets);
-                console.log('[fetchNutritionData] Calculated score with user targets:', overall_score);
-
-                formattedNutritionData.reliability.balanceScore = overall_score;
-
-                setStandardizedNutrition(formattedNutritionData);
-                setNutritionProgress({
-                    ...progressData,
-                    overall_score
-                });
-
-                const hasMealRecords = Object.entries(progressData).some(([key, value]) =>
-                    key.startsWith('actual_') && typeof value === 'number' && value > 0
-                );
-                setIsMorningWithNoMeals(!hasMealRecords);
-                console.log('[fetchNutritionData] Success');
-
-            } catch (error) {
-                console.error('[fetchNutritionData] Error:', error);
-                setStandardizedNutrition(null);
-                setNutritionProgress({
-                    ...defaultProgressData,
-                    overall_score: 0
-                });
-                setIsMorningWithNoMeals(new Date().getHours() < 12);
-            } finally {
-                console.log('[fetchNutritionData] Setting loading false');
-                setLoading(false);
-                console.log('[fetchNutritionData] End');
-            }
-        };
-
-        if (profile !== undefined) {
-            fetchNutritionData();
         } else {
-            console.log('[useEffect Nutrition] Waiting for profile state to settle...');
+            try {
+                // トライメスター計算: due_date が存在するか確認
+                if (profile?.due_date) {
+                    const week = calculatePregnancyWeek(profile.due_date);
+                    const currentTrimester = getTrimesterNumber(week);
+
+                    console.log(`[fetchNutritionData] Fetching targets for trimester: ${currentTrimester}`);
+                    // DB から NutritionTarget 型 (id, trimester などを含む) で取得
+                    const { data: targetData, error: targetError } = await supabase
+                        .from('nutrition_targets')
+                        .select('*')
+                        .eq('trimester', currentTrimester)
+                        .maybeSingle<NutritionTarget>(); // DB の行の型
+
+                    if (targetError) {
+                        console.error('[fetchNutritionData] Error fetching targets:', targetError);
+                        setUserTargets(DEFAULT_NUTRITION_TARGETS); // エラー時はデフォルト
+                    } else if (targetData) {
+                        // DBから取得したデータ (NutritionTarget) から必要な目標値のみを抽出
+                        // して、NutritionTargets 型のオブジェクトを作成
+                        const extractedTargets: NutritionTargets = {
+                            calories: targetData.calories ?? DEFAULT_NUTRITION_TARGETS.calories,
+                            protein: targetData.protein ?? DEFAULT_NUTRITION_TARGETS.protein,
+                            iron: targetData.iron ?? DEFAULT_NUTRITION_TARGETS.iron,
+                            folic_acid: targetData.folic_acid ?? DEFAULT_NUTRITION_TARGETS.folic_acid,
+                            calcium: targetData.calcium ?? DEFAULT_NUTRITION_TARGETS.calcium,
+                            vitamin_d: targetData.vitamin_d ?? DEFAULT_NUTRITION_TARGETS.vitamin_d,
+                            // 必要に応じて他の栄養素も追加
+                        };
+                        setUserTargets(extractedTargets);
+                        console.log('[fetchNutritionData] User targets extracted and set:', extractedTargets);
+                    } else {
+                        setUserTargets(DEFAULT_NUTRITION_TARGETS); // データがない場合はデフォルト
+                        console.log('[fetchNutritionData] No specific targets found for trimester, using default.');
+                    }
+                } else {
+                    // due_date がない場合もデフォルト目標値を使用
+                    setUserTargets(DEFAULT_NUTRITION_TARGETS);
+                    console.log('[fetchNutritionData] No due_date found in profile, using default targets.');
+                }
+            } catch (error) {
+                console.error('[fetchNutritionData] Error processing targets:', error);
+                setUserTargets(DEFAULT_NUTRITION_TARGETS);
+            }
         }
 
-    }, [user, profile, currentDate, supabase]);
+        console.log('[fetchNutritionData] Setting loading true');
+        setLoading(true);
+
+        const defaultProgressData = {
+            user_id: user?.id ?? '',
+            meal_date: currentDate,
+            target_calories: DEFAULT_NUTRITION_TARGETS.calories,
+            actual_calories: 0,
+            calories_percent: 0,
+            target_protein: DEFAULT_NUTRITION_TARGETS.protein,
+            actual_protein: 0,
+            protein_percent: 0,
+            target_iron: DEFAULT_NUTRITION_TARGETS.iron,
+            actual_iron: 0,
+            iron_percent: 0,
+            target_folic_acid: DEFAULT_NUTRITION_TARGETS.folic_acid,
+            actual_folic_acid: 0,
+            folic_acid_percent: 0,
+            target_calcium: DEFAULT_NUTRITION_TARGETS.calcium,
+            actual_calcium: 0,
+            calcium_percent: 0,
+            target_vitamin_d: DEFAULT_NUTRITION_TARGETS.vitamin_d,
+            actual_vitamin_d: 0,
+            vitamin_d_percent: 0
+        };
+
+        try {
+            console.log(`[fetchNutritionData] Fetching data for date: ${currentDate}`);
+            const { data, error } = await supabase
+                .from('nutrition_goal_prog')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('meal_date', currentDate)
+                .maybeSingle<NutritionProgress>();
+
+            if (error) {
+                throw error;
+            }
+            console.log('[fetchNutritionData] DB response data:', data);
+
+            const progressData: NutritionProgress = data || defaultProgressData;
+
+            const formattedNutritionData: StandardizedMealNutrition = {
+                totalCalories: progressData.actual_calories,
+                totalNutrients: [
+                    { name: 'protein', value: progressData.actual_protein, unit: 'g' },
+                    { name: 'iron', value: progressData.actual_iron, unit: 'mg' },
+                    { name: 'folic_acid', value: progressData.actual_folic_acid, unit: 'mcg' },
+                    { name: 'calcium', value: progressData.actual_calcium, unit: 'mg' },
+                    { name: 'vitamin_d', value: progressData.actual_vitamin_d, unit: 'mcg' },
+                ],
+                foodItems: [],
+                pregnancySpecific: {
+                    folatePercentage: progressData.folic_acid_percent,
+                    ironPercentage: progressData.iron_percent,
+                    calciumPercentage: progressData.calcium_percent,
+                },
+                reliability: {
+                    confidence: data ? 0.8 : 0,
+                    balanceScore: 0,
+                    completeness: data ? 1 : 0
+                }
+            };
+            console.log('[fetchNutritionData] Formatted data for score calculation:', formattedNutritionData);
+
+            const score = calculateNutritionScore(formattedNutritionData, userTargets);
+            console.log('[fetchNutritionData] Calculated Score:', score);
+            formattedNutritionData.reliability.balanceScore = score;
+
+            setNutritionProgress(progressData);
+            setStandardizedNutrition(formattedNutritionData);
+
+            const hasMealRecords = Object.entries(progressData).some(([key, value]) =>
+                key.startsWith('actual_') && typeof value === 'number' && value > 0
+            );
+            setIsMorningWithNoMeals(!hasMealRecords);
+            console.log('[fetchNutritionData] Success');
+
+        } catch (error) {
+            console.error('[fetchNutritionData] Error:', error);
+            setNutritionProgress(defaultProgressData);
+            setStandardizedNutrition(null);
+            setIsMorningWithNoMeals(new Date().getHours() < 12);
+        } finally {
+            console.log('[fetchNutritionData] Setting loading false');
+            setLoading(false);
+            console.log('[fetchNutritionData] End');
+        }
+    }, [user, profile, currentDate, supabase, userTargets]);
+
+    // fetchNutritionData の useEffect
+    useEffect(() => {
+        if (profile !== undefined) {
+            fetchNutritionData();
+        }
+    }, [profile, fetchNutritionData]);
 
     // オンボーディングを閉じる処理
     const dismissOnboarding = () => {
@@ -452,15 +428,19 @@ export default function HomeClient({ user }: HomeClientProps) {
                 </div>
 
                 {/* 栄養バランス表示 - 統合版 */}
-                <NutritionSummary
-                    dailyNutrition={standardizedNutrition}
-                    targets={userTargets}
-                    isMorningWithNoMeals={isMorningWithNoMeals}
-                    profile={profile}
-                />
+                {profile && standardizedNutrition && userTargets ? (
+                    <NutritionSummary
+                        dailyNutrition={standardizedNutrition}
+                        targets={userTargets}
+                        isMorningWithNoMeals={isMorningWithNoMeals}
+                        profile={profile}
+                    />
+                ) : null}
 
                 {/* 今日のアドバイスカード */}
-                <AdviceCard profile={profile} />
+                {profile && (
+                    <AdviceCard date={currentDate} profile={profile} />
+                )}
 
                 {/* 5. おすすめレシピカード */}
                 <RecommendedRecipes />
@@ -472,25 +452,7 @@ export default function HomeClient({ user }: HomeClientProps) {
     );
 }
 
-function getScoreMessage(score: number): string {
-    if (score === 0) return "食事記録を始めましょう！";
-    if (score < 40) return "もう少しバランスを意識しましょう";
-    if (score < 70) return "良い調子です！";
-    return "素晴らしい栄養バランスです！";
-}
-
-const getNutrientColor = (percent: number) => {
-    if (percent < 50) return { bg: 'bg-red-500', text: 'text-red-600', bgLight: 'bg-red-50' };
-    if (percent < 80) return { bg: 'bg-orange-500', text: 'text-orange-600', bgLight: 'bg-orange-50' };
-    if (percent <= 120) return { bg: 'bg-emerald-500', text: 'text-emerald-600', bgLight: 'bg-emerald-50' };
-    if (percent <= 150) return { bg: 'bg-orange-500', text: 'text-orange-600', bgLight: 'bg-orange-50' };
-    return { bg: 'bg-red-500', text: 'text-red-600', bgLight: 'bg-red-50' };
-};
-
-// 栄養素のプログレスバーの色を取得する関数を最下部に追加
-function getProgressBarColor(percent: number): string {
-    if (percent < 70) return 'bg-red-500';
-    if (percent < 100) return 'bg-orange-500';
-    if (percent <= 130) return 'bg-green-500';
-    return 'bg-red-500'; // 過剰摂取
-} 
+// 未使用の関数をコメントアウト
+// function getScoreMessage(score: number): string { ... }
+// const getNutrientColor = (percent: number) => { ... };
+// function getProgressBarColor(percent: number): string { ... } 
