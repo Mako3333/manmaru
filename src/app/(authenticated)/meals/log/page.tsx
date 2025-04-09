@@ -75,7 +75,7 @@ export default function MealLogPage() {
     const [mealType, setMealType] = useState<MealType>('breakfast')
 
     // 日付の状態 (selectedDate は保持し、setSelectedDate を未使用にする)
-    const [selectedDate, _setSelectedDate] = useState<Date>(new Date())
+    const [selectedDate] = useState<Date>(new Date())
 
     // 入力モードの状態(写真モード・テキストモード)
     const [inputMode, setInputMode] = useState<InputMode>('photo')

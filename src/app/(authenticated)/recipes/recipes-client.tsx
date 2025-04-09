@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr';
 import { RecipeCard } from '@/components/recipes/recipe-card';
 import { ClippedRecipe } from '@/types/recipe';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,14 +16,9 @@ interface RecipesClientProps {
 
 export default function RecipesClient({ initialData }: RecipesClientProps) {
     const [recipes, setRecipes] = useState<(ClippedRecipe & { nutrition_focus?: string[] })[]>(initialData);
-    const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const router = useRouter();
-    const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
 
     // レシピをフィルタリングする関数
     const filterRecipes = useCallback(() => {

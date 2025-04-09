@@ -1,28 +1,11 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import RecipesClient from './recipes-client';
-import { ClippedRecipe } from '@/types/recipe';
 
 export const metadata = {
     title: 'レシピ - manmaru',
     description: 'あなた向けの妊婦栄養レシピコレクション',
 };
-
-// レシピデータの型定義
-interface Recipe {
-    id: string;
-    title: string;
-    description: string;
-    ingredients: string[];
-    instructions: string[];
-    image_url?: string;
-    nutrition_info?: {
-        calories: number;
-        protein: number;
-        fat: number;
-        carbs: number;
-    };
-}
 
 export default async function RecipesPage() {
     const cookieStore = await cookies();

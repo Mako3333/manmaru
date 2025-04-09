@@ -79,21 +79,18 @@ export default function RecipeClipClient() {
 
             // parsedData.nutrition_per_serving が StandardizedMealNutrition でない可能性を考慮
             // 必要に応じて convertToStandardizedNutrition を使用して変換
-            let standardizedNutrition: StandardizedMealNutrition;
             if (parsedData.nutrition_per_serving && !('totalNutrients' in parsedData.nutrition_per_serving)) {
                 // 仮の食品アイテムリストを作成 (変換関数が要求するため)
                 const tempFoodItems = parsedData.ingredients.map(ing => ({ name: ing.name, quantity: ing.quantity || '' }));
                 // convertToStandardizedNutrition は NutritionData (古い型) を期待するため、型アサーション
                 // TODO: convertToStandardizedNutrition を更新し、any アサーションを削除する
-                standardizedNutrition = convertToStandardizedNutrition(parsedData.nutrition_per_serving as any, tempFoodItems as any);
-            } else if (parsedData.nutrition_per_serving) {
-                standardizedNutrition = parsedData.nutrition_per_serving;
-            } else {
-                standardizedNutrition = createEmptyStandardizedNutrition();
+                parsedData.nutrition_per_serving = convertToStandardizedNutrition(parsedData.nutrition_per_serving as any, tempFoodItems as any);
+            } else if (!parsedData.nutrition_per_serving) {
+                parsedData.nutrition_per_serving = createEmptyStandardizedNutrition();
             }
 
+            setEditedRecipe(parsedData);
             setError(null);
-
             setStep('confirm');
         } catch (error) {
             console.error('レシピ解析エラー:', error);
