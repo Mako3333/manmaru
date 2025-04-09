@@ -14,6 +14,14 @@ type ApiHandler = (
 ) => Promise<NextResponse>;
 
 /**
+ * より具体的なコンテキスト型定義
+ */
+export type RouteContext = {
+    params: Record<string, string>;
+    user: any;
+};
+
+/**
  * セッション認証とエラーハンドリングを備えたAPIハンドララッパー
  */
 export function withAuthAndErrorHandling(handler: ApiHandler) {

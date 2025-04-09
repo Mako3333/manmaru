@@ -1,13 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { RecipeService } from '@/lib/services/recipe-service';
 import { withAuthAndErrorHandling, createSuccessResponse } from '@/lib/api/api-handlers';
 import { AppError, ErrorCode } from '@/lib/error';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+// Define context type
+type RouteContext = {
+    params: { id: string };
+};
+
 // レシピの取得
 export const GET = withAuthAndErrorHandling(
-    async (req, { params, user }) => {
+    async (req: NextRequest, { params, user }) => {
         const { id } = params;
 
         // IDの検証
@@ -27,7 +32,7 @@ export const GET = withAuthAndErrorHandling(
 
 // レシピの更新
 export const PATCH = withAuthAndErrorHandling(
-    async (req, { params, user }) => {
+    async (req: NextRequest, { params, user }) => {
         const { id } = params;
 
         // IDの検証
@@ -97,7 +102,7 @@ export const PATCH = withAuthAndErrorHandling(
 
 // レシピの削除
 export const DELETE = withAuthAndErrorHandling(
-    async (req, { params, user }) => {
+    async (req: NextRequest, { params, user }) => {
         const { id } = params;
 
         // IDの検証

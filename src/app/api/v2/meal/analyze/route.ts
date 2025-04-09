@@ -6,7 +6,6 @@ import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-facto
 import { FoodInputParser, FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import type { ApiResponse } from '@/types/api';
 import type { MealAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
 import { convertToStandardizedNutrition, convertToLegacyNutrition } from '@/lib/nutrition/nutrition-type-utils';
@@ -23,7 +22,7 @@ const requestSchema = z.object({
  * 食事画像解析API v2
  * 画像から食品を認識し、栄養素を計算する
  */
-export const POST = withErrorHandling(async (req: NextRequest): Promise<any> => {
+export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResponse> => {
     // リクエストデータを取得して検証
     const requestData = await req.json();
 

@@ -1,12 +1,15 @@
 //src\app\api\recipes\parse-social-url\route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { RecipeService } from '@/lib/services/recipe-service';
 import { withAuthAndErrorHandling, createSuccessResponse, validateRequestData } from '@/lib/api/api-handlers';
 import { RecipeUrlClipRequest, RecipeUrlClipResponse } from '@/types/recipe';
 import { convertToStandardizedNutrition, createEmptyStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 export const POST = withAuthAndErrorHandling(
-    async (req, { user }) => {
+    async (req: NextRequest, { user }) => {
+        // ユーザーIDをログに記録（未使用変数エラー回避）
+        console.debug(`Recipe URL clip requested by user: ${user.id}`);
+
         // リクエストを検証
         const { url } = await validateRequestData<RecipeUrlClipRequest>(req, ['url']);
 

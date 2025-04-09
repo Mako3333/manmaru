@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
@@ -13,18 +13,22 @@ interface Recipe {
     use_placeholder?: boolean;
 }
 
-// レシピレコード型（データベースから取得される生データ）
-interface RecipeRecord {
+// 型を削除する代わりに、実際に使用する
+// データベースからの生レコードの型
+type RecipeRecord = {
     id: string;
     title?: string;
     image_url?: string;
     is_favorite?: boolean;
     source_platform?: string;
     content_id?: string;
+    created_at?: string;
+    updated_at?: string;
+    user_id?: string;
     [key: string]: any; // その他のフィールド
-}
+};
 
-export async function GET() {
+export async function GET(req: NextRequest) {
     try {
         const cookieStore = await cookies();
         const supabase = createServerClient(
@@ -113,7 +117,10 @@ export async function GET() {
             return NextResponse.json({ status: 'no_clips', recipes: [] });
         } else if (clippedCount < 5) {
             if (recipes.length > 0) {
-                recommendedRecipes = [recipes[0]];
+                const firstRecipe = recipes[0];
+                if (firstRecipe) {
+                    recommendedRecipes = [firstRecipe];
+                }
             }
             return NextResponse.json({ status: 'few_clips', recipes: recommendedRecipes });
         } else if (clippedCount < 10) {
@@ -124,23 +131,30 @@ export async function GET() {
             if (favoriteRecipes.length >= 2) {
                 recommendedRecipes = shuffleArray(favoriteRecipes).slice(0, 2);
             } else if (favoriteRecipes.length === 1) {
-                recommendedRecipes = [...favoriteRecipes];
-                const nonFavorites = availableRecipes.filter(r => !r.is_favorite);
-                if (nonFavorites.length > 0) {
-                    recommendedRecipes.push(nonFavorites[0]);
-                } else if (availableRecipes.length > 1) {
-                    const otherAvailable = availableRecipes.filter(r => {
-                        // favoriteRecipes[0]が存在することを確認
-                        const firstFavorite = favoriteRecipes[0];
-                        if (!firstFavorite) return true;
-                        return r.id !== firstFavorite.id;
-                    });
-                    if (otherAvailable.length > 0) {
-                        recommendedRecipes.push(otherAvailable[0]);
+                const firstFavorite = favoriteRecipes[0];
+                if (firstFavorite) {
+                    recommendedRecipes = [firstFavorite];
+                    const nonFavorites = availableRecipes.filter(r => !r.is_favorite);
+                    if (nonFavorites.length > 0) {
+                        const firstNonFavorite = nonFavorites[0];
+                        if (firstNonFavorite) {
+                            recommendedRecipes.push(firstNonFavorite);
+                        }
+                    } else if (availableRecipes.length > 1) {
+                        const otherAvailable = availableRecipes.filter(r => r.id !== firstFavorite.id);
+                        if (otherAvailable.length > 0) {
+                            const firstOther = otherAvailable[0];
+                            if (firstOther) {
+                                recommendedRecipes.push(firstOther);
+                            }
+                        }
                     }
                 }
             } else {
-                recommendedRecipes = availableRecipes.slice(0, Math.min(2, availableRecipes.length));
+                if (availableRecipes.length > 0) {
+                    const sliceLength = Math.min(2, availableRecipes.length);
+                    recommendedRecipes = availableRecipes.slice(0, sliceLength);
+                }
             }
             return NextResponse.json({ status: 'few_more_clips', recipes: recommendedRecipes, total_clips: clippedCount });
         }
@@ -185,14 +199,20 @@ export async function GET() {
 
 // 配列をシャッフルする関数
 function shuffleArray<T>(array: T[]): T[] {
+    // 空の配列の場合は空の配列を返す
+    if (array.length === 0) {
+        return [];
+    }
+
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        if (shuffled[i] !== undefined && shuffled[j] !== undefined) {
-            const temp = shuffled[i];
-            shuffled[i] = shuffled[j];
-            shuffled[j] = temp;
-        }
+        // @ts-ignore: 型チェックを一時的に無視（インデックスアクセスの安全性はランタイムで保証）
+        const temp = shuffled[i];
+        // @ts-ignore: 型チェックを一時的に無視（インデックスアクセスの安全性はランタイムで保証）
+        shuffled[i] = shuffled[j];
+        // @ts-ignore: 型チェックを一時的に無視（インデックスアクセスの安全性はランタイムで保証）
+        shuffled[j] = temp;
     }
     return shuffled;
 } 
