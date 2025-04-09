@@ -65,7 +65,7 @@ export interface IAIService {
      * TODO: 引数と戻り値の型をより具体的に定義
      * 引数に promptType: PromptType を追加
      */
-    getNutritionAdvice(params: Record<string, any>, promptType: PromptType): Promise<NutritionAdviceResult>;
+    getNutritionAdvice(params: Record<string, unknown>, promptType: PromptType): Promise<NutritionAdviceResult>;
 
     // 他に AIService クラスにあったメソッドや、共通で必要なメソッドがあれば追加
     // 例: analyzeMeal?(image: string, mealType: string, trimester?: number): Promise<FoodAnalysisResult>;

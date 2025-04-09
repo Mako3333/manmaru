@@ -60,44 +60,57 @@ export class BasicFoodRepository implements FoodRepository {
         }
     }
 
-    private initializeCache(data: any): void {
+    private initializeCache(data: unknown): void {
         // データの構造を確認
-        console.log(`BasicFoodRepository: データ構造: ${Object.keys(data).join(', ')}`);
+        if (typeof data !== 'object' || data === null) {
+            console.error('BasicFoodRepository: 無効なキャッシュデータ形式です（オブジェクトではありません）');
+            return;
+        }
+        // console.log(`BasicFoodRepository: データ構造: ${Object.keys(data).join(', ')}`);
 
         // 食品データの位置確認
-        let foodsData: any = {};
+        let foodsData: Record<string, unknown> = {}; // any から Record<string, unknown> へ変更
 
-        if (data.foods && typeof data.foods === 'object') {
-            // 正常なケース：data.foodsにオブジェクトがある
-            foodsData = data.foods;
+        // 'foods' プロパティが存在し、それがオブジェクトであるかチェック
+        if ('foods' in data && typeof (data as { foods: unknown }).foods === 'object' && (data as { foods: unknown }).foods !== null) {
+            // 正常なケース：data.foods にオブジェクトがある
+            foodsData = (data as { foods: Record<string, unknown> }).foods;
             console.log(`BasicFoodRepository: 通常構造のデータ（data.foods）が見つかりました`);
         } else {
             // 異常なケース：data自体が食品リストの可能性
-            const foodKeys = Object.keys(data).filter(key =>
-                key !== 'foods' && typeof data[key] === 'object' && data[key].name && data[key].id);
+            // オブジェクトであり、null でなく、'name' と 'id' を持つものを食品データと見なす
+            const foodEntries = Object.entries(data).filter(([key, value]) =>
+                typeof value === 'object' && value !== null && 'name' in value && 'id' in value
+            );
 
-            if (foodKeys.length > 0) {
-                console.log(`BasicFoodRepository: 異常構造のデータが見つかりました。トップレベルに${foodKeys.length}件の食品データがあります`);
-                // foodsキー以外のオブジェクトをfoodsDataに集約
-                for (const key of foodKeys) {
-                    foodsData[key] = data[key];
-                }
+            if (foodEntries.length > 0) {
+                console.log(`BasicFoodRepository: 異常構造のデータが見つかりました。トップレベルに${foodEntries.length}件の食品データがあります`);
+                // foodEntries から foodsData を再構築
+                foodsData = Object.fromEntries(foodEntries);
             } else {
                 console.error('BasicFoodRepository: 有効な食品データが見つかりませんでした');
+                // foodsData は空のまま
             }
         }
 
         // 食品データのキャッシュ構築
-        console.log(`BasicFoodRepository: キャッシュ構築開始 (${Object.keys(foodsData).length}件の食品データ)`);
+        const numberOfFoods = Object.keys(foodsData).length;
+        console.log(`BasicFoodRepository: キャッシュ構築開始 (${numberOfFoods}件の食品データ)`);
+
+        if (numberOfFoods === 0) {
+            console.warn('BasicFoodRepository: キャッシュする食品データがありません。');
+            this.cacheLoaded = true; // データがなくてもロード完了扱いにする
+            return;
+        }
 
         for (const [key, food] of Object.entries(foodsData)) {
-            const foodItem = food as Food;
-
-            // 最低限必要なプロパティの検証
-            if (!foodItem.id || !foodItem.name) {
-                console.warn(`BasicFoodRepository: 不正な食品データをスキップします: ${JSON.stringify(foodItem).substring(0, 100)}...`);
+            // food が Food 型の構造を持っているか検証 (より厳密に)
+            if (typeof food !== 'object' || food === null || !('id' in food) || typeof food.id !== 'string' || !('name' in food) || typeof food.name !== 'string') {
+                console.warn(`BasicFoodRepository: 不正な食品データをスキップします: Key=${key}, Data=${JSON.stringify(food).substring(0, 100)}...`);
                 continue;
             }
+
+            const foodItem = food as Food; // 検証後に Food 型としてアサーション
 
             // IDによるマップ
             this.foods.set(foodItem.id, foodItem);
@@ -107,10 +120,12 @@ export class BasicFoodRepository implements FoodRepository {
             this.foodsByName.set(normalizedName, foodItem);
 
             // エイリアスマップの構築
-            if (foodItem.aliases && foodItem.aliases.length > 0) {
+            if (foodItem.aliases && Array.isArray(foodItem.aliases)) { // Array であることを確認
                 for (const alias of foodItem.aliases) {
-                    const normalizedAlias = normalizeText(alias);
-                    this.aliasMap.set(normalizedAlias, foodItem.id);
+                    if (typeof alias === 'string') { // alias が string であることを確認
+                        const normalizedAlias = normalizeText(alias);
+                        this.aliasMap.set(normalizedAlias, foodItem.id);
+                    }
                 }
             }
         }
@@ -118,7 +133,7 @@ export class BasicFoodRepository implements FoodRepository {
         this.cacheLoaded = true;
         // データの詳細情報を出力
         console.log(`BasicFoodRepository: キャッシュ読み込み完了 (${this.foods.size}件の食品)`);
-        console.log(`BasicFoodRepository: データ内の食品全件数: ${Object.keys(foodsData).length}件`);
+        console.log(`BasicFoodRepository: データ内の有効な食品全件数: ${this.foods.size}件`);
     }
 
     // インターフェース実装メソッド

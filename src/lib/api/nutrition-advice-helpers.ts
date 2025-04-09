@@ -1,8 +1,6 @@
 import { format } from 'date-fns';
 import { AppError, ErrorCode } from "@/lib/error";
-
-// Supabaseクライアント型 (仮)
-type SupabaseClient = any;
+import { SupabaseClient } from '@supabase/supabase-js';
 
 // 過去の栄養データレコードのインターフェース
 interface PastNutritionRecord {
@@ -19,16 +17,34 @@ interface PastNutritionRecord {
     };
 }
 
+// getPastNutritionData から返されるレコードの型 (select に基づく)
+interface GoalProgRecord {
+    meal_date: string;
+    calories_percent: number | null;
+    protein_percent: number | null;
+    iron_percent: number | null;
+    folic_acid_percent: number | null;
+    calcium_percent: number | null;
+    vitamin_d_percent: number | null;
+}
+
 // 総合スコア計算関数
-function calculateOverallScore(record: any): number {
+function calculateOverallScore(record: unknown): number {
+    if (typeof record !== 'object' || record === null) {
+        return 0;
+    }
+    // GoalProgRecord の構造を期待してプロパティにアクセス
     const percentages = [
-        record.calories_percent || 0,
-        record.protein_percent || 0,
-        record.iron_percent || 0,
-        record.folic_acid_percent || 0,
-        record.calcium_percent || 0,
-        record.vitamin_d_percent || 0
-    ];
+        (record as GoalProgRecord).calories_percent,
+        (record as GoalProgRecord).protein_percent,
+        (record as GoalProgRecord).iron_percent,
+        (record as GoalProgRecord).folic_acid_percent,
+        (record as GoalProgRecord).calcium_percent,
+        (record as GoalProgRecord).vitamin_d_percent
+    ]
+        // null や undefined を除外し、数値のみをフィルタリング
+        .filter((val): val is number => typeof val === 'number');
+
     return percentages.length > 0 ? Math.round(percentages.reduce((sum, val) => sum + val, 0) / percentages.length) : 0;
 }
 
@@ -45,7 +61,7 @@ export async function getPastNutritionData(supabase: SupabaseClient, userId: str
 
     const { data, error } = await supabase
         .from('nutrition_goal_prog')
-        .select(`
+        .select<string, GoalProgRecord>(`
             meal_date,
             calories_percent,
             protein_percent,
@@ -68,16 +84,16 @@ export async function getPastNutritionData(supabase: SupabaseClient, userId: str
     }
     console.log(`取得した過去の栄養データ: ${data.length}件`);
 
-    return data.map((record: any) => ({
+    return data.map((record: GoalProgRecord): PastNutritionRecord => ({
         date: record.meal_date,
         overallScore: calculateOverallScore(record),
         nutrients: {
-            calories: { percentage: record.calories_percent || 0 },
-            protein: { percentage: record.protein_percent || 0 },
-            iron: { percentage: record.iron_percent || 0 },
-            folic_acid: { percentage: record.folic_acid_percent || 0 },
-            calcium: { percentage: record.calcium_percent || 0 },
-            vitamin_d: { percentage: record.vitamin_d_percent || 0 }
+            calories: { percentage: record.calories_percent ?? 0 },
+            protein: { percentage: record.protein_percent ?? 0 },
+            iron: { percentage: record.iron_percent ?? 0 },
+            folic_acid: { percentage: record.folic_acid_percent ?? 0 },
+            calcium: { percentage: record.calcium_percent ?? 0 },
+            vitamin_d: { percentage: record.vitamin_d_percent ?? 0 }
         }
     }));
 }

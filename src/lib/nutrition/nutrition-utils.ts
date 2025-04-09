@@ -8,7 +8,9 @@ import {
     NutrientUnit
 } from '@/types/nutrition';
 import {
-    createStandardizedMealNutrition
+    createStandardizedMealNutrition,
+    createEmptyStandardizedNutrition,
+    convertToStandardizedNutrition as typeUtilsConvertToStandardized
 } from './nutrition-type-utils';
 //src\lib\nutrition\nutrition-utils.ts
 /**
@@ -178,54 +180,43 @@ export function convertToStandardizedNutrition(
  * AI分析結果から栄養データを抽出・標準化
  */
 export function normalizeNutritionData(
-    aiAnalysisResult: any,
+    aiAnalysisResult: unknown,
     fallbackToLegacy: boolean = true
 ): StandardizedMealNutrition {
     try {
-        // 新しい形式のデータが利用可能な場合
-        if (aiAnalysisResult.standardizedNutrition) {
-            return aiAnalysisResult.standardizedNutrition;
+        // aiAnalysisResult がオブジェクトであることを確認
+        if (typeof aiAnalysisResult !== 'object' || aiAnalysisResult === null) {
+            console.warn('normalizeNutritionData: 無効な入力データです。');
+            return createEmptyStandardizedNutrition();
         }
 
-        // 従来の形式のデータしかない場合
-        if (fallbackToLegacy && aiAnalysisResult.nutrition && aiAnalysisResult.foods) {
-            return convertToStandardizedNutrition(
-                aiAnalysisResult.nutrition,
-                aiAnalysisResult.foods
-            );
+        // 新しい形式のデータが利用可能な場合 (プロパティ存在チェック)
+        if ('standardizedNutrition' in aiAnalysisResult && typeof aiAnalysisResult.standardizedNutrition === 'object' && aiAnalysisResult.standardizedNutrition !== null) {
+            // より厳密には standardizedNutrition の内部構造も検証すべき
+            return aiAnalysisResult.standardizedNutrition as StandardizedMealNutrition; // 型アサーション
+        }
+
+        // 従来の形式のデータしかない場合 (プロパティ存在チェック)
+        if (fallbackToLegacy && ('nutrition' in aiAnalysisResult) && ('foods' in aiAnalysisResult)) {
+            // nutrition と foods の型を安全にチェック
+            const nutrition = aiAnalysisResult.nutrition;
+            const foods = aiAnalysisResult.foods;
+            if (typeof nutrition === 'object' && nutrition !== null && Array.isArray(foods)) {
+                // NutritionData や FoodItem[] であることをより詳細に検証することが望ましい
+                return convertToStandardizedNutrition(
+                    nutrition as NutritionData,
+                    foods as FoodItem[]
+                );
+            }
         }
 
         // 最低限のデータを返す
-        return {
-            totalCalories: 0,
-            totalNutrients: [],
-            foodItems: [],
-            pregnancySpecific: {
-                folatePercentage: 0,
-                ironPercentage: 0,
-                calciumPercentage: 0
-            },
-            reliability: {
-                confidence: 0.5
-            }
-        };
+        return createEmptyStandardizedNutrition();
     } catch (error) {
         console.error('栄養データの正規化に失敗:', error);
 
         // 最低限のデータを返す
-        return {
-            totalCalories: 0,
-            totalNutrients: [],
-            foodItems: [],
-            pregnancySpecific: {
-                folatePercentage: 0,
-                ironPercentage: 0,
-                calciumPercentage: 0
-            },
-            reliability: {
-                confidence: 0.5
-            }
-        };
+        return createEmptyStandardizedNutrition();
     }
 }
 
@@ -236,10 +227,10 @@ export function convertToLegacyNutrition(standardized: StandardizedMealNutrition
     // 特定の栄養素を探す (日本語名と英語名、大文字小文字区別なしで検索)
     const findNutrientValue = (nameJP: string, nameEN: string): number => {
         const nutrient = standardized.totalNutrients.find(n => {
+            if (!n || !n.name) return false;
             const lowerCaseName = n.name.toLowerCase();
             return lowerCaseName === nameJP.toLowerCase() || lowerCaseName === nameEN.toLowerCase();
         });
-        // nutrient?.value が 0 の場合も考慮し、nullish coalescing (??) を使用
         return nutrient?.value ?? 0;
     };
 
@@ -251,7 +242,7 @@ export function convertToLegacyNutrition(standardized: StandardizedMealNutrition
         folic_acid: findNutrientValue('葉酸', 'folic_acid'),
         calcium: findNutrientValue('カルシウム', 'calcium'),
         vitamin_d: findNutrientValue('ビタミンD', 'vitamin_d'),
-        confidence_score: standardized.reliability?.confidence ?? 0.9, // nullish coalescing
+        confidence_score: standardized.reliability?.confidence ?? 0.9,
         extended_nutrients: {
             // 追加の主要栄養素
             fat: findNutrientValue('脂質', 'fat'),
@@ -370,43 +361,41 @@ export function prepareForApiRequest(standardizedData: StandardizedMealData) {
  * 型変換におけるエラー処理と回復メカニズムを実装
  */
 export function safeConvertNutritionData(
-    sourceData: any,
+    sourceData: unknown,
     sourceType: 'nutrient' | 'standard' | 'old' | null
 ): NutritionData {
     try {
-        // sourceType が null の場合や、sourceData が null/undefined の場合の処理を明確化
-        if (sourceData === null || sourceData === undefined) {
-            // 'nutrient' タイプとして空データを返す意図であれば、エラーログは出さない
-            if (sourceType === 'nutrient') {
-                // console.log('safeConvertNutritionData: sourceData is null/undefined, returning empty nutrient data.'); // デバッグ用
-                return createEmptyNutritionData();
-            } else {
-                // 他のタイプや sourceType が null の場合はエラーとして扱う
-                throw new Error('変換元データがnullまたはundefined、または不正なsourceTypeです');
-            }
+        if (!sourceData) {
+            return createEmptyNutritionData();
         }
 
-        switch (sourceType) {
-            case 'nutrient':
-                // sourceData が null でない場合の 'nutrient' タイプは通常ありえないはずだが、
-                // もし意図があるならその処理、なければエラー
-                console.warn(`safeConvertNutritionData called with non-null sourceData for type 'nutrient'`);
-                return createEmptyNutritionData(); // 一旦空を返す
-            case 'standard':
-                // sourceData が StandardizedMealNutrition 型であることを期待
+        if (sourceType === 'standard') {
+            if (typeof sourceData === 'object' && sourceData !== null) {
                 return convertToLegacyNutrition(sourceData as StandardizedMealNutrition);
-            case 'old':
-                // sourceData が古い型であることを期待
+            } else {
+                console.warn('safeConvertNutritionData: 'standard' type requires a valid object.');
+                return createEmptyNutritionData();
+            }
+        } else if (sourceType === 'old') {
+            if (typeof sourceData === 'object' && sourceData !== null) {
                 return convertOldToNutritionData(sourceData);
-            default:
-                throw new Error(`未知またはnullの変換タイプ: ${sourceType}`);
+            } else {
+                console.warn('safeConvertNutritionData: 'old' type requires a valid object.');
+                return createEmptyNutritionData();
+            }
+        } else if (sourceType === 'nutrient' || sourceType === null) {
+            if (typeof sourceData === 'object' && sourceData !== null && 'calories' in sourceData) {
+                return sourceData as NutritionData;
+            } else {
+                console.warn('safeConvertNutritionData: Defaulting to empty data due to invalid 'nutrient' data or null sourceType.');
+                return createEmptyNutritionData();
+            }
+        } else {
+            console.warn(`safeConvertNutritionData: Unknown sourceType: ${sourceType}`);
+            return createEmptyNutritionData();
         }
     } catch (error) {
-        // エラーログの出力は維持
-        console.error(`栄養データ変換エラー (type: ${sourceType}):`, error, {
-            sourceData: JSON.stringify(sourceData).substring(0, 200) + '...'
-        });
-        // 型に準拠した最小限のデータを返却
+        console.error('Failed to safely convert nutrition data:', error);
         return createEmptyNutritionData();
     }
 }
@@ -422,29 +411,39 @@ export function createEmptyNutritionData(): NutritionData {
         folic_acid: 0,
         calcium: 0,
         vitamin_d: 0,
-        confidence_score: 0.5,
-        not_found_foods: ['変換エラー'],
-        extended_nutrients: {}
+        confidence_score: 0,
     };
 }
 
 /**
  * 古い栄養データ型から新しい栄養データ型への変換
  */
-export function convertOldToNutritionData(oldData: any): NutritionData {
-    if (!oldData) {
-        throw new Error('変換元の古い栄養データがnullまたはundefined');
+export function convertOldToNutritionData(oldData: unknown): NutritionData {
+    if (typeof oldData !== 'object' || oldData === null) {
+        console.warn('convertOldToNutritionData: Invalid input data.');
+        return createEmptyNutritionData();
     }
 
-    return {
-        calories: oldData.calories || 0,
-        protein: oldData.protein || 0,
-        iron: oldData.iron || 0,
-        folic_acid: oldData.folic_acid || 0,
-        calcium: oldData.calcium || 0,
-        vitamin_d: oldData.vitamin_d || 0,
-        confidence_score: oldData.confidence_score || 0.5,
-        not_found_foods: oldData.notFoundFoods,
-        extended_nutrients: {}
+    // 主要なプロパティの存在と型をチェック
+    const calories = ('calories' in oldData && typeof oldData.calories === 'number') ? oldData.calories : 0;
+    const protein = ('protein' in oldData && typeof oldData.protein === 'number') ? oldData.protein : 0;
+    const iron = ('iron' in oldData && typeof oldData.iron === 'number') ? oldData.iron : 0;
+    const folic_acid = ('folic_acid' in oldData && typeof oldData.folic_acid === 'number') ? oldData.folic_acid : 0;
+    const calcium = ('calcium' in oldData && typeof oldData.calcium === 'number') ? oldData.calcium : 0;
+    const vitamin_d = ('vitamin_d' in oldData && typeof oldData.vitamin_d === 'number') ? oldData.vitamin_d : 0;
+    const confidence_score = ('confidence_score' in oldData && typeof oldData.confidence_score === 'number') ? oldData.confidence_score : 0.5;
+
+    // 必須プロパティだけを持つ最小限の NutritionData を作成
+    const result: NutritionData = {
+        calories,
+        protein,
+        iron,
+        folic_acid,
+        calcium,
+        vitamin_d,
+        confidence_score,
+        // extended_nutrients や not_found_foods は旧形式からは不明なため含めない
     };
+
+    return result;
 } 

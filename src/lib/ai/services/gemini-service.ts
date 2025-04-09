@@ -109,7 +109,7 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeVision(prompt, base64Image, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse);
+            const parseResult = await this.parser.parseResponse(rawResponse as any);
             console.log(`[GeminiService] Meal image analysis successful.`);
 
             const result: MealAnalysisResult = {
@@ -147,7 +147,7 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse);
+            const parseResult = await this.parser.parseResponse(rawResponse as any);
             console.log(`[GeminiService] Meal text analysis successful.`);
 
             const result: MealAnalysisResult = {
@@ -186,7 +186,7 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse);
+            const parseResult = await this.parser.parseResponse(rawResponse as any);
             console.log(`[GeminiService] Recipe text analysis successful.`);
 
             const result: RecipeAnalysisResult = {
@@ -252,7 +252,7 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse);
+            const parseResult = await this.parser.parseResponse(rawResponse as any);
             console.log(`[GeminiService] URL parsing successful for: ${url}`);
 
             const result: RecipeAnalysisResult = {
@@ -277,26 +277,37 @@ export class GeminiService implements IAIService {
     }
 
     /**
-     * 特定のタイプのアドバイスを生成
+     * 栄養アドバイスを取得
      */
-    async getNutritionAdvice(params: Record<string, any>, promptType: PromptType): Promise<NutritionAdviceResult> {
+    async getNutritionAdvice(params: Record<string, unknown>, promptType: PromptType): Promise<NutritionAdviceResult> {
         try {
-            console.log(`[GeminiService] Generating nutrition advice for type: ${promptType}`);
-            const prompt = this.promptService.generatePrompt(promptType, params);
+            console.log(`[GeminiService] Getting nutrition advice (type: ${promptType})...`);
 
+            // params の値を検証または変換する必要があるかもしれない
+            // 例: params の値がプリミティブ型であることを確認するなど
+            const validatedParams: Record<string, string | number | boolean | undefined> = {};
+            for (const [key, value] of Object.entries(params)) {
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === undefined) {
+                    validatedParams[key] = value;
+                } else {
+                    console.warn(`[GeminiService] Skipping invalid param type for key "${key}":`, value);
+                    // 不正な型の値は除外するか、エラーにするかは要件次第
+                }
+            }
+
+            const prompt = this.promptService.generatePrompt(promptType, validatedParams);
             const modelOptions: ModelOptions = {
-                temperature: this.config.temperature,
+                temperature: 0.5, // アドバイス生成には少し高めの温度設定を試す
                 maxOutputTokens: this.config.maxOutputTokens,
             };
-
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse);
+            const parseResult = await this.parser.parseResponse(rawResponse as any);
             console.log(`[GeminiService] Nutrition advice generation successful for type: ${promptType}. Parse result keys:`, Object.keys(parseResult));
 
             // recommendedFoods の型マッピング
             const recommendedFoodsData = parseResult.recommended_foods
-                ? parseResult.recommended_foods.map((food: any) => ({
-                    name: food.name || '不明な食品',
+                ? parseResult.recommended_foods.map((food: Record<string, unknown>) => ({
+                    name: (food.name as string) || '不明な食品',
                     benefits: ''
                 }))
                 : [];
@@ -305,32 +316,55 @@ export class GeminiService implements IAIService {
                 summary: parseResult.advice_summary || '',
                 detailedAdvice: parseResult.advice_detail,
                 recommendedFoods: recommendedFoodsData,
-                debug: { ...parseResult.debug, rawResponse },
-                // error プロパティはエラーがない場合は設定しない
+                debug: { ...parseResult.debug, rawResponse }
             };
-
-            // エラー処理
             if (parseResult.error) {
-                // parseResult.error が文字列であることを想定
-                result.error = {
-                    message: parseResult.error,
-                    // パーサーエラーを示すコードを設定
-                    code: ErrorCode.AI.PARSING_ERROR
-                };
+                result.error = { message: parseResult.error };
             }
-
             return result;
         } catch (error: unknown) {
-            console.error(`[GeminiService] Error generating nutrition advice for type ${promptType}:`, error);
+            console.error('[GeminiService] Error getting nutrition advice:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
-            const errorCode = error instanceof AppError ? error.code : ErrorCode.AI.ANALYSIS_ERROR; // AppErrorならそのコード、それ以外は汎用AIエラー
-            // エラー発生時の返却値
+            const errorCode = error instanceof AppError ? error.code : ErrorCode.AI.ANALYSIS_FAILED;
             return {
-                summary: '',
-                // detailedAdvice はエラー時には undefined とする
-                // recommendedFoods は空配列
-                error: { message: `アドバイス生成エラー: ${errorMessage}`, code: errorCode, details: error }
+                summary: 'アドバイスの取得中にエラーが発生しました。',
+                error: { message: `アドバイス取得エラー: ${errorMessage}`, code: errorCode, details: error }
             };
+        }
+    }
+
+    // Placeholder for generateResponse method to satisfy the interface
+    async generateResponse(
+        type: PromptType,
+        context: Record<string, unknown>,
+        options?: Record<string, unknown>,
+    ): Promise<string> {
+        console.log(`[GeminiService] Generating response for type: ${type}`);
+        const prompt = this.promptService.generatePrompt(type, context);
+
+        // stopSequences を安全に抽出
+        const stopSequences = (options && Array.isArray(options.stopSequences) && options.stopSequences.length > 0)
+            ? options.stopSequences as string[]
+            : undefined;
+
+        const modelOptions: ModelOptions = {
+            temperature: options?.temperature as number ?? this.config.temperature,
+            maxOutputTokens: options?.maxOutputTokens as number ?? this.config.maxOutputTokens,
+            ...(stopSequences && { stopSequences }) // 安全に抽出した変数を使用
+        };
+
+        try {
+            const rawResponse: string = await this.modelService.invokeText(prompt, modelOptions);
+            console.log(`[GeminiService] Response generation successful for type: ${type}`);
+            return rawResponse;
+        } catch (error: unknown) {
+            console.error(`[GeminiService] Error generating response for type ${type}:`, error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorCode = error instanceof AppError ? error.code : undefined;
+            // エラーハンドリング: インターフェースは string を期待しているため、エラーメッセージを返すか、
+            // 例外を再スローするかを決定する必要がある。
+            // ここではエラーメッセージを含む文字列を返す。
+            return JSON.stringify({ error: true, message: errorMessage, code: errorCode });
         }
     }
 }

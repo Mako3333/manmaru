@@ -10,7 +10,6 @@ import {
 } from '@/types/nutrition';
 import {
     convertToStandardizedNutrition, // 追加
-    convertToLegacyNutrition, // 追加 (後方互換性用)
     createStandardizedMealNutrition // 追加 (ファクトリ関数)
 } from './nutrition-type-utils'; // 型変換ユーティリティをインポート
 import { FoodRepository } from '@/lib/food/food-repository';
@@ -425,95 +424,102 @@ export class NutritionServiceImpl implements NutritionService {
     }
 
     /**
-     * AIレスポンスパーサーからの解析結果を処理し、栄養計算と結果強化を行う
-     * @param parsedFoods AIによって解析された食品情報の配列
-     * @returns 食品分析結果
+     * 解析された食品入力リストを処理し、栄養計算を実行して最終的な分析結果を返す。
+     * @param parsedFoods 解析済みの食品入力リスト (FoodInputParseResult 配列)
+     * @returns 食品分析結果 (FoodAnalysisResult)
+     * @throws {AppError(ErrorCode.Nutrition.FOOD_NOT_FOUND)} 有効な食品が一つも見つからない場合
      */
     async processParsedFoods(parsedFoods: FoodInputParseResult[]): Promise<FoodAnalysisResult> {
         const mealFoodItems: MealFoodItem[] = [];
-        const notFoundFoods: string[] = [];
-        const matchDetails: FoodMatchResult[] = [];
+        // detailedParseResults にマッチング結果も含める
+        const detailedParseResults: Array<FoodInputParseResult & { matchedFood?: Food, parsedQuantity?: { quantity: FoodQuantity, confidence: number }, matchResult?: FoodMatchResult | null }> = [];
+        const successfulMatchResults: FoodMatchResult[] = []; // 成功したマッチング結果のみ保持
+        let totalConfidenceSum = 0;
+        let processedCount = 0;
 
-        for (const parsedFood of parsedFoods) {
+        for (const parsedItem of parsedFoods) {
+            let matchedFood: Food | undefined = undefined;
+            let parsedQuantityResult: { quantity: FoodQuantity, confidence: number } | undefined = undefined;
+            let foodMatchResult: FoodMatchResult | null = null;
+            let processingError: string | undefined = undefined;
+            let overallConfidence = parsedItem.confidence;
+
             try {
-                const matchResult = await this.foodMatchingService.matchFood(parsedFood.foodName);
-
-                if (matchResult && matchResult.food) {
-                    const parsedQuantity = QuantityParser.parseQuantity(
-                        parsedFood.quantityText ?? undefined,
-                        matchResult.food.name,
-                        matchResult.food.category
+                foodMatchResult = await this.foodMatchingService.matchFood(parsedItem.foodName);
+                if (foodMatchResult && foodMatchResult.food) {
+                    matchedFood = foodMatchResult.food;
+                    parsedQuantityResult = QuantityParser.parseQuantity(
+                        parsedItem.quantityText ?? undefined,
+                        matchedFood.name,
+                        matchedFood.category
                     );
+                    overallConfidence = foodMatchResult.similarity * parsedQuantityResult.confidence * parsedItem.confidence;
 
                     mealFoodItems.push({
-                        foodId: matchResult.food.id,
-                        food: matchResult.food,
-                        quantity: parsedQuantity.quantity,
-                        confidence: matchResult.similarity * parsedQuantity.confidence * (parsedFood.confidence ?? 1.0),
-                        originalInput: parsedFood.foodName
+                        foodId: matchedFood.id,
+                        food: matchedFood,
+                        quantity: parsedQuantityResult.quantity,
+                        confidence: overallConfidence,
+                        originalInput: parsedItem.foodName,
                     });
-                    matchDetails.push(matchResult);
+                    totalConfidenceSum += overallConfidence;
+                    processedCount++;
+                    successfulMatchResults.push(foodMatchResult); // 成功結果のみ追加
                 } else {
-                    notFoundFoods.push(parsedFood.foodName);
-                    // 低信頼度マッチやマッチなしに関する警告を追加することも検討
-                    console.warn(`Food not found or matched with low confidence for input: ${parsedFood.foodName}`);
+                    console.warn(`Food not found for input: ${parsedItem.foodName}`);
+                    // foodMatchResult は null のまま
                 }
             } catch (error) {
-                console.error(`Error processing parsed food ${parsedFood.foodName}:`, error);
-                notFoundFoods.push(parsedFood.foodName);
-                // 個別の食品処理エラー。ログには残すが、処理全体は続行。
-                // 全体として食品が見つからなかった場合は、後続のチェックで AppError をスローする。
-                // 必要であれば、エラーを集約して最後にまとめて報告する設計も可能。
+                console.error(`Error processing parsed food ${parsedItem.foodName}:`, error);
+                processingError = error instanceof Error ? error.message : 'Unknown processing error';
+                // foodMatchResult は null のまま
             }
-        }
-
-        // 1つも有効な食品アイテムが見つからなかった場合のエラーハンドリングを追加
-        if (mealFoodItems.length === 0) {
-            throw new AppError({
-                code: ErrorCode.Nutrition.FOOD_NOT_FOUND,
-                message: `No valid food items could be processed from the input: ${parsedFoods.map(p => p.foodName).join(', ')}`,
-                userMessage: '入力された食品を処理できませんでした。食品名や量を確認してください。',
-                details: { parsedFoods, notFoundFoods }
+            // 詳細結果を追加 (マッチング結果も含める)
+            detailedParseResults.push({
+                ...parsedItem,
+                ...(matchedFood !== undefined ? { matchedFood } : {}),
+                ...(parsedQuantityResult !== undefined ? { parsedQuantity: parsedQuantityResult } : {}),
+                ...(foodMatchResult !== null ? { matchResult: foodMatchResult } : {}),
             });
         }
 
-        // calculateNutrition を呼び出して StandardizedMealNutrition を取得
-        const calculationResult = await this.calculateNutrition(mealFoodItems);
-        const finalNutrition = calculationResult.nutrition;
+        if (mealFoodItems.length === 0) {
+            console.warn("No processable food items found after matching and parsing.");
+            // 空の FoodAnalysisResult を返す (型に準拠)
+            const result: FoodAnalysisResult = {
+                foods: detailedParseResults.map(p => ({
+                    name: p.foodName,
+                    quantity: p.quantityText,
+                    ...(p.matchedFood?.id !== undefined ? { matchedFoodId: p.matchedFood.id } : {}),
+                    matchConfidence: p.matchResult?.similarity ?? 0
+                })),
+                nutrition: this.initializeStandardizedNutrition(),
+                reliability: { confidence: 0 },
+                matchResults: successfulMatchResults
+            };
+            return result;
+        }
 
-        // FoodAnalysisResult 形式に変換 (nutrition 部分)
-        // convertToLegacyNutrition を使用してフラットな構造を作る
-        // 注意: この変換では foodItems の情報は失われる
-        const legacyNutrition = convertToLegacyNutrition(finalNutrition);
+        const nutritionCalculationResult = await this.calculateNutrition(mealFoodItems);
+        const finalNutrition = nutritionCalculationResult.nutrition;
+        const averageConfidence = processedCount > 0 ? totalConfidenceSum / processedCount : 0;
 
-        // FoodAnalysisResult を構築
-        const result: FoodAnalysisResult = {
-            foods: mealFoodItems.map(item => ({
-                name: item.originalInput || item.food.name,
-                quantity: `${item.quantity.value}${item.quantity.unit}`, // 元の形式に近い文字列で返す
-                confidence: item.confidence
+        // FoodAnalysisResult を構築 (型に準拠)
+        const finalResult: FoodAnalysisResult = {
+            foods: detailedParseResults.map(p => ({
+                name: p.foodName,
+                quantity: p.quantityText,
+                ...(p.matchedFood?.id !== undefined ? { matchedFoodId: p.matchedFood.id } : {}),
+                matchConfidence: p.matchResult?.similarity ?? 0
             })),
-            nutrition: {
-                calories: legacyNutrition.calories,
-                protein: legacyNutrition.protein,
-                iron: legacyNutrition.iron,
-                folic_acid: legacyNutrition.folic_acid,
-                calcium: legacyNutrition.calcium,
-                vitamin_d: legacyNutrition.vitamin_d,
-                confidence_score: calculationResult.reliability.confidence
+            nutrition: finalNutrition,
+            reliability: {
+                confidence: averageConfidence,
+                ...(nutritionCalculationResult.reliability.balanceScore !== undefined ? { balanceScore: nutritionCalculationResult.reliability.balanceScore } : {}),
+                ...(nutritionCalculationResult.reliability.completeness !== undefined ? { completeness: nutritionCalculationResult.reliability.completeness } : {}),
             },
-            meta: {
-                notFoundFoods: notFoundFoods,
-                calculationTime: 'N/A', // 必要であれば計測・設定
-                matchedFoods: matchDetails.map(md => ({
-                    original: md.originalInput,
-                    matched: md.food.name,
-                    similarity: md.similarity
-                }))
-                // 他のメタ情報も必要に応じて追加
-            }
+            matchResults: successfulMatchResults
         };
-
-        return result;
+        return finalResult;
     }
 } 

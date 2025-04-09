@@ -1,6 +1,8 @@
 // src/types/ai.ts
 import { FoodInputParseResult } from '@/lib/food/food-input-parser'; // Assuming this path is correct
 import { ErrorCode, AnyErrorCode } from '@/lib/error'; // ErrorCode と AnyErrorCode をインポート
+import { Food, FoodQuantity, FoodMatchResult } from '@/types/food'; // Food, FoodQuantity, FoodMatchResult をインポート
+import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition'; // StandardizedMealNutrition と NutritionData をインポート
 
 /**
  * AIによる食品解析結果の基本的な構造 (パーサーが返す形式)
@@ -16,48 +18,74 @@ export interface AIParseResult {
     debug?: {
         rawResponse?: string;
         jsonText?: string;
-        parsedData?: any;
+        parsedData?: unknown;
         [key: string]: unknown;
     };
 }
 
 /**
  * 食品分析結果の型 (APIレスポンスやサービス内部で利用)
+ * NutritionService の processParsedFoods メソッドの戻り値としても使用される
  */
 export interface FoodAnalysisResult {
     foods: Array<{
+        /** オリジナルの入力食品名 */
         name: string;
-        quantity: string;
-        confidence: number;
+        /** 解析された量の文字列 (例: "100g", "1個") または null */
+        quantity: string | null;
+        /** マッチングされた食品データベースのID (見つからない場合は undefined) */
+        matchedFoodId?: string;
+        /** マッチングの信頼度 (0.0 - 1.0) */
+        matchConfidence?: number;
+        /** @deprecated Use matchConfidence instead */
+        confidence?: number; // 古いプロパティ、matchConfidence に移行
     }>;
-    nutrition: {
-        calories: number;
-        protein: number;
-        iron: number;
-        folic_acid: number;
-        calcium: number;
-        vitamin_d?: number; // オプションに変更
-        confidence_score: number;
+    /** 計算された栄養データ (標準化形式) */
+    nutrition: StandardizedMealNutrition;
+    /** 信頼性情報 */
+    reliability: {
+        confidence: number;
+        balanceScore?: number;
+        completeness?: number;
     };
-    meta?: {
-        notFoundFoods?: string[];
-        warning?: string;
-        source?: string;
-        searchDetail?: string;
-        calculationTime?: string;
-        matchedFoods?: Array<{
-            original: string;
-            matched: string;
-            similarity: number;
-        }>;
-        possibleMatches?: Array<{
-            original: string;
-            suggestion: string;
-            similarity: number;
-        }>;
-        errors?: string[];
-        [key: string]: unknown;
-    };
+    /** 食品マッチング結果の詳細 */
+    matchResults: FoodMatchResult[]; // FoodMatchResult 配列に変更
+    /** AIが推定した栄養データ (標準化形式、オプショナル) */
+    aiEstimatedNutrition?: StandardizedMealNutrition;
+
+    /** @deprecated Use reliability and nutrition directly */
+    // 古い nutrition 構造 (削除)
+    // nutrition: {
+    //     calories: number;
+    //     protein: number;
+    //     iron: number;
+    //     folic_acid: number;
+    //     calcium: number;
+    //     vitamin_d?: number; // オプションに変更
+    //     confidence_score: number;
+    // };
+
+    /** @deprecated Use matchResults and reliability directly */
+    // 古い meta 構造 (関連情報はトップレベルに移動)
+    // meta?: {
+    //     notFoundFoods?: string[];
+    //     warning?: string;
+    //     source?: string;
+    //     searchDetail?: string;
+    //     calculationTime?: string;
+    //     matchedFoods?: Array<{
+    //         original: string;
+    //         matched: string;
+    //         similarity: number;
+    //     }>;
+    //     possibleMatches?: Array<{
+    //         original: string;
+    //         suggestion: string;
+    //         similarity: number;
+    //     }>;
+    //     errors?: string[];
+    //     [key: string]: unknown;
+    // };
 }
 
 /**
@@ -101,9 +129,9 @@ export interface NutritionAdviceResult {
         benefits: string;
     }> | undefined;
     /** デバッグ情報（オプショナル） */
-    debug?: any;
+    debug?: unknown;
     /** エラー情報（オプショナル） */
-    error?: { message: string; code?: AnyErrorCode; details?: any } | undefined;
+    error?: { message: string; code?: AnyErrorCode; details?: unknown } | undefined;
 }
 
 /**
@@ -117,9 +145,9 @@ export interface MealAnalysisResult {
     /** AIによる栄養素推定値（オプショナル）*/
     estimatedNutrition?: { [key: string]: number | string } | undefined;
     /** エラー情報（オプショナル） */
-    error?: { message: string; code?: string | undefined; details?: any } | undefined;
+    error?: { message: string; code?: string | undefined; details?: unknown } | undefined;
     /** デバッグ情報（オプショナル） */
-    debug?: any;
+    debug?: unknown;
 }
 
 /**
@@ -133,9 +161,9 @@ export interface RecipeAnalysisResult {
     /** 解析された材料リスト */
     ingredients: FoodInputParseResult[];
     /** エラー情報（オプショナル） */
-    error?: { message: string; code?: string | undefined; details?: any } | undefined;
+    error?: { message: string; code?: string | undefined; details?: unknown } | undefined;
     /** デバッグ情報（オプショナル） */
-    debug?: any;
+    debug?: unknown;
 }
 
 /**

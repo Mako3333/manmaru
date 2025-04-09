@@ -16,8 +16,8 @@ export interface ValidationResult<T> {
  * @returns 検証結果
  */
 export function validateRequestData<T>(
-    data: any,
-    validators: Array<(data: any) => ValidationResult<Partial<T>>>
+    data: unknown,
+    validators: Array<(data: unknown) => ValidationResult<Partial<T>>>
 ): ValidationResult<T> {
     if (!data) {
         return {
@@ -28,6 +28,19 @@ export function validateRequestData<T>(
                 userMessage: 'リクエストデータが提供されていません',
                 severity: 'warning',
                 suggestions: ['データを入力してください']
+            })
+        };
+    }
+
+    if (typeof data !== 'object' || data === null) {
+        return {
+            valid: false,
+            error: new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'リクエストデータがオブジェクト形式ではありません',
+                userMessage: 'リクエストデータの形式が無効です',
+                severity: 'warning',
+                suggestions: ['有効なデータを送信してください']
             })
         };
     }
@@ -54,8 +67,12 @@ export function validateRequestData<T>(
 /**
  * 食品名と量のペアの検証関数
  */
-export function validateFoodItems(data: any): ValidationResult<{ foodItems: Array<{ name: string; quantity?: string }> }> {
-    if (!data.foodItems || !Array.isArray(data.foodItems) || data.foodItems.length === 0) {
+export function validateFoodItems(data: unknown): ValidationResult<{ foodItems: Array<{ name: string; quantity?: string }> }> {
+    if (typeof data !== 'object' || data === null) {
+        return { valid: false, error: new AppError({ code: ErrorCode.Base.DATA_VALIDATION_ERROR, message: 'データ形式が無効です', userMessage: 'データ形式が無効です' }) };
+    }
+
+    if (!('foodItems' in data) || !Array.isArray((data as { foodItems: unknown }).foodItems) || (data as { foodItems: unknown[] }).foodItems.length === 0) {
         return {
             valid: false,
             error: new AppError({
@@ -68,10 +85,11 @@ export function validateFoodItems(data: any): ValidationResult<{ foodItems: Arra
             })
         };
     }
+    const foodItems = (data as { foodItems: Array<{ name?: unknown, quantity?: unknown }> }).foodItems;
 
     // 食品アイテムの構造を検証
-    for (const item of data.foodItems) {
-        if (!item || typeof item !== 'object' || !item.name || typeof item.name !== 'string') {
+    for (const item of foodItems) {
+        if (!item || typeof item !== 'object' || !('name' in item) || typeof item.name !== 'string') {
             return {
                 valid: false,
                 error: new AppError({
@@ -102,22 +120,40 @@ export function validateFoodItems(data: any): ValidationResult<{ foodItems: Arra
 
     return {
         valid: true,
-        data: { foodItems: data.foodItems }
+        data: { foodItems: foodItems as Array<{ name: string; quantity?: string }> }
     };
 }
 
 /**
  * 食品テキスト入力の検証関数
  */
-export function validateFoodTextInput(data: any): ValidationResult<{ text: string }> {
-    if (!data.text || typeof data.text !== 'string' || data.text.trim() === '') {
+export function validateFoodTextInput(data: unknown): ValidationResult<{ text: string }> {
+    if (typeof data !== 'object' || data === null) {
+        return { valid: false, error: new AppError({ code: ErrorCode.Base.DATA_VALIDATION_ERROR, message: 'データ形式が無効です', userMessage: 'データ形式が無効です' }) };
+    }
+    if (!('text' in data) || typeof (data as { text: unknown }).text !== 'string') {
         return {
             valid: false,
             error: new AppError({
                 code: ErrorCode.Base.DATA_VALIDATION_ERROR,
                 message: '食品テキスト入力が無効です',
                 userMessage: '食品テキストが提供されていないか無効です',
-                details: { providedText: data.text },
+                details: { providedData: data },
+                severity: 'warning',
+                suggestions: ['食品の説明を入力してください']
+            })
+        };
+    }
+    const text = (data as { text: string }).text;
+
+    if (text.trim() === '') {
+        return {
+            valid: false,
+            error: new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '食品テキスト入力が空です',
+                userMessage: '食品テキストが空です',
+                details: { providedText: text },
                 severity: 'warning',
                 suggestions: ['食品の説明を入力してください']
             })
@@ -126,15 +162,18 @@ export function validateFoodTextInput(data: any): ValidationResult<{ text: strin
 
     return {
         valid: true,
-        data: { text: data.text.trim() }
+        data: { text: text.trim() }
     };
 }
 
 /**
  * 画像データの検証関数
  */
-export function validateImageData(data: any): ValidationResult<{ imageData: string }> {
-    if (!data.imageData || typeof data.imageData !== 'string' || !data.imageData.startsWith('data:image/')) {
+export function validateImageData(data: unknown): ValidationResult<{ imageData: string }> {
+    if (typeof data !== 'object' || data === null) {
+        return { valid: false, error: new AppError({ code: ErrorCode.Base.DATA_VALIDATION_ERROR, message: 'データ形式が無効です', userMessage: 'データ形式が無効です' }) };
+    }
+    if (!('imageData' in data) || typeof (data as { imageData: unknown }).imageData !== 'string' || !(data as { imageData: string }).imageData.startsWith('data:image/')) {
         return {
             valid: false,
             error: new AppError({
@@ -146,9 +185,10 @@ export function validateImageData(data: any): ValidationResult<{ imageData: stri
             })
         };
     }
+    const imageData = (data as { imageData: string }).imageData;
 
     return {
         valid: true,
-        data: { imageData: data.imageData }
+        data: { imageData }
     };
 } 

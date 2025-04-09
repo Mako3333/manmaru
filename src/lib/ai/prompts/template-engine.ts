@@ -289,10 +289,12 @@ export class TemplateEngine {
     /**
      * 条件式の評価
      */
-    private static evaluateCondition(condition: string, context: Record<string, any>): boolean {
-        // '@index'の特殊処理（インデックスが0より大きい場合に真）
+    private static evaluateCondition(condition: string, context: Record<string, unknown>): boolean {
+        // '@index'の特殊処理
         if (condition === '@index') {
-            return context['@index'] !== undefined && context['@index'] > 0;
+            const indexVal = context['@index'];
+            // indexVal が number であり、かつ 0 より大きい場合に true を返す
+            return typeof indexVal === 'number' && indexVal > 0;
         }
 
         // 'array.length' のような長さチェック

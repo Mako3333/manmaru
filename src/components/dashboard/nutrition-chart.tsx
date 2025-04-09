@@ -188,17 +188,18 @@ export default function NutritionChart({ date, className }: NutritionChartProps)
                 setNutritionData(chartData);
                 setError(null);
 
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error('栄養データ取得エラー:', err);
                 // エラーメッセージをわかりやすく表示
-                if (err.message && typeof err.message === 'string') {
-                    if (err.message.includes('ログインセッション')) {
+                if (err instanceof Error) {
+                    const message = err.message;
+                    if (message.includes('ログインセッション')) {
                         setError('ログインセッションが無効です。再度ログインしてください。');
                     } else {
-                        setError(`データ取得エラー: ${err.message}`);
+                        setError(`データ取得エラー: ${message}`);
                     }
                 } else {
-                    setError('栄養データの取得に失敗しました');
+                    setError(`栄養データの取得に失敗しました: ${String(err)}`);
                 }
             } finally {
                 setLoading(false);

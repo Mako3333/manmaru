@@ -37,13 +37,24 @@ export function parseNutritionFromJson(jsonData: string | Record<string, unknown
             confidence_score: Number(parsedData.confidence_score || 0.5)
         };
 
-        // オプショナルプロパティの追加
-        if (parsedData.extended_nutrients) {
-            result.extended_nutrients = parsedData.extended_nutrients as NutritionData['extended_nutrients'];
+        // オプショナルプロパティの代入を修正 (undefined/null でなく、object であることを確認)
+        if (parsedData.extended_nutrients !== undefined && parsedData.extended_nutrients !== null) {
+            if (typeof parsedData.extended_nutrients === 'object') {
+                // 型アサーションを使用。より厳密な検証が望ましい場合がある。
+                result.extended_nutrients = parsedData.extended_nutrients as NutritionData['extended_nutrients'];
+            } else {
+                console.warn('parsedData.extended_nutrients is not an object:', parsedData.extended_nutrients);
+                // result.extended_nutrients は undefined のまま
+            }
         }
+        // parsedData.extended_nutrients が undefined または null の場合は代入しない
 
-        if (parsedData.not_found_foods) {
-            result.not_found_foods = parsedData.not_found_foods as string[];
+        // not_found_foods の代入（Array であることを確認）
+        if (parsedData.not_found_foods !== undefined && Array.isArray(parsedData.not_found_foods)) {
+            // さらに配列内の要素が string であることを確認
+            if (parsedData.not_found_foods.every(item => typeof item === 'string')) {
+                result.not_found_foods = parsedData.not_found_foods as string[];
+            }
         }
 
         return result;
@@ -235,6 +246,7 @@ const nutrientMapping: {
 
 /**
  * NutritionDataをStandardizedMealNutritionに変換
+ * 注意: pregnancySpecific の計算は現在ダミーデータです。将来的な実装が必要です。
  */
 export function convertToStandardizedNutrition(nutritionData: NutritionData): StandardizedMealNutrition {
     try {
@@ -242,96 +254,71 @@ export function convertToStandardizedNutrition(nutritionData: NutritionData): St
 
         // 各栄養素の値を取得し、数値でなければ 0 とするヘルパー関数
         const getValue = (key: keyof NutritionData | keyof NonNullable<NutritionData['extended_nutrients']>): number => {
-            let val: any;
+            let val: unknown;
             // まずトップレベルプロパティを確認 (基本6種)
             if (key in nutritionData) {
                 val = nutritionData[key as keyof NutritionData];
-                // 次に extended_nutrients を確認
             } else if (nutritionData.extended_nutrients && key in nutritionData.extended_nutrients) {
                 val = nutritionData.extended_nutrients[key as keyof typeof nutritionData.extended_nutrients];
             }
-            const num = Number(val);
-            return typeof num === 'number' && !isNaN(num) ? num : 0;
+
+            // val が数値であることを確認し、そうでなければ 0 を返す
+            if (typeof val === 'number') {
+                return val;
+            } else {
+                console.warn(`Value for key "${String(key)}" is not a number or not found, defaulting to 0. Value:`, val);
+                return 0;
+            }
         };
 
-        // マッピングを使ってNutrient配列を生成
-        // タンパク質を最初に配置して、テストの期待値と一致させる
-        nutrients.push({ name: 'タンパク質', value: getValue('protein'), unit: 'g' });
+        // nutrientMapping を使用して Nutrient 配列を生成
+        nutrientMapping.forEach(mapping => {
+            const value = getValue(mapping.key);
+            // 値が 0 でない場合のみ追加（任意で変更可能）
+            if (value !== 0) {
+                nutrients.push({
+                    name: mapping.name,
+                    value: value,
+                    unit: mapping.unit
+                });
+            }
+        });
 
-        // 他の基本栄養素を追加
-        nutrients.push({ name: '鉄分', value: getValue('iron'), unit: 'mg' });
-        nutrients.push({ name: '葉酸', value: getValue('folic_acid'), unit: 'mcg' });
-        nutrients.push({ name: 'カルシウム', value: getValue('calcium'), unit: 'mg' });
-        nutrients.push({ name: 'ビタミンD', value: getValue('vitamin_d'), unit: 'mcg' });
+        // foodItems は NutritionData からは直接変換できないため空配列とする
+        // (必要に応じて別の変換ロジックや入力が必要)
+        const foodItems: StandardizedMealNutrition['foodItems'] = [];
 
-        // 拡張栄養素を追加
-        if (nutritionData.extended_nutrients) {
-            if ('fat' in nutritionData.extended_nutrients) {
-                nutrients.push({ name: '脂質', value: getValue('fat'), unit: 'g' });
-            }
-            if ('carbohydrate' in nutritionData.extended_nutrients) {
-                nutrients.push({ name: '炭水化物', value: getValue('carbohydrate'), unit: 'g' });
-            }
-            if ('dietary_fiber' in nutritionData.extended_nutrients) {
-                nutrients.push({ name: '食物繊維', value: getValue('dietary_fiber'), unit: 'g' });
-            }
-            if ('salt' in nutritionData.extended_nutrients) {
-                nutrients.push({ name: '食塩相当量', value: getValue('salt'), unit: 'g' });
-            }
+        // reliability.confidence は NutritionData の confidence_score を使用
+        const reliability: StandardizedMealNutrition['reliability'] = {
+            confidence: nutritionData.confidence_score ?? 0.8 // ない場合はデフォルト値
+            // balanceScore と completeness は NutritionData からは不明
+        };
 
-            // ミネラル類
-            if (nutritionData.extended_nutrients.minerals) {
-                const minerals = nutritionData.extended_nutrients.minerals;
-                if ('sodium' in minerals) {
-                    nutrients.push({ name: 'ナトリウム', value: minerals.sodium || 0, unit: 'mg' });
-                }
-                if ('potassium' in minerals) {
-                    nutrients.push({ name: 'カリウム', value: minerals.potassium || 0, unit: 'mg' });
-                }
-                // 他のミネラルも同様に追加
-            }
-
-            // ビタミン類
-            if (nutritionData.extended_nutrients.vitamins) {
-                const vitamins = nutritionData.extended_nutrients.vitamins;
-                if ('vitamin_c' in vitamins) {
-                    nutrients.push({ name: 'ビタミンC', value: vitamins.vitamin_c || 0, unit: 'mg' });
-                }
-                // 他のビタミンも同様に追加
-            }
-        }
-
-        const totalCalories = getValue('calories');
+        // pregnancySpecific の計算ロジック (ダミー実装)
+        const pregnancySpecific: StandardizedMealNutrition['pregnancySpecific'] = {
+            folatePercentage: (getValue('folic_acid') / 600) * 100, // 例: 目標600μg
+            ironPercentage: (getValue('iron') / 25) * 100,       // 例: 目標25mg
+            calciumPercentage: (getValue('calcium') / 900) * 100    // 例: 目標900mg
+        };
 
         return {
-            totalCalories: totalCalories,
+            totalCalories: getValue('calories'),
             totalNutrients: nutrients,
-            foodItems: [],
-            pregnancySpecific: {
-                folatePercentage: 0,
-                ironPercentage: 0,
-                calciumPercentage: 0
-            },
-            reliability: {
-                confidence: nutritionData.confidence_score || 0.8
-            }
+            foodItems: foodItems,
+            pregnancySpecific: pregnancySpecific,
+            reliability: reliability
         };
     } catch (error) {
         console.error('Error converting NutritionData to StandardizedMealNutrition:', error);
-        // エラー時はデフォルト値を返す
-        return {
-            totalCalories: 0,
-            totalNutrients: [],
-            foodItems: [],
-            reliability: {
-                confidence: 0.8
-            }
-        };
+        // エラー発生時は空のデータを返す
+        return createEmptyStandardizedNutrition();
     }
 }
 
 /**
- * StandardizedMealNutritionをNutritionDataに変換（後方互換性のため）
+ * StandardizedMealNutritionを旧式のNutritionDataに変換
+ * @deprecated この関数は後方互換性のために残されています。新しいコードでは使用しないでください。
+ *             最終的には削除される予定です。DB保存には convertToDbNutritionFormat を使用してください。
  */
 export function convertToLegacyNutrition(standardizedData: StandardizedMealNutrition): NutritionData {
     try {

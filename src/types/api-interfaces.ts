@@ -102,7 +102,7 @@ export interface RecognizedFood {
 export interface NutritionResult {
     nutrition: StandardizedMealNutrition; // Use imported type directly
     reliability: NutritionReliability; // Use restored local type
-    matchResults?: any[];
+    matchResults?: unknown[];
 }
 
 // MealAnalysisResult uses restored local RecognizedFood and updated NutritionResult
@@ -152,7 +152,7 @@ export interface StandardApiResponse<T> {
     error?: {
         code: string;
         message: string;
-        details?: any;
+        details?: unknown;
         suggestions?: string[];
     };
     meta?: {

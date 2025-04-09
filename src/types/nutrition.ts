@@ -1,5 +1,6 @@
 /**
  * 基本的な栄養素データ（集計や保存に使用）
+ * @deprecated Use StandardizedMealNutrition instead.
  */
 //src\types\nutrition.ts
 import { Food, FoodMatchResult, FoodQuantity } from './food';
@@ -17,6 +18,7 @@ export interface BasicNutritionData {
 /**
  * 栄養素データ型定義 - 統一された唯一の型定義
  * 基本栄養素はフラット構造で保持しつつ、拡張性も確保
+ * @deprecated Use StandardizedMealNutrition instead for core logic. This type might be used for DB compatibility temporarily via convertToDbNutritionFormat.
  */
 export interface NutritionData {
     // 基本栄養素（フラット構造でDB互換）
@@ -64,7 +66,7 @@ export interface NutritionData {
 
         // 自由に拡張可能な追加カテゴリ
         [category: string]: { [key: string]: number | undefined } | number | undefined;
-    };
+    } | undefined;
 
     // メタデータ
     confidence_score: number;      // AI分析の信頼度 (0.0-1.0)
@@ -483,7 +485,7 @@ export interface StandardizedMealData {
  */
 export interface NutritionCalculationResult {
     nutrition: StandardizedMealNutrition;
-    matchResults: any[]; // 食品マッチング結果
+    matchResults: FoodMatchResult[]; // any[] から FoodMatchResult[] へ変更
     reliability: {
         confidence: number;      // 全体の確信度 (0.0-1.0)
         balanceScore?: number;   // 栄養バランススコア (0-100) (オプショナルに変更)
@@ -562,15 +564,6 @@ export const nutrientUnitMap: Record<string, string> = {
 };
 
 /**
- * 注意: これらの関数は src/lib/nutrition/nutrition-type-utils.ts に移動しました。
- * 新規開発では、そちらの実装を使用してください。
- * 
- * - parseNutritionFromJson
- * - serializeNutritionToJson
- * - convertToNutrientDisplayData
- */
-
-/**
  * トライメスター別の栄養摂取目標値
  */
 export interface NutritionTarget {
@@ -587,6 +580,7 @@ export interface NutritionTarget {
 
 /**
  * 食事ごとの栄養素データ
+ * @deprecated This type is legacy and should be replaced by foodItems within StandardizedMealNutrition.
  */
 export interface MealNutrient {
     id: string;
@@ -609,17 +603,4 @@ export interface NutrientDeficiency {
     fulfillmentRatio: number;  // 充足率 (0.0-1.0)
     currentValue: number;      // 現在値
     targetValue: number;       // 目標値
-}
-
-/**
- * 栄養素計算結果
- */
-export interface NutritionCalculationResult {
-    nutrition: StandardizedMealNutrition;
-    matchResults: any[]; // 食品マッチング結果
-    reliability: {
-        confidence: number;      // 全体の確信度 (0.0-1.0)
-        balanceScore?: number;   // 栄養バランススコア (0-100) (オプショナルに変更)
-        completeness?: number;   // データの完全性 (0.0-1.0) (オプショナルに変更)
-    };
 }

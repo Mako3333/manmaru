@@ -3,79 +3,100 @@
  */
 //src\lib\validation\response-validators.ts
 export function validateApiResponse<T>(
-    response: any,
+    response: unknown,
     options: {
         requireData?: boolean;
         requireItems?: boolean;
-        itemsValidator?: (items: any[]) => boolean;
+        itemsValidator?: (items: unknown[]) => boolean;
     } = {}
 ): { isValid: boolean; errorMessage?: string; data?: T } {
     const { requireData = true, requireItems = false, itemsValidator } = options;
 
-    // データの存在確認
-    if (requireData && !response.data) {
+    // response がオブジェクトであることを確認
+    if (typeof response !== 'object' || response === null) {
+        return { isValid: false, errorMessage: '無効なレスポンス形式です' };
+    }
+
+    // データの存在確認 (型ガードを兼ねる)
+    if (requireData && !('data' in response)) {
         return { isValid: false, errorMessage: 'レスポンスにデータが含まれていません' };
     }
+    const data = (response as { data?: unknown }).data; // 型アサーション (安全な場合)
 
     // アイテム配列の確認
     if (requireItems) {
-        if (!response.data.items) {
-            return { isValid: false, errorMessage: 'レスポンスにアイテムが含まれていません' };
+        // data がオブジェクトであることを確認
+        if (typeof data !== 'object' || data === null) {
+            return { isValid: false, errorMessage: 'データがオブジェクト形式ではありません' };
         }
+        if (!('items' in data)) {
+            return { isValid: false, errorMessage: 'データにアイテムが含まれていません' };
+        }
+        const items = (data as { items?: unknown }).items; // 型アサーション
 
-        if (!Array.isArray(response.data.items)) {
+        if (!Array.isArray(items)) {
             return { isValid: false, errorMessage: 'アイテムは配列形式である必要があります' };
         }
 
-        if (response.data.items.length === 0) {
+        if (items.length === 0) {
             return { isValid: false, errorMessage: 'アイテムが空です' };
         }
 
         // カスタム検証
-        if (itemsValidator && !itemsValidator(response.data.items)) {
+        if (itemsValidator && !itemsValidator(items)) {
             return { isValid: false, errorMessage: 'アイテムの内容が無効です' };
         }
     }
 
-    return { isValid: true, data: response.data as T };
+    // data を T 型として返す (必要に応じて追加の検証/アサーションを行う)
+    return { isValid: true, data: data as T };
 }
 
 /**
  * 食品アイテムの検証
  */
-export function validateFoodItems(items: any[]): boolean {
-    return items.every(item =>
-        item &&
-        typeof item === 'object' &&
-        item.name &&
-        typeof item.name === 'string'
-    );
+export function validateFoodItems(items: unknown[]): boolean {
+    return items.every((item): boolean => {
+        if (!item || typeof item !== 'object') {
+            return false;
+        }
+        if (!('name' in item)) {
+            return false;
+        }
+        return typeof (item as { name: unknown }).name === 'string';
+    });
 }
 
 /**
  * レシピデータの検証
  */
-export function validateRecipeData(recipe: any): boolean {
-    return (
-        recipe &&
-        typeof recipe === 'object' &&
-        recipe.title &&
-        typeof recipe.title === 'string' &&
-        recipe.ingredients &&
-        Array.isArray(recipe.ingredients)
-    );
+export function validateRecipeData(recipe: unknown): boolean {
+    if (!recipe || typeof recipe !== 'object') {
+        return false;
+    }
+    if (!('title' in recipe) || typeof (recipe as { title: unknown }).title !== 'string') {
+        return false;
+    }
+    if (!('ingredients' in recipe) || !Array.isArray((recipe as { ingredients: unknown }).ingredients)) {
+        return false;
+    }
+    return true;
 }
 
 /**
  * 栄養データの検証
  */
-export function validateNutritionData(nutrition: any): boolean {
-    return (
-        nutrition &&
-        typeof nutrition === 'object' &&
-        typeof nutrition.calories === 'number' &&
-        typeof nutrition.protein === 'number'
-    );
+export function validateNutritionData(nutrition: unknown): boolean {
+    if (!nutrition || typeof nutrition !== 'object') {
+        return false;
+    }
+    if (!('calories' in nutrition) || typeof (nutrition as { calories: unknown }).calories !== 'number') {
+        return false;
+    }
+    if (!('protein' in nutrition) || typeof (nutrition as { protein: unknown }).protein !== 'number') {
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -94,16 +115,16 @@ export function validateUrl(url: string): boolean {
  * APIリクエストパラメータの検証
  */
 export function validateRequestParams<T>(
-    params: any,
+    params: unknown,
     requiredFields: string[] = []
 ): { isValid: boolean; errorMessage?: string; data?: T } {
-    if (!params) {
-        return { isValid: false, errorMessage: 'リクエストパラメータが必要です' };
+    if (typeof params !== 'object' || params === null) {
+        return { isValid: false, errorMessage: 'リクエストパラメータはオブジェクト形式である必要があります' };
     }
 
     // 必須フィールドのチェック
     for (const field of requiredFields) {
-        if (params[field] === undefined || params[field] === null) {
+        if (!(field in params) || params[field as keyof typeof params] === undefined || params[field as keyof typeof params] === null) {
             return { isValid: false, errorMessage: `${field}は必須項目です` };
         }
     }
