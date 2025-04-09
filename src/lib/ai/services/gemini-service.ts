@@ -100,7 +100,7 @@ export class GeminiService implements IAIService {
         try {
             console.log(`[GeminiService] Analyzing meal image (size: ${imageData.length} bytes)...`);
             const base64Image = imageData.toString('base64');
-            const prompt = this.promptService.generatePrompt(PromptType.FOOD_ANALYSIS, {
+            const prompt = await this.promptService.generatePrompt(PromptType.FOOD_ANALYSIS, {
                 mealType: '食事',
                 trimester: undefined
             });
@@ -109,14 +109,14 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeVision(prompt, base64Image, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse as any);
+            const parseResult = await this.parser.parseResponse(rawResponse);
             console.log(`[GeminiService] Meal image analysis successful.`);
 
             const result: MealAnalysisResult = {
                 foods: parseResult.foods || [],
                 confidence: parseResult.confidence,
                 estimatedNutrition: parseResult.nutrition,
-                debug: { ...parseResult.debug, rawResponse }
+                debug: { ...parseResult.debug, rawResponse: rawResponse }
             };
             if (parseResult.error) {
                 result.error = { message: parseResult.error };
@@ -139,7 +139,7 @@ export class GeminiService implements IAIService {
     async analyzeMealText(text: string): Promise<MealAnalysisResult> {
         try {
             console.log(`[GeminiService] Analyzing meal text (length: ${text.length})...`);
-            const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
+            const prompt = await this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
                 foodsText: text
             });
             const modelOptions: ModelOptions = {
@@ -147,14 +147,14 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse as any);
+            const parseResult = await this.parser.parseResponse(rawResponse);
             console.log(`[GeminiService] Meal text analysis successful.`);
 
             const result: MealAnalysisResult = {
                 foods: parseResult.foods || [],
                 confidence: parseResult.confidence,
                 estimatedNutrition: parseResult.nutrition,
-                debug: { ...parseResult.debug, rawResponse }
+                debug: { ...parseResult.debug, rawResponse: rawResponse }
             };
             if (parseResult.error) {
                 result.error = { message: parseResult.error };
@@ -178,7 +178,7 @@ export class GeminiService implements IAIService {
         console.warn('[GeminiService] analyzeRecipeText is deprecated.');
         try {
             console.log(`[GeminiService] Analyzing recipe text (length: ${recipeText.length})...`);
-            const prompt = this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
+            const prompt = await this.promptService.generatePrompt(PromptType.TEXT_INPUT_ANALYSIS, {
                 foodsText: recipeText
             });
             const modelOptions: ModelOptions = {
@@ -186,14 +186,14 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse as any);
+            const parseResult = await this.parser.parseResponse(rawResponse);
             console.log(`[GeminiService] Recipe text analysis successful.`);
 
             const result: RecipeAnalysisResult = {
                 title: parseResult.title,
                 servings: parseResult.servings,
                 ingredients: parseResult.foods || [],
-                debug: { ...parseResult.debug, rawResponse }
+                debug: { ...parseResult.debug, rawResponse: rawResponse }
             };
             if (parseResult.error) {
                 result.error = { message: parseResult.error };
@@ -244,7 +244,7 @@ export class GeminiService implements IAIService {
                 textContent = textContent.substring(0, MAX_CONTENT_LENGTH);
             }
 
-            const prompt = this.promptService.generatePrompt(PromptType.RECIPE_URL_ANALYSIS, {
+            const prompt = await this.promptService.generatePrompt(PromptType.RECIPE_URL_ANALYSIS, {
                 recipeContent: textContent
             });
             const modelOptions: ModelOptions = {
@@ -252,14 +252,14 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse as any);
+            const parseResult = await this.parser.parseResponse(rawResponse);
             console.log(`[GeminiService] URL parsing successful for: ${url}`);
 
             const result: RecipeAnalysisResult = {
                 title: parseResult.title,
                 servings: parseResult.servings,
                 ingredients: parseResult.foods || [],
-                debug: { ...parseResult.debug, rawResponse }
+                debug: { ...parseResult.debug, rawResponse: rawResponse }
             };
             if (parseResult.error) {
                 result.error = { message: parseResult.error };
@@ -295,13 +295,13 @@ export class GeminiService implements IAIService {
                 }
             }
 
-            const prompt = this.promptService.generatePrompt(promptType, validatedParams);
+            const prompt = await this.promptService.generatePrompt(promptType, validatedParams);
             const modelOptions: ModelOptions = {
                 temperature: 0.5, // アドバイス生成には少し高めの温度設定を試す
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse as any);
+            const parseResult = await this.parser.parseResponse(rawResponse);
             console.log(`[GeminiService] Nutrition advice generation successful for type: ${promptType}. Parse result keys:`, Object.keys(parseResult));
 
             // recommendedFoods の型マッピング
@@ -316,7 +316,7 @@ export class GeminiService implements IAIService {
                 summary: parseResult.advice_summary || '',
                 detailedAdvice: parseResult.advice_detail,
                 recommendedFoods: recommendedFoodsData,
-                debug: { ...parseResult.debug, rawResponse }
+                debug: { ...parseResult.debug, rawResponse: rawResponse }
             };
             if (parseResult.error) {
                 result.error = { message: parseResult.error };
@@ -340,7 +340,7 @@ export class GeminiService implements IAIService {
         options?: Record<string, unknown>,
     ): Promise<string> {
         console.log(`[GeminiService] Generating response for type: ${type}`);
-        const prompt = this.promptService.generatePrompt(type, context);
+        const prompt = await this.promptService.generatePrompt(type, context);
 
         // stopSequences を安全に抽出
         const stopSequences = (options && Array.isArray(options.stopSequences) && options.stopSequences.length > 0)
@@ -354,7 +354,7 @@ export class GeminiService implements IAIService {
         };
 
         try {
-            const rawResponse: string = await this.modelService.invokeText(prompt, modelOptions);
+            const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
             console.log(`[GeminiService] Response generation successful for type: ${type}`);
             return rawResponse;
         } catch (error: unknown) {

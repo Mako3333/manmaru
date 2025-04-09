@@ -22,7 +22,7 @@ export class AIModelService implements IAIModelService {
         const model = AIModelFactory.createTextModel(options);
         try {
             const response = await model.invoke(prompt);
-            return typeof response === 'string' ? response : String(response);
+            return response.content;
         } catch (error) {
             console.error('AIModelService: invokeTextエラー:', error);
             throw this.handleAIError(error, 'テキストモデル呼び出し');
@@ -44,7 +44,7 @@ export class AIModelService implements IAIModelService {
                 });
             }
             const response = await model.invokeWithImageData(prompt, imageBase64);
-            return typeof response === 'string' ? response : String(response);
+            return response.content;
         } catch (error) {
             console.error('AIModelService: invokeVisionエラー:', error);
             throw this.handleAIError(error, '画像モデル呼び出し');
