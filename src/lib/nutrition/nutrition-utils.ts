@@ -373,21 +373,21 @@ export function safeConvertNutritionData(
             if (typeof sourceData === 'object' && sourceData !== null) {
                 return convertToLegacyNutrition(sourceData as StandardizedMealNutrition);
             } else {
-                console.warn('safeConvertNutritionData: 'standard' type requires a valid object.');
+                console.warn(`safeConvertNutritionData: 'standard' type requires a valid object.`);
                 return createEmptyNutritionData();
             }
         } else if (sourceType === 'old') {
             if (typeof sourceData === 'object' && sourceData !== null) {
                 return convertOldToNutritionData(sourceData);
             } else {
-                console.warn('safeConvertNutritionData: 'old' type requires a valid object.');
+                console.warn(`safeConvertNutritionData: 'old' type requires a valid object.`);
                 return createEmptyNutritionData();
             }
         } else if (sourceType === 'nutrient' || sourceType === null) {
             if (typeof sourceData === 'object' && sourceData !== null && 'calories' in sourceData) {
                 return sourceData as NutritionData;
             } else {
-                console.warn('safeConvertNutritionData: Defaulting to empty data due to invalid 'nutrient' data or null sourceType.');
+                console.warn(`safeConvertNutritionData: Defaulting to empty data due to invalid 'nutrient' data or null sourceType.`);
                 return createEmptyNutritionData();
             }
         } else {
