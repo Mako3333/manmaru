@@ -190,8 +190,62 @@ export default function HomeClient({ user }: HomeClientProps) {
     }
 
     return (
-        <div className="pb-20">
-            <div className="p-4 space-y-4">
+        <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
+            {/* ヘッダー - 有機的な曲線を持つ形状とグラデーション */}
+            <header className="relative bg-gradient-to-r from-[#36B37E] via-[#2E9E6C] to-[#36B37E] text-white p-4 pb-12">
+                {/* 波紋エフェクト */}
+                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-24 h-24 bg-white opacity-10 rounded-full"></div>
+                <div className="absolute top-6 right-16 w-16 h-16 bg-white opacity-10 rounded-full"></div>
+
+                <div className="container mx-auto max-w-4xl relative z-10">
+                    {/* ヘッダー上部: ロゴ、タイトル、プロフィールアイコン */}
+                    <div className="flex justify-between items-center mb-1">
+                        <div className="flex items-center gap-2">
+                            {/* ロゴ */}
+                            <div className="relative">
+                                <Image
+                                    src="/logo.png"
+                                    alt="manmaruロゴ"
+                                    width={45}
+                                    height={45}
+                                    className="object-contain"
+                                />
+                            </div>
+                            <h1 className="text-[26px] font-bold tracking-tight">
+                                manmaru
+                            </h1>
+                        </div>
+
+                        {/* プロフィールアイコン */}
+                        <Link href="/profile/edit">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#2E9E6C] font-bold text-lg">
+                                <span>{user?.email?.charAt(0)?.toUpperCase() || '?'}</span>
+                            </div>
+                        </Link>
+                    </div>
+
+                    {/* 日付表示 - 右に配置、背景なし */}
+                    <div className="flex justify-end my-1">
+                        <div className="flex items-center px-1 py-0.5">
+                            <time dateTime={currentDate} className="text-[14px]">
+                                {format(new Date(currentDate), 'yyyy年M月d日（E）', { locale: ja })}
+                            </time>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 下部の有機的な曲線 */}
+                <div className="absolute bottom-0 left-0 right-0 h-12 overflow-hidden">
+                    <svg className="absolute bottom-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1440 74">
+                        <path
+                            d="M456.464 0.0433865C277.158 -1.70575 0 50.0141 0 50.0141V74H1440V50.0141C1440 50.0141 1320.4 31.1925 1243.09 27.0276C1099.33 19.2816 1019.08 53.1981 875.138 50.0141C710.527 46.3727 621.108 1.64949 456.464 0.0433865Z"
+                            fill="#f9fafb">
+                        </path>
+                    </svg>
+                </div>
+            </header>
+            {/* メインコンテンツ */}
+            <main className="flex-grow container mx-auto max-w-4xl px-4 pt-6 space-y-8">
 
                 <GreetingMessage week={pregnancyWeek} />
 
@@ -227,7 +281,7 @@ export default function HomeClient({ user }: HomeClientProps) {
 
                 <RecommendedRecipes />
 
-            </div>
+            </main>
 
             <BottomNavigation />
         </div>
