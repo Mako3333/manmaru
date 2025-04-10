@@ -32,7 +32,16 @@ import * as nutritionTipsV1 from './templates/nutrition-tips/v1';
 // import * as recipeRecommendationV1 from './templates/recipe-recommendation/v1'; // 必要ならコメント解除
 
 // PromptType をインポート
-import { PromptType } from './prompt-service';
+import { PromptType } from '../types';
+
+// プロンプトモジュールの期待される型を定義
+interface PromptModule {
+    template: string;
+    default?: {
+        template: string;
+    };
+    // 他にもプロパティがあれば追加
+}
 
 /**
  * プロンプトバージョン管理クラス
@@ -40,15 +49,16 @@ import { PromptType } from './prompt-service';
 export class PromptVersionManager {
     private static instance: PromptVersionManager;
     private promptRegistry: Map<string, PromptMetadata> = new Map();
-
-    // インポートしたテンプレートを保持するマップを追加
-    private templates: Record<string, Record<string, any>> = {
-        [PromptType.FOOD_ANALYSIS]: { 'v1': foodAnalysisV1 },
-        [PromptType.NUTRITION_ADVICE]: { 'v1': nutritionAdviceV1 },
-        [PromptType.TEXT_INPUT_ANALYSIS]: { 'v1': textInputAnalysisV1 },
-        [PromptType.RECIPE_URL_ANALYSIS]: { 'v1': recipeUrlAnalysisV1 },
-        [PromptType.NUTRITION_TIPS]: { 'v1': nutritionTipsV1 },
-        // [PromptType.RECIPE_RECOMMENDATION]: { 'v1': recipeRecommendationV1 }, // 必要ならコメント解除
+    private versions: Record<string, PromptVersion> = {};
+    // テンプレートの型を Record<string, Record<string, PromptModule>> に変更
+    private templates: Record<string, Record<string, PromptModule>> = {
+        // 型アサーションを追加して、インポートされたモジュールが PromptModule 型であることを示す
+        [PromptType.FOOD_ANALYSIS]: { 'v1': foodAnalysisV1 as unknown as PromptModule },
+        [PromptType.NUTRITION_ADVICE]: { 'v1': nutritionAdviceV1 as unknown as PromptModule },
+        [PromptType.TEXT_INPUT_ANALYSIS]: { 'v1': textInputAnalysisV1 as unknown as PromptModule },
+        [PromptType.RECIPE_URL_ANALYSIS]: { 'v1': recipeUrlAnalysisV1 as unknown as PromptModule },
+        [PromptType.NUTRITION_TIPS]: { 'v1': nutritionTipsV1 as unknown as PromptModule },
+        // [PromptType.RECIPE_RECOMMENDATION]: { 'v1': recipeRecommendationV1 as unknown as PromptModule }, // 必要ならコメント解除
     };
 
     private constructor() {
@@ -106,7 +116,7 @@ export class PromptVersionManager {
             // require を削除し、インポート済みのマップから取得
             // const promptModule = require(`./templates/${promptId}/${targetVersion}.ts`);
             const promptModule = this.templates[promptId]?.[targetVersion];
-            return promptModule?.default || promptModule?.template;
+            return promptModule?.default?.template || promptModule?.template;
         } catch (error) {
             console.error(`プロンプトテンプレートの読み込みに失敗: ${promptId}/${targetVersion}`, error);
             return undefined;
@@ -125,5 +135,18 @@ export class PromptVersionManager {
      */
     getPromptsByCategory(category: string): PromptMetadata[] {
         return this.getAllPrompts().filter(p => p.category === category);
+    }
+
+    /**
+     * 指定されたタイプとバージョンのプロンプトテンプレートを取得します。
+     * @param type プロンプトタイプ
+     * @param version バージョン文字列 (例: 'v1')
+     * @returns テンプレート文字列、見つからない場合は null
+     */
+    public getTemplate(type: PromptType, version: string): string | null {
+        // templates の型が PromptModule になったため、型ガードは不要
+        const versionData = this.templates[type]?.[version];
+        // default.template があれば優先、なければ template を返す
+        return versionData?.default?.template ?? versionData?.template ?? null;
     }
 } 

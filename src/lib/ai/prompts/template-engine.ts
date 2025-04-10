@@ -2,6 +2,8 @@
  * シンプルなテンプレートエンジン
  * ハンドルバーライクな構文でテンプレート処理を行う
  */
+import { AppError, ErrorCode } from '@/lib/error';
+
 export class TemplateEngine {
     /**
      * テンプレートをレンダリング
@@ -9,45 +11,44 @@ export class TemplateEngine {
      * @param context コンテキストデータ
      * @returns レンダリングされた文字列
      */
-    static render(template: string, context: Record<string, any>): string {
+    static render(template: string, context: Record<string, unknown>): string {
         try {
             // レンダリング開始をログ
             // console.log('テンプレートレンダリング開始');
 
-            let result = template;
-            let iterations = 0;
-            const maxIterations = 5; // 無限ループ防止
+            let processedTemplate = template;
+            processedTemplate = TemplateEngine.processConditionalBlocks(processedTemplate, context);
+            processedTemplate = TemplateEngine.processLoopBlocks(processedTemplate, context);
+            processedTemplate = TemplateEngine.replaceVariables(processedTemplate, context);
+            // ネストしたブロックの処理（もし必要なら）
+            processedTemplate = TemplateEngine.processNestedBlocks(processedTemplate, context);
 
-            // 完全に処理されるまで繰り返し
-            while (iterations < maxIterations) {
-                iterations++;
-                const prevResult = result;
-
-                // 一連の処理を実行
-                result = this.processTemplate(result, context);
-
-                // 変更がなければ処理完了
-                if (prevResult === result) {
-                    // console.log(`テンプレートレンダリング完了 (${iterations}回の処理)`);
-                    break;
-                }
+            if (processedTemplate === template) {
+                // console.log(`テンプレートレンダリング完了`);
+            } else {
+                // console.log(`テンプレートレンダリング完了 (${processedTemplate.length - template.length}文字の変更)`);
             }
 
-            if (iterations === maxIterations) {
-                console.warn('警告: テンプレート処理の最大繰り返し回数に達しました。無限ループの可能性があります。');
+            return processedTemplate;
+        } catch (error: unknown) {
+            if (error instanceof AppError) {
+                throw error; // AppError はそのままスロー
             }
-
-            return result;
-        } catch (error) {
-            console.error('テンプレート処理中にエラーが発生しました:', error);
-            return `テンプレート処理エラー: ${error instanceof Error ? error.message : String(error)}`;
+            // 想定外のエラーは AppError でラップ (ガイドラインに沿った形式)
+            console.error('Template rendering failed:', error);
+            throw new AppError({
+                code: ErrorCode.AI.PARSING_ERROR,
+                message: `Template rendering failed: ${error instanceof Error ? error.message : String(error)}`,
+                // userMessage はデフォルトに任せるか、別途定義
+                originalError: error instanceof Error ? error : undefined
+            });
         }
     }
 
     /**
      * テンプレート全体を処理
      */
-    private static processTemplate(template: string, context: Record<string, any>): string {
+    private static processTemplate(template: string, context: Record<string, unknown>): string {
         // コンテキスト内の配列を検出して前処理
         Object.entries(context).forEach(([key, value]) => {
             if (Array.isArray(value)) {
@@ -56,10 +57,10 @@ export class TemplateEngine {
         });
 
         // 1. まず最深部のブロックから処理するために、ループ・条件ブロックを処理
-        let processed = this.processNestedBlocks(template, context);
+        let processed = TemplateEngine.processNestedBlocks(template, context);
 
         // 2. 最後に単純な変数置換
-        processed = this.replaceVariables(processed, context);
+        processed = TemplateEngine.replaceVariables(processed, context);
 
         return processed;
     }
@@ -67,245 +68,168 @@ export class TemplateEngine {
     /**
      * ネストされたブロックを処理
      */
-    private static processNestedBlocks(template: string, context: Record<string, any>): string {
-        // 一定回数の処理で確実に終了させる
-        const maxPasses = 10;
-        let result = template;
+    private static processNestedBlocks(template: string, context: Record<string, unknown>): string {
+        // ネストされたブロック（例: ループ内の条件分岐）を再帰的に処理する可能性がある場合
+        // この実装はテンプレートの複雑さに依存する
+        // 簡単な例として、一度全ての処理を適用した後にもう一度適用する
+        // より堅牢な実装には、テンプレートの構造を解析する必要があるかもしれない
+        let previouslyProcessed: string;
+        let currentlyProcessed = template;
+        let counter = 0;
+        const maxIterations = 5; // 無限ループ防止
 
-        for (let pass = 0; pass < maxPasses; pass++) {
-            const prevResult = result;
+        do {
+            previouslyProcessed = currentlyProcessed;
+            currentlyProcessed = TemplateEngine.processConditionalBlocks(currentlyProcessed, context);
+            currentlyProcessed = TemplateEngine.processLoopBlocks(currentlyProcessed, context);
+            currentlyProcessed = TemplateEngine.replaceVariables(currentlyProcessed, context);
+            counter++;
+        } while (previouslyProcessed !== currentlyProcessed && counter < maxIterations);
 
-            // 深い方から処理するため、まずループ処理
-            result = this.processLoopBlocks(result, context);
-
-            // 次に条件処理
-            result = this.processConditionalBlocks(result, context);
-
-            // 変更がなければ処理終了
-            if (prevResult === result) break;
+        if (counter === maxIterations) {
+            console.warn('TemplateEngine: Max processing iterations reached. Potential infinite loop or complex nesting.');
         }
 
-        return result;
+        return currentlyProcessed;
     }
 
     /**
      * 変数の置換処理
      */
-    private static replaceVariables(template: string, context: Record<string, any>): string {
-        return template.replace(/\{\{\s*([^}]+)\s*\}\}/g, (match, path) => {
-            const trimmedPath = path.trim();
-
-            // 制御構文はスキップ
-            if (trimmedPath.startsWith('#') || trimmedPath.startsWith('/')) {
-                return match;
+    private static replaceVariables(template: string, context: Record<string, unknown>): string {
+        // {{ variable }} または {{ object.property }} 形式の変数を検索
+        const regex = /{{\s*([\w.-]+)\s*}}/g;
+        return template.replace(regex, (match, variablePath) => {
+            const value = TemplateEngine.getNestedValue(variablePath.trim(), context);
+            // null または undefined の場合は空文字に置換
+            if (value === null || typeof value === 'undefined') {
+                return '';
             }
-
-            // @index の特殊処理
-            if (trimmedPath === '@index') {
-                return context['@index'] !== undefined ? String(context['@index']) : '';
+            // オブジェクトや配列の場合は JSON 文字列に変換（またはエラー）
+            if (typeof value === 'object') {
+                try {
+                    return JSON.stringify(value); // 開発中は有用だが、本番では要検討
+                } catch {
+                    return '[Object]'; // シリアライズできない場合
+                }
             }
-
-            // this の特殊処理
-            if (trimmedPath === 'this') {
-                const item = context['this'];
-                return item !== undefined ?
-                    (typeof item === 'object' ? JSON.stringify(item) : String(item)) : '';
-            }
-
-            // 通常の変数取得
-            const value = this.getNestedValue(trimmedPath, context);
-            return value !== undefined ? String(value) : '';
+            return String(value);
         });
     }
 
     /**
      * 条件ブロックの処理
      */
-    private static processConditionalBlocks(template: string, context: Record<string, any>): string {
-        // if/else ブロックのパターン
-        const ifRegex = /\{\{\s*#if\s+([^}]+)\s*\}\}([\s\S]*?)(?:\{\{\s*else\s*\}\}([\s\S]*?))?\{\{\s*\/if\s*\}\}/g;
-
-        // すべての条件ブロックを処理
-        let result = template;
-        const matches = [];
-        let match;
-
-        // マッチを全て収集
-        while ((match = ifRegex.exec(template)) !== null) {
-            matches.push({
-                fullMatch: match[0],
-                condition: match[1]?.trim() || '',
-                ifContent: match[2],
-                elseContent: match[3] || ''
-            });
-        }
-
-        // マッチがなければ終了
-        if (matches.length === 0) return template;
-
-        // 最後のマッチから処理（ネスト対応）
-        for (let i = matches.length - 1; i >= 0; i--) {
-            const currentMatch = matches[i];
-            if (!currentMatch) continue;
-            const { fullMatch, condition, ifContent, elseContent } = currentMatch;
-
-            try {
-                const conditionValue = this.evaluateCondition(condition, context);
-                // console.log(`条件評価: ${condition} => ${conditionValue}`);
-
-                // 条件に応じてコンテンツを選択 (undefined なら空文字)
-                const selectedContent = conditionValue ? (ifContent ?? '') : (elseContent ?? '');
-
-                // 結果を置換 (selectedContent は常に string)
-                result = result.replace(fullMatch, selectedContent);
-            } catch (error) {
-                console.error(`条件ブロック処理エラー [${condition}]:`, error);
-                result = result.replace(fullMatch, `<!-- 条件処理エラー: ${error instanceof Error ? error.message : String(error)} -->`);
+    private static processConditionalBlocks(template: string, context: Record<string, unknown>): string {
+        const regex = /{{\s*#if\s+([\w.-]+)\s*}}([\s\S]*?){{\s*\/if\s*}}/g;
+        return template.replace(regex, (match, conditionVariable, content) => {
+            const value = TemplateEngine.getNestedValue(conditionVariable.trim(), context);
+            // value が truthy (null, undefined, false, 0, "" でない) 場合に content を返す
+            // 厳密な boolean チェックが必要な場合は `value === true` とする
+            if (value) {
+                // 条件ブロック内のテンプレートを再帰的に処理
+                return TemplateEngine.processTemplate(content, context);
             }
-        }
-
-        return result;
+            return '';
+        });
     }
 
     /**
      * 繰り返しブロックの処理
      */
-    private static processLoopBlocks(template: string, context: Record<string, any>): string {
-        const eachRegex = /\{\{\s*#each\s+([^}]+)\s*\}\}([\s\S]*?)\{\{\s*\/each\s*\}\}/g;
+    private static processLoopBlocks(template: string, context: Record<string, unknown>): string {
+        const regex = /{{\s*#each\s+([\w.-]+)\s*}}([\s\S]*?){{\s*\/each\s*}}/g;
+        return template.replace(regex, (match, loopVariablePath, loopContent) => {
+            const loopVariable = TemplateEngine.getNestedValue(loopVariablePath.trim(), context);
 
-        // すべてのループブロックを処理
-        let result = template;
-        const matches = [];
-        let match;
-
-        // マッチを全て収集
-        while ((match = eachRegex.exec(template)) !== null) {
-            matches.push({
-                fullMatch: match[0],
-                arrayPath: match[1]?.trim() || '',
-                itemTemplate: match[2]
-            });
-        }
-
-        // マッチがなければ終了
-        if (matches.length === 0) return template;
-
-        // 最後のマッチから処理（ネスト対応）
-        for (let i = matches.length - 1; i >= 0; i--) {
-            const currentMatch = matches[i];
-            if (!currentMatch) continue;
-            const { fullMatch, arrayPath, itemTemplate } = currentMatch;
-            const currentItemTemplate = itemTemplate ?? ''; // undefined なら空文字
-
-            try {
-                const array = this.getNestedValue(arrayPath, context);
-
-                if (!Array.isArray(array) || array.length === 0) {
-                    result = result.replace(fullMatch, '');
-                    continue;
-                }
-
-                console.log(`処理中の配列: ${arrayPath}, 要素数: ${array.length}`);
-
-                const processedItems = array.map((item, index) => {
-                    try {
-                        const itemContext = { ...context, '@index': index, 'this': item };
-                        // currentItemTemplate (string) を渡す
-                        const processed = this.replaceItemVariables(currentItemTemplate, item, itemContext);
-                        return processed;
-                    } catch (error) {
-                        console.error(`アイテム処理エラー [${index}]:`, error);
-                        return `<!-- アイテム処理エラー: ${error instanceof Error ? error.message : String(error)} -->`;
-                    }
-                }).join('');
-
-                result = result.replace(fullMatch, processedItems);
-            } catch (error) {
-                console.error(`ループブロック処理エラー [${arrayPath}]:`, error);
-                result = result.replace(fullMatch, `<!-- ループ処理エラー: ${error instanceof Error ? error.message : String(error)} -->`);
+            if (!Array.isArray(loopVariable)) {
+                console.warn(`TemplateEngine: Variable "${loopVariablePath}" is not an array. Skipping loop.`);
+                // エラーにするか、空文字を返すか、ログを出すかは要件による
+                // ここでは空文字を返す
+                return '';
             }
-        }
 
-        return result;
+            let result = '';
+            loopVariable.forEach((item, index) => {
+                // 各ループアイテム用のコンテキストを作成
+                // item がオブジェクトでない場合は `this` としてアクセスできるようにする
+                const itemContext: Record<string, unknown> = {
+                    // 元のコンテキストを継承
+                    ...context,
+                    // item がオブジェクトの場合、そのプロパティを展開
+                    ...(typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {}),
+                    // item 自体を 'this' または特定の変数名（例: 'item'）でアクセス可能にする
+                    this: item,
+                    item: item, // 'item' という名前でもアクセス可能にする (オプション)
+                    '@index': index, // インデックス番号
+                    '@first': index === 0, // 最初の要素か
+                    '@last': index === loopVariable.length - 1, // 最後の要素か
+                };
+                // ループの内容を各アイテムのコンテキストで処理
+                // ループ内容内の変数置換やネストしたブロック処理は processTemplate で行う
+                result += TemplateEngine.processTemplate(loopContent, itemContext);
+            });
+            return result;
+        });
     }
 
     /**
      * ループ内アイテムの変数置換（特別処理）
      */
-    private static replaceItemVariables(template: string, item: any, itemContext: Record<string, any>): string {
-        return template.replace(/\{\{\s*([^}]+)\s*\}\}/g, (match, path) => {
-            const trimmedPath = path.trim();
-
-            // 制御構文はスキップ
-            if (trimmedPath.startsWith('#') || trimmedPath.startsWith('/')) {
-                return match;
+    private static replaceItemVariables(template: string, item: unknown, itemContext: Record<string, unknown>): string {
+        const regex = /{{\s*([\w.-]+)\s*}}/g;
+        return template.replace(regex, (match, variablePath) => {
+            let value: unknown;
+            // まず itemContext (ループ変数やインデックスなどを含む) から検索
+            if (variablePath.startsWith('@') || variablePath === 'this' || variablePath === 'item') {
+                value = TemplateEngine.getNestedValue(variablePath, itemContext);
+            } else if (typeof item === 'object' && item !== null) {
+                // item がオブジェクトの場合、item のプロパティとして検索
+                value = TemplateEngine.getNestedValue(variablePath, item as Record<string, unknown>);
+            } else if (variablePath === 'this' || variablePath === 'item') {
+                // item がプリミティブの場合、'this' または 'item' でアクセス
+                value = item;
             }
 
-            // @index の特殊処理
-            if (trimmedPath === '@index') {
-                return String(itemContext['@index']);
+            // itemContext や item で見つからなかった場合、元の全体コンテキストから検索
+            if (typeof value === 'undefined') {
+                value = TemplateEngine.getNestedValue(variablePath, itemContext); // itemContext には元の context が含まれている想定
             }
 
-            // this の特殊処理
-            if (trimmedPath === 'this') {
-                return typeof item === 'object' ? JSON.stringify(item) : String(item);
+            if (value === null || typeof value === 'undefined') {
+                return '';
             }
-
-            // アイテム自体のプロパティへの直接アクセス
-            if (typeof item === 'object' && item !== null) {
-                // まずドット区切りでのアクセスを試みる
-                const itemValue = this.getNestedValue(trimmedPath, item);
-                if (itemValue !== undefined) {
-                    return typeof itemValue === 'object' ?
-                        JSON.stringify(itemValue) : String(itemValue);
+            if (typeof value === 'object') {
+                try {
+                    return JSON.stringify(value);
+                } catch {
+                    return '[Object]';
                 }
             }
-
-            // アイテムから取得できなければ親コンテキストから取得
-            const contextValue = this.getNestedValue(trimmedPath, itemContext);
-            return contextValue !== undefined ?
-                (typeof contextValue === 'object' ?
-                    JSON.stringify(contextValue) : String(contextValue)) : '';
+            return String(value);
         });
     }
 
     /**
      * ネストされた値の取得
      */
-    private static getNestedValue(path: string, obj: Record<string, any>): any {
+    private static getNestedValue(path: string, obj: Record<string, unknown>): unknown {
         if (!path || !obj) return undefined;
 
         try {
             // ドット記法で階層を分割
-            return path.split('.').reduce((prev, curr) => {
-                return prev && typeof prev === 'object' ? prev[curr] : undefined;
+            // reduce のコールバックが unknown を返す可能性があるため、
+            // prev の型を unknown にするか、アサーションを使う
+            return path.split('.').reduce((prev: unknown, curr: string) => {
+                // prev が オブジェクトであることを確認してからアクセス
+                if (prev && typeof prev === 'object' && curr in (prev as Record<string, unknown>)) {
+                    return (prev as Record<string, unknown>)[curr];
+                }
+                return undefined;
             }, obj);
         } catch (error) {
             console.error(`パス解決エラー [${path}]:`, error);
             return undefined;
         }
-    }
-
-    /**
-     * 条件式の評価
-     */
-    private static evaluateCondition(condition: string, context: Record<string, unknown>): boolean {
-        // '@index'の特殊処理
-        if (condition === '@index') {
-            const indexVal = context['@index'];
-            // indexVal が number であり、かつ 0 より大きい場合に true を返す
-            return typeof indexVal === 'number' && indexVal > 0;
-        }
-
-        // 'array.length' のような長さチェック
-        if (condition.endsWith('.length')) {
-            const arrayPath = condition.slice(0, -7);
-            const array = this.getNestedValue(arrayPath, context);
-            return Array.isArray(array) && array.length > 0;
-        }
-
-        // 通常の変数評価
-        const value = this.getNestedValue(condition, context);
-        return !!value;
     }
 }

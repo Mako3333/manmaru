@@ -27,7 +27,11 @@ import useSWR from 'swr';
 import { profileFetcher, targetsFetcher, progressFetcher } from '@/lib/fetchers/home-fetchers';
 
 interface HomeClientProps {
-    user: User | null;
+    initialData: {
+        profile: UserProfile | null;
+        targets: NutritionTarget | null;
+        progress: NutritionProgress | null;
+    };
 }
 
 interface GreetingMessageProps {
@@ -160,11 +164,21 @@ export default function HomeClient({ user }: HomeClientProps) {
     const isLoading = isLoadingProfile || isLoadingTargets || isLoadingProgress;
     const error = profileError || targetsError || progressError;
 
-    const pregnancyInfo: any = useMemo(() => {
+    const pregnancyInfo: unknown = useMemo(() => {
         if (!profile?.due_date) return { week: undefined, days: undefined };
-        const result = calculatePregnancyWeek(profile.due_date);
-        return result || { week: undefined, days: undefined };
-    }, [profile?.due_date]);
+        let calculatePregnancyWeekFunc: Function = () => ({ week: undefined, days: undefined });
+        try {
+            const dateUtils = require('@/lib/dateUtils');
+            if (dateUtils && typeof dateUtils.calculatePregnancyWeek === 'function') {
+                calculatePregnancyWeekFunc = dateUtils.calculatePregnancyWeek;
+            } else {
+                console.error('calculatePregnancyWeek function not found in @/lib/dateUtils');
+            }
+        } catch (e) {
+            console.error('Failed to load dateUtils:', e);
+        }
+        return calculatePregnancyWeekFunc(profile.due_date);
+    }, [profile]);
 
     const pregnancyWeek = pregnancyInfo.week;
     const pregnancyDays = pregnancyInfo.days;
@@ -311,6 +325,19 @@ export default function HomeClient({ user }: HomeClientProps) {
                 )}
 
                 <RecommendedRecipes />
+
+                <p className="text-lg">
+                    妊娠 {
+                        pregnancyInfo && typeof pregnancyInfo === 'object' && 'week' in pregnancyInfo && typeof pregnancyInfo.week === 'number'
+                            ? `${pregnancyInfo.week}週`
+                            : '--週'
+                    }
+                    {
+                        pregnancyInfo && typeof pregnancyInfo === 'object' && 'days' in pregnancyInfo && typeof pregnancyInfo.days === 'number'
+                            ? `${pregnancyInfo.days}日`
+                            : '--日'
+                    }
+                </p>
 
             </main>
 

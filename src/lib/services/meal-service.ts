@@ -3,7 +3,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { validateMealData } from '@/lib/nutrition/nutrition-utils';
-import { MealNutrient, StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
+import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
 import { convertToDbNutritionFormat, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 /**

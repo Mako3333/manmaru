@@ -5,7 +5,7 @@ import {
     getNutritionProgressByDateRange,
     getNutritionTargetByTrimester
 } from '@/lib/supabase/client';
-import { NutritionProgress, NutritionTarget, BasicNutritionData } from '@/types/nutrition';
+import { NutritionProgress, NutritionTarget } from '@/types/nutrition';
 import { formatDate, getDateRange } from '@/lib/date-utils';
 
 /**

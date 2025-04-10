@@ -6,7 +6,9 @@ import {
     NutritionProgress,
     MealNutrient,
     DailyNutritionLog,
-    NutritionAdvice
+    NutritionAdvice,
+    StandardizedMealNutrition,
+    Nutrient
 } from '@/types/nutrition';
 import {
     Meal,
@@ -20,6 +22,10 @@ import {
     WeightLog,
     WeightLogCreateData
 } from '@/types/user';
+import {
+    convertToStandardizedNutrition,
+    convertToDbNutritionFormat
+} from "@/lib/nutrition/nutrition-type-utils";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -229,80 +235,97 @@ export const getMealsWithNutrientsByDate = async (date: string): Promise<MealWit
     }
 };
 
+// DBのMeal型に StandardizedMealNutrition を追加した一時的な型
+interface MealWithStandardizedNutrition extends Meal {
+    nutrition: StandardizedMealNutrition | null;
+}
+
+// DailyMealSummaryのmealsプロパティの型を更新した一時的な型
+interface UpdatedDailyMealSummary extends Omit<DailyMealSummary, 'meals'> {
+    meals: MealWithStandardizedNutrition[];
+}
+
 /**
- * 指定した期間の食事データを日付ごとにまとめて取得する
+ * 指定した期間の食事サマリーを取得する（栄養データはStandardizedMealNutritionに変換）
  * @param startDate 開始日（YYYY-MM-DD形式）
  * @param endDate 終了日（YYYY-MM-DD形式）
- * @returns 日付ごとの食事データと栄養素合計
+ * @returns 食事サマリーの配列 (UpdatedDailyMealSummary[])
  */
 export const getMealSummaryByDateRange = async (
     startDate: string,
     endDate: string
-): Promise<DailyMealSummary[]> => {
+): Promise<UpdatedDailyMealSummary[]> => {
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
             throw new Error('ログインセッションが無効です');
         }
 
-        const { data, error } = await supabase
+        const { data: mealsData, error } = await supabase
             .from('meals')
             .select('*')
             .eq('user_id', session.user.id)
             .gte('meal_date', startDate)
-            .lte('meal_date', endDate);
+            .lte('meal_date', endDate)
+            .order('meal_date', { ascending: true })
+            .order('meal_type', { ascending: true });
 
-        if (error) {
-            throw new Error('Failed to fetch meals');
-        }
+        if (error) throw error;
 
-        if (!data) {
+        // mealsData が null または undefined の場合は空配列を返す
+        if (!mealsData) {
             return [];
         }
 
-        // データを明示的に型付け
-        const meals = data as Meal[];
-
-        // 日付ごとにグループ化
-        const mealsByDate: Record<string, Meal[]> = {};
-        meals.forEach(meal => {
-            if (!mealsByDate[meal.meal_date]) {
-                mealsByDate[meal.meal_date] = [];
-            }
-            (mealsByDate[meal.meal_date] as Meal[]).push(meal);
+        // DBの型 (NutritionData | null) から StandardizedMealNutrition | null へ変換し、Meal に追加
+        const mealsWithStandardizedNutrition: MealWithStandardizedNutrition[] = mealsData.map(meal => {
+            const dbNutritionData = meal.nutrition_data as NutritionData | null; // DBからのデータを型付け
+            const standardizedNutrition = dbNutritionData
+                ? convertToStandardizedNutrition(dbNutritionData) // DB型を変換
+                : null;
+            return {
+                ...(meal as Meal), // Meal 型にキャスト
+                nutrition: standardizedNutrition // nutrition プロパティを追加
+            };
         });
 
-        // 日付ごとの食事データを集計
-        const summaries = Object.entries(mealsByDate).map(([date, meals]) => {
-            // nutrition_dataのデフォルト値を設定
-            const defaultNutrition = {
-                calories: 0,
-                protein: 0,
-                iron: 0,
-                folic_acid: 0,
-                calcium: 0,
-                vitamin_d: 0,
-                confidence_score: 0
-            };
+        // 日付ごとに食事をグループ化
+        const mealsByDate: { [date: string]: MealWithStandardizedNutrition[] } = {};
+        mealsWithStandardizedNutrition.forEach(meal => {
+            const dateKey = meal.meal_date; // Use a variable for clarity
+            if (!mealsByDate[dateKey]) {
+                mealsByDate[dateKey] = [];
+            }
+            // Add non-null assertion operator '!' to assure TypeScript it's not undefined here
+            mealsByDate[dateKey]!.push(meal);
+        });
 
-            // meals は必ず配列として存在する（空の配列の可能性はある）
+        // 栄養素検索ヘルパー関数
+        const findNutrientValue = (nutrients: Nutrient[] | null | undefined, name: string): number => {
+            if (!nutrients) return 0;
+            const nutrient = nutrients.find(n => n.name === name);
+            return nutrient?.value || 0;
+        };
+
+        // 日付ごとの食事データを集計
+        const summaries: UpdatedDailyMealSummary[] = Object.entries(mealsByDate).map(([date, mealsInDate]) => {
             const total_nutrition: BasicNutritionData = {
-                calories: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).calories || 0), 0),
-                protein: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).protein || 0), 0),
-                iron: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).iron || 0), 0),
-                folic_acid: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).folic_acid || 0), 0),
-                calcium: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).calcium || 0), 0),
-                vitamin_d: meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).vitamin_d || 0), 0),
-                confidence_score: meals.length > 0
-                    ? meals.reduce((sum, meal) => sum + ((meal.nutrition_data || defaultNutrition).confidence_score || 0), 0) / meals.length
+                calories: mealsInDate.reduce((sum, meal) => sum + (meal.nutrition?.totalCalories || 0), 0),
+                protein: mealsInDate.reduce((sum, meal) => sum + findNutrientValue(meal.nutrition?.totalNutrients, 'たんぱく質'), 0),
+                iron: mealsInDate.reduce((sum, meal) => sum + findNutrientValue(meal.nutrition?.totalNutrients, '鉄'), 0),
+                folic_acid: mealsInDate.reduce((sum, meal) => sum + findNutrientValue(meal.nutrition?.totalNutrients, '葉酸'), 0),
+                calcium: mealsInDate.reduce((sum, meal) => sum + findNutrientValue(meal.nutrition?.totalNutrients, 'カルシウム'), 0),
+                vitamin_d: mealsInDate.reduce((sum, meal) => sum + findNutrientValue(meal.nutrition?.totalNutrients, 'ビタミンD'), 0),
+                confidence_score: mealsInDate.length > 0
+                    ? mealsInDate.reduce((sum, meal) => sum + (meal.nutrition?.reliability?.confidence || 0), 0) / mealsInDate.length
                     : 0
             };
 
             return {
                 date,
-                meals,
+                meals: mealsInDate,
                 total_nutrition
-            } as DailyMealSummary;
+            };
         });
 
         return summaries;
@@ -449,7 +472,7 @@ export const markAdviceAsRead = async (adviceId: string): Promise<boolean> => {
 
 /**
  * 日次栄養ログを保存または更新する
- * @param logData 栄養ログデータ
+ * @param logData 栄養ログデータ (DB保存形式: NutritionData)
  * @param date 日付（YYYY-MM-DD形式）
  * @returns 保存されたログデータ
  */
@@ -465,50 +488,46 @@ export const saveDailyNutritionLog = async (
         }
 
         // 既存のログを確認
-        const { data: existingLog } = await supabase
+        const { data: existingLog, error: fetchError } = await supabase
             .from('daily_nutrition_logs')
             .select('id')
             .eq('user_id', session.user.id)
             .eq('log_date', date)
-            .single();
+            .maybeSingle();
 
-        let result;
+        if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+
+        const logToSave = {
+            user_id: session.user.id,
+            log_date: date,
+            nutrition_data: logData,
+            ai_comment: aiComment,
+        };
 
         if (existingLog) {
             // 更新
             const { data, error } = await supabase
                 .from('daily_nutrition_logs')
-                .update({
-                    nutrition_data: logData,
-                    ai_comment: aiComment,
-                    updated_at: new Date().toISOString()
-                })
+                .update(logToSave)
                 .eq('id', existingLog.id)
                 .select()
                 .single();
 
             if (error) throw error;
-            result = data;
+            return data;
         } else {
             // 新規作成
             const { data, error } = await supabase
                 .from('daily_nutrition_logs')
-                .insert({
-                    user_id: session.user.id,
-                    log_date: date,
-                    nutrition_data: logData,
-                    ai_comment: aiComment
-                })
+                .insert(logToSave)
                 .select()
                 .single();
 
             if (error) throw error;
-            result = data;
+            return data;
         }
-
-        return result;
     } catch (error) {
-        console.error('栄養ログ保存エラー:', error);
+        console.error('日次栄養ログ保存エラー:', error);
         return null;
     }
 };
