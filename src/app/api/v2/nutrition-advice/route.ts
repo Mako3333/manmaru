@@ -4,18 +4,17 @@ import { createServerClient } from '@supabase/ssr'; // type CookieOptions を削
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from "next/headers";
 import { z } from 'zod';
-// import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
+import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { ErrorCode, AppError } from "@/lib/error";
 import { createSuccessResponse } from '@/lib/api/response';
-import { getJapanDate } from '@/lib/date-utils'; // getCurrentSeason, calculatePregnancyWeek, getTrimesterNumber を削除
+import { getJapanDate, calculatePregnancyWeek, getTrimesterNumber, getCurrentSeason } from '@/lib/date-utils';
 import { format } from 'date-fns';
-// import { ja } from 'date-fns/locale/ja'; // ja ロケールを削除
-// import {
-//     getPastNutritionData,
-//     identifyDeficientNutrients
-// } from '@/lib/api/nutrition-advice-helpers';
-import { AdviceType } from '@/types/advice'; // AdviceType をインポート
-// import { PromptType } from '@/lib/ai/prompts/prompt-service'; // PromptType を削除
+import {
+    getPastNutritionData,
+    identifyDeficientNutrients
+} from '@/lib/api/nutrition-advice-helpers';
+import { AdviceType } from '@/types/advice';
+import { PromptType } from '@/lib/ai/prompts/prompt-service';
 
 // アドバイスタイプのリテラル型 (削除)
 // type AdviceType = 'DAILY_INITIAL' | 'AFTER_MEALS' | 'MANUAL_REFRESH';
@@ -179,79 +178,100 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
         }
     }
 
-    // --- AI生成ロジック --- (ヘルパー関数を利用)
+    // --- AI生成ロジック --- 
     console.log(`[API Logic] Proceeding to generate new advice via AI for type: ${type}`);
 
-    // // ユーザー情報と過去の栄養データを準備
-    // const pregnancyWeek = calculatePregnancyWeek(profile.due_date);
-    // const trimester = getTrimesterNumber(pregnancyWeek);
-    // const season = getCurrentSeason();
-    // const pastNutrition = await getPastNutritionData(supabase, user.id, targetDate);
-    // const { deficientNutrients, recentMeals } = identifyDeficientNutrients(pastNutrition);
+    // ユーザー情報と過去の栄養データを準備
+    const pregnancyWeek = calculatePregnancyWeek(profile.due_date);
+    const trimester = getTrimesterNumber(pregnancyWeek);
+    const season = getCurrentSeason();
+    const pastNutrition = await getPastNutritionData(supabase, user.id);
+    // Assuming identifyDeficientNutrients returns the list directly
+    const deficientNutrients = identifyDeficientNutrients(pastNutrition); // Assign directly
+    // recentMeals は promptContext から削除 (あるいは別の方法で取得)
 
-    // // プロンプトコンテキストを作成
-    // const promptContext = {
-    //     type,
-    //     pregnancyWeek,
-    //     trimester,
-    //     season,
-    //     deficientNutrients,
-    //     recentMeals,
-    //     // 他に必要な情報があれば追加
-    // };
+    // プロンプトコンテキストを作成
+    const promptContext = {
+        type,
+        pregnancyWeek,
+        trimester,
+        season,
+        deficientNutrients,
+        // recentMeals, // Still removed for now
+    };
 
-    // // AIサービスを初期化
-    // const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
+    // --- Add Logging for Prompt Context --- 
+    console.log("[API AI Request] Prompt Context:", JSON.stringify(promptContext, null, 2));
+    // ---------------------------------------
 
-    // // プロンプトタイプを選択
-    // const promptType = type === 'DAILY_INITIAL'
-    //     ? PromptType.NUTRITION_ADVICE_DAILY
-    //     : PromptType.NUTRITION_ADVICE_REFRESH;
+    // AIサービスを初期化
+    const aiService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
-    // // アドバイス生成
-    // const adviceResult = await aiService.generateNutritionAdvice(promptContext, promptType);
+    // プロンプトタイプを選択
+    const promptType = PromptType.NUTRITION_ADVICE;
 
-    // if (!adviceResult || !adviceResult.success || !adviceResult.data) {
-    //     throw new AppError({ code: ErrorCode.AI.GENERATION_ERROR, message: 'AIアドバイスの生成に失敗しました' });
-    // }
+    // アドバイス生成
+    const adviceResult = await aiService.getNutritionAdvice(promptContext, promptType);
 
-    // // 結果をDBに保存
-    // const { data: savedAdvice, error: saveError } = await supabase
-    //     .from('daily_nutri_advice')
-    //     .insert({
-    //         user_id: user.id,
-    //         advice_date: targetDate,
-    //         advice_type: type,
-    //         advice_summary: adviceResult.data.summary,
-    //         advice_detail: adviceResult.data.detail,
-    //         recommended_foods: adviceResult.data.recommendedFoods || [],
-    //         deficient_nutrients: deficientNutrients, // 保存しておく
-    //         raw_ai_response: adviceResult.rawResponse, // 必要なら生レスポンスも保存
-    //         is_read: false
-    //     })
-    //     .select()
-    //     .single();
+    console.log("[API AI Response] Raw adviceResult:", JSON.stringify(adviceResult, null, 2));
 
-    // if (saveError) {
-    //     console.error('[API DB Save Error] Error saving generated advice:', saveError);
-    //     // DB保存エラーは致命的ではないかもしれないが、ログには残す
-    //     // ここではエラーを投げずに続行するが、要件に応じて変更
-    // }
+    // Check if essential data is present, using detailedAdvice from AI result type
+    if (!adviceResult || !adviceResult.summary || !adviceResult.detailedAdvice) { // Check detailedAdvice
+        console.error("[API AI Error] Failed to generate AI advice or result is missing fields:", adviceResult);
+        throw new AppError({ code: ErrorCode.AI.MODEL_ERROR, message: 'AIアドバイスの生成に失敗しました', details: 'AI service returned invalid or incomplete data' });
+    }
 
-    // return createSuccessResponse({
-    //     id: savedAdvice?.id, // 保存に成功していればIDがある
-    //     advice_date: targetDate,
-    //     advice_type: type,
-    //     advice_summary: adviceResult.data.summary,
-    //     advice_detail: adviceResult.data.detail,
-    //     recommended_foods: adviceResult.data.recommendedFoods || [],
-    //     is_read: false,
-    //     generated_at: savedAdvice?.created_at || new Date().toISOString(), // DB保存時刻 or 現在時刻
-    //     source: 'ai' // 生成元を示す情報
-    // }, {});
+    // Prepare data for DB upsert - Use description directly
+    const dataToUpsert = {
+        user_id: user.id,
+        advice_date: targetDate,
+        advice_type: type,
+        advice_summary: adviceResult.summary,
+        advice_detail: adviceResult.detailedAdvice,
+        // Remove mapping, save recommendedFoods with description directly
+        recommended_foods: adviceResult.recommendedFoods?.map(food => ({
+            name: food.name,
+            description: food.description || "" // Use description
+        })) || null,
+        is_read: false
+    };
 
-    // TODO: AI生成ロジックを実装
-    return createSuccessResponse({ message: "AI generation logic not yet implemented." }, {});
+    console.log("[API DB Upsert] Data to upsert:", JSON.stringify(dataToUpsert, null, 2));
+
+    // 結果をDBに Upsert
+    const { data: savedOrUpdatedAdvice, error: upsertError } = await supabase
+        .from('daily_nutri_advice')
+        .upsert(dataToUpsert, {
+            onConflict: 'user_id, advice_date, advice_type'
+        })
+        .select()
+        .single();
+
+    if (upsertError) {
+        console.error('[API DB Upsert Error] Error upserting generated advice:', upsertError);
+        // Use API_ERROR as fallback for DB_ERROR
+        throw new AppError({ code: ErrorCode.Base.API_ERROR, message: 'アドバイスの保存/更新に失敗しました', originalError: upsertError });
+    }
+
+    console.log("[API DB Upsert] Upsert successful, returned data:", savedOrUpdatedAdvice);
+
+    // レスポンスを作成 (Use the data returned from upsert)
+    const responseData = {
+        id: savedOrUpdatedAdvice.id,
+        advice_date: savedOrUpdatedAdvice.advice_date,
+        advice_type: savedOrUpdatedAdvice.advice_type,
+        advice_summary: savedOrUpdatedAdvice.advice_summary,
+        advice_detail: savedOrUpdatedAdvice.advice_detail,
+        recommended_foods: savedOrUpdatedAdvice.recommended_foods, // This should now contain {name, description}
+        is_read: savedOrUpdatedAdvice.is_read,
+        generated_at: savedOrUpdatedAdvice.created_at,
+        source: 'ai'
+    };
+
+    console.log("[API Response] Data to return:", JSON.stringify(responseData, null, 2));
+
+    return createSuccessResponse(responseData, {});
+
 });
 
 export const OPTIONS = withErrorHandling(async () => {

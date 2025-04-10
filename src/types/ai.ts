@@ -3,6 +3,7 @@ import { FoodInputParseResult } from '@/lib/food/food-input-parser'; // Assuming
 import { ErrorCode, AnyErrorCode } from '@/lib/error'; // ErrorCode と AnyErrorCode をインポート
 import { Food, FoodQuantity, FoodMatchResult } from '@/types/food'; // Food, FoodQuantity, FoodMatchResult をインポート
 import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition'; // StandardizedMealNutrition と NutritionData をインポート
+import type { AnyErrorCode as AnyErrorCodeCodes } from '@/lib/error/codes/error-codes'; // Assuming AnyErrorCode is here
 
 /**
  * AIによる食品解析結果の基本的な構造 (パーサーが返す形式)
@@ -126,12 +127,12 @@ export interface NutritionAdviceResult {
     detailedAdvice?: string | undefined;
     recommendedFoods?: Array<{
         name: string;
-        benefits: string;
+        description: string;
     }> | undefined;
     /** デバッグ情報（オプショナル） */
     debug?: unknown;
     /** エラー情報（オプショナル） */
-    error?: { message: string; code?: AnyErrorCode; details?: unknown } | undefined;
+    error?: { message: string; code?: AnyErrorCodeCodes; details?: unknown } | undefined;
 }
 
 /**

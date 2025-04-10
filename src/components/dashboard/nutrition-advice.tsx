@@ -36,7 +36,10 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
     const [state, setState] = useState<{
         loading: boolean;
         error: string | null;
-        advice: { content: string; recommended_foods: string[] } | null;
+        advice: {
+            content: string;
+            recommended_foods: Array<{ name: string; description: string }>
+        } | null;
         redirect?: string;
     }>({
         loading: true,
@@ -44,20 +47,25 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
         advice: null,
     });
 
-    // アドバイスタイプは固定でDAILYを使用
-    const [forceUpdate, setForceUpdate] = useState<boolean>(false);
+    // Remove forceUpdate state
+    // const [forceUpdate, setForceUpdate] = useState<boolean>(false);
     const [currentDate, setCurrentDate] = useState<string>(selectedDate || getJapanDate());
 
     // 2. データ取得関数 (useCallback でメモ化)
-    const fetchDetailedAdvice = useCallback(async (date = currentDate, force = forceUpdate) => {
+    // Remove forceUpdate from dependencies and default value for 'force'
+    const fetchDetailedAdvice = useCallback(async (date: string, force: boolean) => {
+        // Ensure we use the passed 'date' parameter
+        const targetDate = date;
         try {
             setState(prev => ({ ...prev, loading: true, error: null }));
-            console.log('DetailedNutritionAdvice: データ取得開始', { date, force });
+            console.log('DetailedNutritionAdvice: データ取得開始', { date: targetDate, force });
 
-            let apiUrl = `/api/v2/nutrition-advice?type=DAILY_INITIAL&date=${date}`;
+            const adviceType = force ? 'MANUAL_REFRESH' : 'DAILY_INITIAL';
+            let apiUrl = `/api/v2/nutrition-advice?type=${adviceType}&date=${targetDate}`;
             if (force) {
                 apiUrl += '&forceRegenerate=true';
             }
+            console.log(`[fetchDetailedAdvice] Constructed API URL: ${apiUrl}`);
 
             const response = await fetch(apiUrl);
             console.log('DetailedNutritionAdvice: APIレスポンスステータス', response.status);
@@ -156,9 +164,6 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                     console.error("既読更新エラー:", readError);
                 }
             }
-
-            // 強制更新フラグをリセット
-            setForceUpdate(false);
         } catch (err) {
             // fetch自体、または response.ok 後の処理でエラーが発生した場合
             console.error("詳細アドバイス取得/処理エラー:", err);
@@ -186,31 +191,39 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
             }));
 
             toast.error(errorMessageString); // トーストにも反映
-            setForceUpdate(false); // 強制更新フラグをリセット
         }
-    }, [currentDate, forceUpdate]); // 依存配列に currentDate と forceUpdate を追加
+    }, []); // Removed currentDate dependency as date is now always passed
 
     // 日付が変更されたときの処理
+    // Remove forceUpdate from dependencies, call fetch with force=false
     useEffect(() => {
         if (selectedDate) {
             setCurrentDate(selectedDate);
-            fetchDetailedAdvice(selectedDate, forceUpdate); // forceUpdate を渡す
+            // Call fetchDetailedAdvice directly with the new date and force=false
+            fetchDetailedAdvice(selectedDate, false);
         }
-    }, [selectedDate, fetchDetailedAdvice, forceUpdate]); // 依存配列に fetchDetailedAdvice と forceUpdate を追加
+        // Update dependencies
+    }, [selectedDate, fetchDetailedAdvice]);
 
     // 5. 初回読み込み
+    // Call fetch with force=false
     useEffect(() => {
-        console.log('DetailedNutritionAdvice: コンポーネントマウント'); // デバッグ用ログ
-        fetchDetailedAdvice();
-    }, [fetchDetailedAdvice]); // 依存配列に fetchDetailedAdvice を追加
+        console.log('DetailedNutritionAdvice: コンポーネントマウント、初回データ取得');
+        // Use the initial currentDate state for the first load
+        fetchDetailedAdvice(currentDate, false);
+        // Update dependencies - fetchDetailedAdvice might change if its deps change
+    }, [fetchDetailedAdvice, currentDate]); // Add currentDate here
 
     // 6. 強制更新ハンドラ
-    const handleForceUpdate = useCallback(() => { // useCallback でメモ化
-        setForceUpdate(true);
-        // 更新中のステータスをセット
+    // Remove setForceUpdate(true), update dependencies
+    const handleForceUpdate = useCallback(() => {
+        console.log('DetailedNutritionAdvice: 強制更新ボタンクリック');
+        // setForceUpdate(true); // Remove this line
         setState(prev => ({ ...prev, loading: true, error: null }));
+        // Call fetch directly with force=true
         fetchDetailedAdvice(currentDate, true);
-    }, [currentDate, fetchDetailedAdvice]); // 依存配列に currentDate と fetchDetailedAdvice を追加
+        // Update dependencies
+    }, [currentDate, fetchDetailedAdvice]);
 
     // 7. 日付選択ハンドラ (削除)
     // const handleDateChange = (date: string) => {
@@ -288,7 +301,9 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                                             <span className="inline-flex w-6 h-6 rounded-full bg-green-100 text-green-600 flex-shrink-0 items-center justify-center mr-2 mt-0.5 text-sm font-medium">
                                                 {index + 1}
                                             </span>
-                                            <span className="text-gray-700">{food}</span>
+                                            <span className="text-gray-700 text-sm">
+                                                <strong className="font-medium text-gray-800">{food.name}:</strong> {food.description}
+                                            </span>
                                         </li>
                                     ))}
                                 </ul>

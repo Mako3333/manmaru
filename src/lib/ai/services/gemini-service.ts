@@ -277,7 +277,7 @@ export class GeminiService implements IAIService {
     }
 
     /**
-     * 栄養アドバイスを取得
+     * 栄養アドバイスを生成
      */
     async getNutritionAdvice(params: Record<string, unknown>, promptType: PromptType): Promise<NutritionAdviceResult> {
         try {
@@ -301,21 +301,18 @@ export class GeminiService implements IAIService {
                 maxOutputTokens: this.config.maxOutputTokens,
             };
             const rawResponse = await this.modelService.invokeText(prompt, modelOptions);
-            const parseResult = await this.parser.parseResponse(rawResponse);
+            const parseResult: GeminiParseResult = await this.parser.parseResponse(rawResponse);
             console.log(`[GeminiService] Nutrition advice generation successful for type: ${promptType}. Parse result keys:`, Object.keys(parseResult));
 
-            // recommendedFoods の型マッピング
-            const recommendedFoodsData = parseResult.recommended_foods
-                ? parseResult.recommended_foods.map((food: Record<string, unknown>) => ({
-                    name: (food.name as string) || '不明な食品',
-                    benefits: ''
-                }))
-                : [];
-
+            // NutritionAdviceResult を構築 - recommendedFoods のマッピングを修正
             const result: NutritionAdviceResult = {
                 summary: parseResult.advice_summary || '',
-                detailedAdvice: parseResult.advice_detail,
-                recommendedFoods: recommendedFoodsData,
+                detailedAdvice: parseResult.advice_detail || '',
+                // Map description correctly from parseResult
+                recommendedFoods: parseResult.recommended_foods?.map(food => ({
+                    name: food.name,
+                    description: food.description || '' // Use description from parser result
+                })) || [],
                 debug: { ...parseResult.debug, rawResponse: rawResponse }
             };
             if (parseResult.error) {
