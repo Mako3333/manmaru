@@ -50,3 +50,5 @@ next-env.d.ts
 .env.*.local
 
 archived_documents/
+
+.cursor/mcp.json
