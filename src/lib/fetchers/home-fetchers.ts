@@ -14,18 +14,30 @@ const supabase = createBrowserClient(
 // プロファイル取得 Fetcher
 export const profileFetcher = async (userId: string): Promise<UserProfile | null> => {
     console.log('[Fetcher] profileFetcher called for user:', userId);
-    if (!userId) return null;
+    if (!userId) {
+        console.log('[Fetcher] profileFetcher: No userId, returning null.');
+        return null;
+    }
     try {
+        console.log('[Fetcher] profileFetcher: Attempting Supabase query...');
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
             .eq('user_id', userId)
             .maybeSingle<UserProfile>();
-        if (error) throw error;
-        console.log('[Fetcher] profileFetcher success:', data);
+
+        console.log('[Fetcher] profileFetcher: Supabase response - data:', data);
+        console.log('[Fetcher] profileFetcher: Supabase response - error:', error);
+
+        if (error) {
+            console.error('[Fetcher] profileFetcher: Supabase query error detected.');
+            throw error;
+        }
+
+        console.log('[Fetcher] profileFetcher: Success, returning data:', data);
         return data;
     } catch (error) {
-        console.error('[Fetcher] Error fetching profile:', error);
+        console.error('[Fetcher] profileFetcher: Error caught in catch block:', error);
         // SWR はエラーを throw することを期待する
         throw error;
     }

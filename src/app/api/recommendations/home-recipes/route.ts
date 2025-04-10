@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { RecipeCard, ClippedRecipe } from '@/types/recipe';
 
-// レシピの型を定義
+// レシピの型を定義     
 // interface Recipe {
 //     id: string;
 //     title: string;
@@ -13,76 +14,195 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 //     use_placeholder?: boolean;
 // }
 
-export async function GET(_req: NextRequest) {
-    console.log('[API DEBUG] /api/recommendations/home-recipes GET handler started');
-    try {
-        const cookieStore = await cookies();
-        console.log('[API DEBUG] Cookie store retrieved');
+// 配列をシャッフルするヘルパー関数
+function shuffleArray<T>(array: T[]): T[] {
+    if (array.length === 0) {
+        return [];
+    }
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = shuffled[i]!;
+        shuffled[i] = shuffled[j]!;
+        shuffled[j] = temp;
+    }
+    return shuffled;
+}
 
-        // Check if environment variables are loaded on the server
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !supabaseAnonKey) {
-            console.error('[API DEBUG] Supabase URL or Anon Key is missing on the server!');
-            return NextResponse.json({ status: 'debug_env_var_missing', error: 'Server environment variables missing' }, { status: 500 });
-        }
-        console.log('[API DEBUG] Supabase env vars seem loaded on server.');
+export async function GET(_req: NextRequest) {
+    // Prepare response object upfront -> REMOVED as it's not supported in Route Handlers
+    // const response = NextResponse.next();
+
+    try {
+        const cookieStore = await cookies(); // Keep this for Next.js 15+
 
         const supabase = createServerClient(
-            supabaseUrl, // Use checked variables
-            supabaseAnonKey, // Use checked variables
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             {
                 cookies: {
                     get(name: string) {
-                        const cookie = cookieStore.get(name)?.value;
-                        // console.log(`[API DEBUG] Cookie get: ${name} = ${cookie ? 'found' : 'not found'}`);
-                        return cookie;
+                        return cookieStore.get(name)?.value;
                     },
                     set(name: string, value: string, options: CookieOptions) {
-                        try {
-                            cookieStore.set({ name, value, ...options });
-                            console.log(`[API DEBUG] Cookie set: ${name}`);
-                        } catch (error) {
-                            // Note: Setting cookies in Route Handlers might be problematic
-                            console.error(`[API DEBUG] Error setting cookie ${name}:`, error);
-                        }
+                        // In Route Handlers, modifying cookies via config's set/remove is problematic
+                        // because the cookie store is read-only. Supabase interactions like
+                        // getSession primarily use the 'get' method. Cookie setting/removal
+                        // for auth state changes happens via response headers in the final return.
+                        // This function is required by the type signature but should be a no-op here.
+                        // console.warn('Supabase client attempted to set cookie via config (noop in Route Handler):', name);
                     },
                     remove(name: string, options: CookieOptions) {
-                        try {
-                            cookieStore.delete({ name, ...options });
-                            console.log(`[API DEBUG] Cookie removed: ${name}`);
-                        } catch (error) {
-                            console.error(`[API DEBUG] Error removing cookie ${name}:`, error);
-                        }
+                        // Similar to 'set', make this a no-op in Route Handlers.
+                        // console.warn('Supabase client attempted to remove cookie via config (noop in Route Handler):', name);
                     },
                 },
             }
         );
-        console.log('[API DEBUG] Supabase server client created');
-
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.log('[API DEBUG] supabase.auth.getSession attempted');
 
         if (sessionError) {
-            console.error('[API DEBUG] Error getting session:', sessionError);
-            // Return a specific error response for debugging
-            return NextResponse.json({ status: 'debug_session_error', error: sessionError.message }, { status: 500 });
+            console.error('Error getting session:', sessionError);
         }
 
+        // If no session, return default empty state
         if (!session) {
-            console.log('[API DEBUG] No session found');
-            // Return a specific response indicating no session
-            return NextResponse.json({ status: 'debug_no_session', recipes: [] }); // Match expected structure loosely
+            // Return JSON without merging headers from the removed 'response' object
+            return NextResponse.json({ status: 'no_clips', recipes: [], total_clips: 0 });
+        }
+        const userId = session.user.id; // userId is guaranteed here
+
+        // 1. Fetch clipped recipes
+        const { data: clippedRecipesData, error: clippedError } = await supabase
+            .from('clipped_recipes')
+            .select('*')
+            .eq('user_id', userId)
+            .order('clipped_at', { ascending: false });
+
+        if (clippedError) {
+            console.error('Error fetching clipped recipes:', clippedError);
+            // Return JSON without merging headers
+            return NextResponse.json({ status: 'no_clips', recipes: [], total_clips: 0 });
         }
 
-        console.log('[API DEBUG] Session found for user:', session.user.id);
-        // Return a minimal success response for debugging, mimicking original structure slightly
-        return NextResponse.json({ status: 'debug_success', recipes: [], total_clips: 0, userId: session.user.id });
+        // 2. Fetch recently used recipe IDs
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentlyUsed, error: recentError } = await supabase
+            .from('meal_recipe_entries')
+            .select(`
+                clipped_recipe_id,
+                meals!inner (user_id)
+            `)
+            .eq('meals.user_id', userId)
+            .gte('meal_recipe_entries.created_at', sevenDaysAgo);
+
+        if (recentError) {
+            console.error('Error fetching recently used recipes:', recentError);
+        }
+        const recentlyUsedIds = new Set(recentlyUsed?.map(item => item.clipped_recipe_id).filter(Boolean) || []);
+
+        // 3. Process ClippedRecipe[] into RecipeCard[] format
+        const allRecipes: RecipeCard[] = (clippedRecipesData || [])
+            .filter((record): record is ClippedRecipe => !!record)
+            .map(record => {
+                let finalImageUrl: string | undefined = undefined;
+                if (record.source_platform === 'instagram') {
+                    finalImageUrl = record.image_url ?? '/icons/instagram.svg';
+                } else if (record.source_platform === 'tiktok') {
+                    finalImageUrl = record.image_url ?? '/icons/tiktok.svg';
+                } else if (record.use_placeholder || !record.image_url) {
+                    finalImageUrl = '/images/placeholder-recipe.svg';
+                } else {
+                    finalImageUrl = record.image_url;
+                }
+
+                // Map from ClippedRecipe to RecipeCard, omitting undefined optional fields
+                const recipeCard: RecipeCard = {
+                    id: record.id,
+                    title: record.title ?? 'タイトルなし',
+                    is_favorite: record.is_favorite ?? false,
+                    ...(finalImageUrl && { image_url: finalImageUrl }),
+                    ...(record.recipe_type && { recipe_type: record.recipe_type }),
+                    ...(record.caution_level && { caution_level: record.caution_level }),
+                    ...(record.source_platform && { source_platform: record.source_platform }),
+                    ...(record.content_id && { content_id: record.content_id }),
+                    ...(record.use_placeholder !== null && record.use_placeholder !== undefined && { use_placeholder: record.use_placeholder }),
+                };
+                return recipeCard;
+            });
+
+        const clippedCount = allRecipes.length;
+        let recommendedRecipes: RecipeCard[] = [];
+
+        // 4. Recommendation Logic based on clippedCount
+        if (clippedCount > 0 && clippedCount < 5) {
+            // Use the first recipe if it exists
+            const firstRecipe = allRecipes[0];
+            if (firstRecipe) {
+                recommendedRecipes = [firstRecipe];
+            }
+        } else if (clippedCount >= 5 && clippedCount < 10) {
+            const availableRecipes = allRecipes.filter(r => !recentlyUsedIds.has(r.id));
+            const recipesToUse = availableRecipes.length > 0 ? availableRecipes : allRecipes;
+            const favoriteRecipes = recipesToUse.filter(r => r.is_favorite);
+
+            if (favoriteRecipes.length >= 2) {
+                recommendedRecipes = shuffleArray(favoriteRecipes).slice(0, 2);
+            } else if (favoriteRecipes.length === 1) {
+                const firstFavorite = favoriteRecipes[0];
+                if (firstFavorite) {
+                    recommendedRecipes.push(firstFavorite);
+                    const nonFavorites = recipesToUse.filter(r => !r.is_favorite && r.id !== firstFavorite.id);
+                    const firstNonFavorite = shuffleArray(nonFavorites)[0];
+                    if (firstNonFavorite) {
+                        recommendedRecipes.push(firstNonFavorite);
+                    }
+                }
+            } else {
+                recommendedRecipes = shuffleArray(recipesToUse).slice(0, Math.min(2, recipesToUse.length));
+            }
+            // Ensure maximum 2 recipes
+            recommendedRecipes = recommendedRecipes.slice(0, 2);
+        } else if (clippedCount >= 10) {
+            const availableRecipesFull = allRecipes.filter(r => !recentlyUsedIds.has(r.id));
+            const recipesToUseFull = availableRecipesFull.length < 3 ? allRecipes : availableRecipesFull;
+            const favoriteRecipesFull = recipesToUseFull.filter(r => r.is_favorite);
+
+            if (favoriteRecipesFull.length >= 3) {
+                recommendedRecipes = shuffleArray(favoriteRecipesFull).slice(0, 3);
+            } else {
+                recommendedRecipes = [...favoriteRecipesFull];
+                const nonFavoritesFull = recipesToUseFull.filter(r => !r.is_favorite);
+                const remainingCount = 3 - recommendedRecipes.length;
+                if (nonFavoritesFull.length > 0 && remainingCount > 0) {
+                    const additionalRecipes = shuffleArray(nonFavoritesFull).slice(0, remainingCount);
+                    recommendedRecipes = [...recommendedRecipes, ...additionalRecipes];
+                }
+            }
+            // Ensure maximum 3 recipes
+            recommendedRecipes = recommendedRecipes.slice(0, 3);
+        }
+
+        // 5. Determine status
+        const status = (() => {
+            if (clippedCount === 0) return 'no_clips';
+            if (clippedCount < 5) return 'few_clips';
+            if (clippedCount < 10) return 'few_more_clips';
+            return 'success';
+        })();
+
+        // 6. Return response
+        // Return JSON without merging headers
+        return NextResponse.json({
+            status: status,
+            recipes: recommendedRecipes,
+            total_clips: clippedCount
+        });
 
     } catch (error) {
-        console.error('[API DEBUG] Unexpected error in GET handler:', error);
-        // Return a generic server error response
-        return NextResponse.json({ status: 'debug_catch_error', error: error instanceof Error ? error.message : 'Unknown server error' }, { status: 500 });
+        console.error('Error in recommend recipes API:', error);
+        // The catch block returns its own response, no need to merge headers here
+        return NextResponse.json({ error: 'Internal server error', status: 'error', recipes: [], total_clips: 0 }, { status: 500 });
     }
 }
 

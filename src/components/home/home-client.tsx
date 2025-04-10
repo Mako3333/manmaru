@@ -41,21 +41,38 @@ interface AdviceCardProps {
 }
 
 export default function HomeClient({ user }: HomeClientProps) {
+    console.log('[HomeClient] Initial render. User:', user);
     const router = useRouter();
 
     const [currentDate] = useState(getJapanDate());
+    console.log('[HomeClient] Current Date:', currentDate);
     const [isFirstTimeUser, setIsFirstTimeUser] = useState<boolean>(false);
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
 
+    console.log('[HomeClient] SWR Key for profile:', user ? user.id : null);
     const {
         data: profile,
         error: profileError,
         isLoading: isLoadingProfile
     } = useSWR(
         user ? user.id : null,
-        profileFetcher
+        profileFetcher,
+        {
+            onSuccess: (data, key, config) => {
+                console.log('[HomeClient] SWR onSuccess for profile. Data:', data);
+            },
+            onError: (err, key, config) => {
+                console.error('[HomeClient] SWR onError for profile. Error:', err);
+            }
+        }
     );
 
+    useEffect(() => {
+        console.log('[HomeClient] Profile fetched (or changed via useEffect):', profile);
+        console.log('[HomeClient] Profile due_date (via useEffect):', profile?.due_date);
+    }, [profile]);
+
+    console.log('[HomeClient] SWR Key for targets:', profile && profile.due_date ? profile.due_date : null);
     const {
         data: userTargets,
         error: targetsError,
@@ -66,6 +83,7 @@ export default function HomeClient({ user }: HomeClientProps) {
         { fallbackData: DEFAULT_NUTRITION_TARGETS }
     );
 
+    console.log('[HomeClient] SWR Key for progress:', user ? [user.id, currentDate] as const : null);
     const {
         data: nutritionProgress,
         error: progressError,
@@ -151,14 +169,10 @@ export default function HomeClient({ user }: HomeClientProps) {
     const pregnancyWeek = pregnancyInfo.week;
     const pregnancyDays = pregnancyInfo.days;
 
-    const GreetingMessage: React.FC<GreetingMessageProps> = ({ week }) => {
-        const timeOfDay = new Date().getHours() < 12 ? 'おはようございます' : 'こんにちは';
-        let message = `${timeOfDay}！`;
-        if (week !== undefined) {
-            message += ` 妊娠${week}週ですね。`;
-        }
-        return <h1 className="text-xl font-medium">{message}</h1>;
-    };
+    // GreetingMessage definition is MOVED from here...
+
+    // Log profile value on every render, right before returning JSX
+    console.log('[HomeClient] Value of profile just before render:', profile);
 
     if (showOnboarding) {
         return <OnboardingMessage onDismiss={dismissOnboarding} />;
@@ -188,6 +202,17 @@ export default function HomeClient({ user }: HomeClientProps) {
             </div>
         );
     }
+
+    // ... Define GreetingMessage locally inside the render logic ...
+    const GreetingMessage: React.FC<GreetingMessageProps> = ({ week }) => {
+        const timeOfDay = new Date().getHours() < 12 ? 'おはようございます' : 'こんにちは';
+        let message = `${timeOfDay}！`;
+        if (week !== undefined) {
+            message += ` 妊娠${week}週ですね。`;
+        }
+        // Ensure it returns JSX
+        return <h1 className="text-xl font-medium">{message}</h1>;
+    };
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
@@ -246,14 +271,32 @@ export default function HomeClient({ user }: HomeClientProps) {
             </header>
             {/* メインコンテンツ */}
             <main className="flex-grow container mx-auto max-w-4xl px-4 pt-6 space-y-8">
-
-                <GreetingMessage week={pregnancyWeek} />
-
                 {profile?.due_date && (
                     <PregnancyWeekInfo dueDate={profile.due_date} />
                 )}
 
-                {standardizedNutrition && userTargets && profile && (
+                {/* ActionCards section MOVED UP */}
+                <div className="grid grid-cols-2 gap-4">
+                    <ActionCard
+                        title="食事を記録"
+                        description="今日の栄養を分析"
+                        icon={<Utensils className="h-5 w-5" />}
+                        href="/meals/log"
+                        accentColor="bg-[#2E9E6C]"
+                        iconBgColor="bg-[#F0F7F4]"
+                    />
+                    <ActionCard
+                        title="レシピを探す"
+                        description="不足栄養素を補う"
+                        icon={<Book className="h-5 w-5 text-[#ff7878]" />}
+                        href="/recipes"
+                        accentColor="bg-[#ff7878]"
+                        iconBgColor="bg-[#fff1f1]"
+                    />
+                </div>
+
+                {/* NutritionSummary section MOVED DOWN */}
+                {userTargets && profile && (
                     <NutritionSummary
                         dailyNutrition={standardizedNutrition}
                         targets={userTargets}
@@ -262,22 +305,10 @@ export default function HomeClient({ user }: HomeClientProps) {
                     />
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
-                    <ActionCard
-                        title="食事を記録する"
-                        description="今日の食事を記録しましょう"
-                        icon={<Utensils />}
-                        href="/meals/add"
-                    />
-                    <ActionCard
-                        title="食事履歴"
-                        description="過去の記録を見る"
-                        icon={<Calendar />}
-                        href="/meals/history"
-                    />
-                </div>
-
-                <AdviceCard date={currentDate} profile={profile} />
+                {/* AdviceCard remains after NutritionSummary */}
+                {profile && (
+                    <AdviceCard date={currentDate} profile={profile} />
+                )}
 
                 <RecommendedRecipes />
 
