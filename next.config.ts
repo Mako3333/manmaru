@@ -1,13 +1,16 @@
 import type { NextConfig } from "next";
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 const withPWA = require("next-pwa")({
   dest: "public",
   register: true,
   skipWaiting: true,
+  disable: !isProduction,
 });
 
 /** @type {import('next').NextConfig} */
-const nextConfig: NextConfig = withPWA({
+const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     turbo: {
@@ -36,6 +39,6 @@ const nextConfig: NextConfig = withPWA({
       "placehold.jp"
     ],
   },
-});
+};
 
-module.exports = nextConfig;
+module.exports = isProduction ? withPWA(nextConfig) : nextConfig;

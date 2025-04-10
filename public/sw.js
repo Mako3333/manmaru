@@ -1,1 +1,100 @@
-if(!self.define){let e,s={};const i=(i,t)=>(i=new URL(i+".js",t).href,s[i]||new Promise((s=>{if("document"in self){const e=document.createElement("script");e.src=i,e.onload=s,document.head.appendChild(e)}else e=i,importScripts(i),s()})).then((()=>{let e=s[i];if(!e)throw new Error(`Module ${i} didn’t register its module`);return e})));self.define=(t,a)=>{const n=e||("document"in self?document.currentScript.src:"")||location.href;if(s[n])return;let c={};const o=e=>i(e,n),d={module:{uri:n},exports:c,require:o};s[n]=Promise.all(t.map((e=>d[e]||o(e)))).then((e=>(a(...e),c)))}}define(["./workbox-4754cb34"],(function(e){"use strict";importScripts(),self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"/_next/app-build-manifest.json",revision:"acc17384586eee09900c8ed0053b5a3c"},{url:"/_next/static/chunks/1010-05b5220027ced079.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/146-5e1087675752743d.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/1684-2c5f71744246bbee.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/1935-cc8f65a39f24f13d.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/294.e72d2554be082393.js",revision:"e72d2554be082393"},{url:"/_next/static/chunks/2975-deec07c17eef85c4.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/3013-0ce00e116ab48517.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/3568-73fa6af951e5276a.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/368-333d3de7af0d4ff3.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/472.a3826d29d6854395.js",revision:"a3826d29d6854395"},{url:"/_next/static/chunks/4bd1b696-379d18465f72c93f.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/5280-fa128af923a013c5.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/5514-d2270e1f6cd1fd03.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/5985-d10e52ae37cceae1.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/6671-9af6a288391d57a9.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/6766-ccbc8876aa90540b.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/6874-4fd0bcffdfad9eea.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/7179-51cd320c686a53c8.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/863-edef33b5f1452416.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/8910-82221d6fd6d3eb75.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/9297-e456004e556adfca.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/9341.7eda5fc1cc0a4399.js",revision:"7eda5fc1cc0a4399"},{url:"/_next/static/chunks/9447-90758646cfbc4a47.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/9802-b42b1762dc520824.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/9971-ea5c52fa1393ef5b.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/dashboard/page-f94750e4b010f56f.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/home/page-50eab43c4c813ccb.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/layout-adbd70eba6b7aeca.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/meals/log/page-4f693b58eaa19def.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/profile/page-3c26f4f99344c974.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/recipes/%5Bid%5D/page-fe12ddad3d94045e.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/recipes/clip/page-7695bef75df0694d.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/recipes/page-7df34ca3795a7d6e.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/(authenticated)/settings/page-4c956242bbd22357.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/_not-found/page-e85284b9d5d1a6ab.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/meals/%5Bid%5D/route-eca4e190b605b94b.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/meals/from-recipe/route-6661cee9b913119a.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/meals/range/route-4684f84fc9572c29.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/meals/route-5348bba6f5d0b231.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/meals/summary/route-3138bd80d9f0dd69.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recipes/%5Bid%5D/favorite/route-2a3d0f7bc7eed14d.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recipes/%5Bid%5D/route-5ae73a51817cddf1.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recipes/calculate-nutrients/route-8834377411db66e5.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recipes/parse-social-url/route-4779b02951fcba08.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recipes/route-e89aa19158c78473.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recipes/save/route-7adc1f933dafb8d3.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recommend-recipes/route-ea18ae8641b2b9da.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/recommendations/home-recipes/route-4bde637f03f16c83.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/update-nutrition-log/route-d2f533625691c0a8.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/v2/food/parse/route-117d972105c04c3b.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/v2/image/analyze/route-26f8991df27cf2a6.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/v2/meal/analyze/route-9a0bee5b473e8e37.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/v2/meal/text-analyze/route-b171a8b99dc3c859.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/v2/nutrition-advice/route-7f05ee3ec483c582.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/api/v2/recipe/parse/route-bdaa2bee654eedae.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/auth/callback/page-6f7ba56861a4430f.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/auth/login/page-5d9545289c028f61.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/auth/register/page-5dba85061413f494.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/layout-76f9d59254efc44d.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/meals/recognition/page-730536c40b852245.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/page-f8e7a40ebbfa48ca.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/app/terms/page-bbc1ce6404318566.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/framework-a6f7d6353315b97b.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/main-9c0cc762323ce840.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/main-app-345c2fe07a0cbd36.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/pages/_app-4b083d9fc5d4fec7.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/pages/_error-4c262101a52eda70.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/chunks/polyfills-42372ed130431b0a.js",revision:"846118c33b2c0e922d7b3a7676f81f6f"},{url:"/_next/static/chunks/webpack-94485558d0ed0bf4.js",revision:"oFAv-mil8oL8VdSYthhsd"},{url:"/_next/static/css/93beccf9dda684cc.css",revision:"93beccf9dda684cc"},{url:"/_next/static/media/26a46d62cd723877-s.woff2",revision:"befd9c0fdfa3d8a645d5f95717ed6420"},{url:"/_next/static/media/55c55f0601d81cf3-s.woff2",revision:"43828e14271c77b87e3ed582dbff9f74"},{url:"/_next/static/media/581909926a08bbc8-s.woff2",revision:"f0b86e7c24f455280b8df606b89af891"},{url:"/_next/static/media/6d93bde91c0c2823-s.woff2",revision:"621a07228c8ccbfd647918f1021b4868"},{url:"/_next/static/media/97e0cb1ae144a2a9-s.woff2",revision:"e360c61c5bd8d90639fd4503c829c2dc"},{url:"/_next/static/media/a34f9d1faa5f3315-s.p.woff2",revision:"d4fe31e6a2aebc06b8d6e558c9141119"},{url:"/_next/static/media/df0a9ae256c0569c-s.woff2",revision:"d54db44de5ccb18886ece2fda72bdfe0"},{url:"/_next/static/oFAv-mil8oL8VdSYthhsd/_buildManifest.js",revision:"08b8636d85d5b7ec9b4caadc80203e8d"},{url:"/_next/static/oFAv-mil8oL8VdSYthhsd/_ssgManifest.js",revision:"b6652df95db52feb4daf4eca35380933"},{url:"/api-v2-docs.html",revision:"c5fead3c078c2a54fa3306065af7cfaa"},{url:"/data/food_nutrition_database.json",revision:"628074808eabf0261702ab17547f7894"},{url:"/data/food_nutrition_database.json.backup",revision:"850d22275ab646ebe4109d44ee5ea1af"},{url:"/data/food_nutrition_database.json.fixed2",revision:"628074808eabf0261702ab17547f7894"},{url:"/file.svg",revision:"d09f95206c3fa0bb9bd9fefabfd0ea71"},{url:"/globe.svg",revision:"2aaafa6a49b6563925fe440891e32717"},{url:"/icons/instagram.svg",revision:"ef20b68544053f9f2f4be85e3eb5f1b3"},{url:"/icons/tiktok.svg",revision:"fbd4752d6d135b0124336ad14cffc45b"},{url:"/logo.png",revision:"19746d2c3d7e80b134e2d3e57ca295fa"},{url:"/manifest.json",revision:"7a6654fe49f5e1c4cf2c2056a86236da"},{url:"/next.svg",revision:"8e061864f388b47f33a1c3780831193e"},{url:"/test_image.jpg",revision:"c0b7f16c5d166aa3c2b14eac0ba6421c"},{url:"/vercel.svg",revision:"c0af2f507b369b085b35ef4bbe3bcf1e"},{url:"/window.svg",revision:"a2760511c65806022ad20adf74370ff3"}],{ignoreURLParametersMatching:[]}),e.cleanupOutdatedCaches(),e.registerRoute("/",new e.NetworkFirst({cacheName:"start-url",plugins:[{cacheWillUpdate:async({request:e,response:s,event:i,state:t})=>s&&"opaqueredirect"===s.type?new Response(s.body,{status:200,statusText:"OK",headers:s.headers}):s}]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,new e.CacheFirst({cacheName:"google-fonts-webfonts",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:31536e3})]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:googleapis)\.com\/.*/i,new e.StaleWhileRevalidate({cacheName:"google-fonts-stylesheets",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:604800})]}),"GET"),e.registerRoute(/\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,new e.StaleWhileRevalidate({cacheName:"static-font-assets",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:604800})]}),"GET"),e.registerRoute(/\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,new e.StaleWhileRevalidate({cacheName:"static-image-assets",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\/_next\/image\?url=.+$/i,new e.StaleWhileRevalidate({cacheName:"next-image",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:mp3|wav|ogg)$/i,new e.CacheFirst({cacheName:"static-audio-assets",plugins:[new e.RangeRequestsPlugin,new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:mp4)$/i,new e.CacheFirst({cacheName:"static-video-assets",plugins:[new e.RangeRequestsPlugin,new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:js)$/i,new e.StaleWhileRevalidate({cacheName:"static-js-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:css|less)$/i,new e.StaleWhileRevalidate({cacheName:"static-style-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\/_next\/data\/.+\/.+\.json$/i,new e.StaleWhileRevalidate({cacheName:"next-data",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:json|xml|csv)$/i,new e.NetworkFirst({cacheName:"static-data-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute((({url:e})=>{if(!(self.origin===e.origin))return!1;const s=e.pathname;return!s.startsWith("/api/auth/")&&!!s.startsWith("/api/")}),new e.NetworkFirst({cacheName:"apis",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:16,maxAgeSeconds:86400})]}),"GET"),e.registerRoute((({url:e})=>{if(!(self.origin===e.origin))return!1;return!e.pathname.startsWith("/api/")}),new e.NetworkFirst({cacheName:"others",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute((({url:e})=>!(self.origin===e.origin)),new e.NetworkFirst({cacheName:"cross-origin",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:3600})]}),"GET")}));
+/**
+ * Copyright 2018 Google Inc. All Rights Reserved.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// If the loader is already loaded, just stop.
+if (!self.define) {
+  let registry = {};
+
+  // Used for `eval` and `importScripts` where we can't get script URL by other means.
+  // In both cases, it's safe to use a global var because those functions are synchronous.
+  let nextDefineUri;
+
+  const singleRequire = (uri, parentUri) => {
+    uri = new URL(uri + ".js", parentUri).href;
+    return registry[uri] || (
+      
+        new Promise(resolve => {
+          if ("document" in self) {
+            const script = document.createElement("script");
+            script.src = uri;
+            script.onload = resolve;
+            document.head.appendChild(script);
+          } else {
+            nextDefineUri = uri;
+            importScripts(uri);
+            resolve();
+          }
+        })
+      
+      .then(() => {
+        let promise = registry[uri];
+        if (!promise) {
+          throw new Error(`Module ${uri} didn’t register its module`);
+        }
+        return promise;
+      })
+    );
+  };
+
+  self.define = (depsNames, factory) => {
+    const uri = nextDefineUri || ("document" in self ? document.currentScript.src : "") || location.href;
+    if (registry[uri]) {
+      // Module is already loading or loaded.
+      return;
+    }
+    let exports = {};
+    const require = depUri => singleRequire(depUri, uri);
+    const specialDeps = {
+      module: { uri },
+      exports,
+      require
+    };
+    registry[uri] = Promise.all(depsNames.map(
+      depName => specialDeps[depName] || require(depName)
+    )).then(deps => {
+      factory(...deps);
+      return exports;
+    });
+  };
+}
+define(['./workbox-e43f5367'], (function (workbox) { 'use strict';
+
+  importScripts();
+  self.skipWaiting();
+  workbox.clientsClaim();
+  workbox.registerRoute("/", new workbox.NetworkFirst({
+    "cacheName": "start-url",
+    plugins: [{
+      cacheWillUpdate: async ({
+        request,
+        response,
+        event,
+        state
+      }) => {
+        if (response && response.type === 'opaqueredirect') {
+          return new Response(response.body, {
+            status: 200,
+            statusText: 'OK',
+            headers: response.headers
+          });
+        }
+        return response;
+      }
+    }]
+  }), 'GET');
+  workbox.registerRoute(/.*/i, new workbox.NetworkOnly({
+    "cacheName": "dev",
+    plugins: []
+  }), 'GET');
+
+}));
