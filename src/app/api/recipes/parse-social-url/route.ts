@@ -18,9 +18,9 @@ export const POST = withAuthAndErrorHandling(
 
         // nutrition_per_serving を StandardizedMealNutrition に変換
         // TODO: convertToStandardizedNutrition関数の引数型を拡張するか、
-        // 正確な変換関数を実装して、この型アサーションを削除する
+        // 正確な変換関数を実装して、この型アサーションを削除する (Issue #XXX)
         const standardizedNutrition = recipeData.nutrition_per_serving
-            // @ts-expect-error 現在の型定義ではNutritionData型しか受け付けないが、実際には他の形式も変換可能
+            // @ts-expect-error: 現在の型定義(NutritionData)と異なる型を渡しているため。関数内部で互換性があると想定。(Issue #XXX)
             ? convertToStandardizedNutrition(recipeData.nutrition_per_serving)
             : createEmptyStandardizedNutrition();
 

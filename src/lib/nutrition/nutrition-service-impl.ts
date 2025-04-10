@@ -20,8 +20,13 @@ import { FoodInputParseResult } from '@/lib/food/food-input-parser';
 import { FoodAnalysisResult } from '@/types/ai';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import { getNutrientValueByName } from './nutrition-display-utils'; // getNutrientValueByName関数をインポート
+import { getNutrientValueByName } from '@/lib/nutrition/nutrition-display-utils'; // getNutrientValueByName関数をインポート
 //src\lib\nutrition\nutrition-service-impl.ts
+
+// Food 型に存在する栄養素キーのみをリストアップ (型を keyof Food に修正)
+const NUTRITION_KEYS_IN_FOOD_TYPE: (keyof Food)[] = [
+    'calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d', 'confidence' // confidence は栄養素ではないが FoodNutrition に含まれる
+];
 
 /**
  * 栄養計算サービスの実装クラス
@@ -175,42 +180,37 @@ export class NutritionServiceImpl implements NutritionService {
             food.category
         );
 
-        // initializeStandardizedNutrition を使用
         const scaledNutrition: StandardizedMealNutrition = this.initializeStandardizedNutrition();
 
-        // --- ここから Food 型から StandardizedMealNutrition への変換ロジック ---
-        // Foodオブジェクトの全ての栄養素関連プロパティをコピーする
-        for (const key in food) {
-            if (Object.prototype.hasOwnProperty.call(food, key)) {
-                const value = (food as any)[key];
-                // 数値型のプロパティで、かつ0以上の値を栄養素とみなす（id, confidenceなどを除く）
-                // TODO: より堅牢な栄養素判定ロジック（例: 栄養素名のリストと比較）を検討
-                if (typeof value === 'number' && value >= 0 && !['id', 'confidence', 'servingSize', 'servingUnit', 'categoryId', 'datasourceId'].includes(key)) {
-                    // 単位を推測（仮実装、Food型定義に単位情報を持たせるべき）
-                    let unit: NutrientUnit = 'g'; // デフォルトはグラム
-                    if (key === 'calories') unit = 'kcal';
-                    else if (key === 'iron' || key === 'calcium' || key === 'sodium' || key === 'potassium' || key === 'zinc' || key === 'manganese' || key === 'copper') unit = 'mg';
-                    else if (key === 'folic_acid' || key === 'vitamin_d' || key === 'vitamin_b12' || key === 'vitamin_a' || key === 'vitamin_k' || key === 'biotin' || key === 'iodine' || key === 'selenium') unit = 'mcg';
-                    else if (key === 'vitamin_e' || key === 'niacin' || key === 'pantothenic_acid' || key === 'vitamin_b6' || key === 'vitamin_c') unit = 'mg'; // α-TEなども考慮が必要だが一旦mg
+        // --- Food 型から StandardizedMealNutrition への変換ロジック ---
+        NUTRITION_KEYS_IN_FOOD_TYPE.forEach((key: keyof Food) => { // key の型を明示
+            if (key === 'confidence') return;
 
-                    // totalCaloriesも更新
-                    if (key === 'calories') {
-                        scaledNutrition.totalCalories = value;
-                    }
-                    // updateNutrientを呼び出してtotalNutrients配列に追加
-                    this.updateNutrient(scaledNutrition, key, value, unit);
+            const value = food[key];
+
+            if (typeof value === 'number' && value >= 0) {
+                let unit: NutrientUnit = 'g';
+                if (key === 'calories') unit = 'kcal';
+                else if (key === 'iron' || key === 'calcium') unit = 'mg';
+                else if (key === 'folic_acid' || key === 'vitamin_d') unit = 'mcg';
+
+                if (key === 'calories') {
+                    scaledNutrition.totalCalories = value;
+                }
+
+                // key が文字列であることを確認してから replace を使用
+                if (typeof key === 'string') {
+                    const standardizedKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+                    this.updateNutrient(scaledNutrition, standardizedKey, value, unit);
                 }
             }
-        }
+        });
         // --- 変換ロジックここまで ---
 
-        // 量に基づいてスケーリング (100gあたりから指定グラムへ)
-        const ratio = grams > 0 ? grams / 100 : 0; // グラムが0または負なら比率も0
-        // 修正された scaleNutrients を使用
+        const ratio = grams > 0 ? grams / 100 : 0;
         this.scaleNutrients(scaledNutrition, ratio);
 
-        // Food 自体の信頼度と量の解析の信頼度を考慮
-        const foodConfidence = food.confidence ?? 0.8; // 食品データ自体の信頼度 (なければデフォルト)
+        const foodConfidence = food.confidence ?? 0.8;
         const overallConfidence = Math.min(foodConfidence, quantityConfidence);
 
         return {
@@ -226,34 +226,23 @@ export class NutritionServiceImpl implements NutritionService {
      * @param targetValues ユーザーの現在の妊娠周期に基づいた目標値 (例: { calories: 2200, protein: 75, ... })
      */
     evaluateNutritionBalance(nutrition: StandardizedMealNutrition, targetValues: Record<string, number>): number {
-        // MVPの栄養素リスト
         const mvpNutrientNames = ['calories', 'protein', 'iron', 'calcium', 'folic_acid', 'vitamin_d'];
-
         let fulfillmentSum = 0;
         let targetCount = 0;
 
         for (const name of mvpNutrientNames) {
             const targetValue = targetValues[name];
-            // 目標値が設定され、かつ0より大きい場合のみ評価対象とする
             if (typeof targetValue === 'number' && targetValue > 0) {
                 const currentValue = getNutrientValueByName(nutrition, name);
-                // 充足率を計算 (最大100% = 1.0)
                 const fulfillmentRatio = Math.min(1.0, currentValue / targetValue);
                 fulfillmentSum += fulfillmentRatio;
                 targetCount++;
             }
         }
 
-        // 評価対象の栄養素がなければスコアは0
-        if (targetCount === 0) {
-            return 0;
-        }
-
-        // 充足率の平均を計算し、100点満点に変換
+        if (targetCount === 0) return 0;
         const averageFulfillment = fulfillmentSum / targetCount;
         const finalScore = averageFulfillment * 100;
-
-        // 0-100の範囲に丸める
         return Math.max(0, Math.min(100, Math.round(finalScore)));
     }
 
@@ -268,32 +257,17 @@ export class NutritionServiceImpl implements NutritionService {
     identifyDeficientNutrients(
         nutrition: StandardizedMealNutrition,
         targetValues: Record<string, number>,
-        threshold: number = 0.7 // デフォルト値を設定
-    ): NutrientDeficiency[] { // 戻り値の型を変更
+        threshold: number = 0.7
+    ): NutrientDeficiency[] {
         const deficientNutrients: NutrientDeficiency[] = [];
-
-        // 各栄養素について評価
         for (const [nutrientCode, targetValue] of Object.entries(targetValues)) {
-            // 目標値が0以下の場合はスキップ
             if (targetValue <= 0) continue;
-
-            // 現在の摂取量を取得
             const currentValue = getNutrientValueByName(nutrition, nutrientCode);
-
-            // 充足率を計算
             const fulfillmentRatio = currentValue / targetValue;
-
-            // 充足率が閾値未満なら不足と判断
             if (fulfillmentRatio < threshold) {
-                deficientNutrients.push({
-                    nutrientCode,
-                    fulfillmentRatio,
-                    currentValue,
-                    targetValue
-                });
+                deficientNutrients.push({ nutrientCode, fulfillmentRatio, currentValue, targetValue });
             }
         }
-
         return deficientNutrients;
     }
 

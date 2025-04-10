@@ -3,7 +3,6 @@ import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { NutritionData, StandardizedMealNutrition, FoodItem, Nutrient, FoodItemNutrition, NutrientUnit } from '@/types/nutrition';
 import { convertToLegacyNutrition, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { AppError } from '@/lib/error/types/base-error';
-import { getNutrientValueByName } from '@/lib/nutrition/nutrition-utils';
 
 // Helper type guard to check if an object has a specific property
 function hasProperty<K extends string>(obj: unknown, key: K): obj is { [P in K]: unknown } {

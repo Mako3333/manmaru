@@ -372,8 +372,8 @@ export function convertToLegacyNutrition(standardizedData: StandardizedMealNutri
             }
         };
 
-        // 互換性のためのプロパティ
-        (result as any).energy = result.calories;
+        // 互換性のためのプロパティ (any キャスト不要)
+        result.energy = result.calories;
 
         // 互換性のためのミネラル・ビタミン構造
         result.minerals = {
