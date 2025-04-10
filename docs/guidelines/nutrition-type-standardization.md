@@ -2,13 +2,13 @@
 
 ## 1. 背景と目的
 
-栄養素計算システムの再設計プロセスにおいて、複数の栄養データ型（特にレガシーな `NutritionData` と新しい標準型 `StandardizedMealNutrition`）が混在していました。このドキュメントは、`manmaru` アプリケーション内で使用する栄養データ型の標準を `StandardizedMealNutrition` に統一し、その役割と使用場面を明確にすることで、コードの可読性、保守性、および開発効率を向上させることを目的とします。
+栄養素計算システムの再設計プロセスにおいて、複数の栄養データ型（特にレガシーな `NutritionData`, `BasicNutritionData`, `MealNutrient` と新しい標準型 `StandardizedMealNutrition`）が混在していました。このドキュメントは、`manmaru` アプリケーション内で使用する栄養データ型の標準を **`StandardizedMealNutrition` に統一することを目指し**、その役割と使用場面、そして**既存のレガシー型との共存・移行戦略**を明確にすることで、コードの可読性、保守性、および開発効率を向上させることを目的とします。
 
-**このガイドラインは、型定義統一リファクタリングが完了した後の状態を反映しています。**
+**このガイドラインは、型定義統一リファクタリングの途中段階における現状と、目指すべき方向性を示しています。**
 
 ## 2. 標準データ型: `StandardizedMealNutrition`
 
-**アプリケーション内部（サービス層、計算ロジック、UIコンポーネント等）で標準的に使用する栄養データ型として、`StandardizedMealNutrition` (`src/types/nutrition.ts` 内で定義) を採用しています。**
+**アプリケーション内部（サービス層、計算ロジック、UIコンポーネント等）で標準的に使用する栄養データ型として、将来的には `StandardizedMealNutrition` (`src/types/nutrition.ts` 内で定義) に統一することを目指しています。**
 
 ### 2.1 採用理由と設計思想
 
@@ -34,55 +34,65 @@
     *   `FoodItemNutrition` も `calories` と `nutrients` (`Nutrient[]`) を含みます。
 *   `pregnancySpecific` (オプショナル): 妊娠期特有の栄養充足率など（葉酸、鉄、カルシウムの充足率など）を格納します。
     *   **注意:** 現在、`convertToStandardizedNutrition` 関数ではこの値は計算されず、ダミーデータが設定されています。適切な計算ロジックの実装が必要です。
+*   `reliability` (オプショナル): 栄養計算の信頼性スコアなどを格納します。
 
-## 3. レガシーデータ型: `NutritionData` の位置づけ
+## 3. レガシーデータ型: `NutritionData`, `BasicNutritionData`, `MealNutrient` の位置づけ
 
-`NutritionData` (`src/types/nutrition.ts` 内で定義) は、**現在では限定的な目的でのみ使用されるレガシーなデータ型**と位置づけます。
+`NutritionData`, `BasicNutritionData`, `MealNutrient` (`src/types/nutrition.ts` 内で定義) は、**現在もコードベースの複数箇所で使用されているレガシーなデータ型**と位置づけます。`StandardizedMealNutrition` への移行が完了するまでの間、限定的な目的でのみ使用が許容されます。
 
 ### 3.1 レガシーである理由
 
-*   **フラットな構造:** 主要な栄養素がトップレベルのプロパティとして定義されており、構造化されていません。
-*   **`extended_nutrients` への依存:** 基本6栄養素以外の多くの栄養素が `extended_nutrients` という JSONB 想定のネストしたオブジェクトに格納されており、アクセスが煩雑で型安全性も低くなります。
-*   **食品情報の欠如:** 食事全体の合計値しか保持できず、個々の食品 (`foodItems`) の情報を含めることができません。これにより、栄養計算の詳細な分析や再計算が困難です。
-*   **一貫性の欠如:** 栄養素の表現方法が統一されていません (例: `calories` はプロパティ、その他は `extended_nutrients` 内)。
+*   **`NutritionData`:**
+    *   **フラットな構造:** 主要な栄養素がトップレベルのプロパティとして定義されており、構造化されていません。
+    *   **`extended_nutrients` への依存:** 基本6栄養素以外の多くの栄養素が `extended_nutrients` という JSONB 想定のネストしたオブジェクトに格納されており、アクセスが煩雑で型安全性も低くなります。
+    *   **食品情報の欠如:** 食事全体の合計値しか保持できず、個々の食品 (`foodItems`) の情報を含めることができません。これにより、栄養計算の詳細な分析や再計算が困難です。
+    *   **一貫性の欠如:** 栄養素の表現方法が統一されていません (例: `calories` はプロパティ、その他は `extended_nutrients` 内)。
+*   **`BasicNutritionData`:**
+    *   `NutritionData` のサブセットであり、同様の構造的問題を抱えています。主に概要表示などで使用されていました。
+*   **`MealNutrient`:**
+    *   `@deprecated` とマークされており、`StandardizedMealNutrition` 内の `foodItems` で代替されるべき型です。構造的な問題も抱えています。
 
-### 3.2 許容される使用目的
+### 3.2 許容される使用目的と現状
 
 1.  **データベースへの永続化:**
-    *   現在の Supabase テーブルスキーマ (`meals.nutrition_data` など) が `NutritionData` に近い JSONB 構造に依存しているため、**データアクセス層 (リポジトリ) での読み書き時に型変換**を行っています。
-    *   データを読み取る際には DB形式 → `StandardizedMealNutrition` へ、書き込む際には `StandardizedMealNutrition` → DB形式 (`convertToDbNutritionFormat` などで変換) へ変換します。
+    *   現在の Supabase テーブルスキーマ (`meals.nutrition_data` など) が `NutritionData` に近い JSONB 構造に依存しているため、**データアクセス層 (リポジトリ/サービス) での読み書き時に型変換が必須**です。
+    *   データを読み取る際には DB形式 → `StandardizedMealNutrition` へ、書き込む際には `StandardizedMealNutrition` → DB形式 (`convertToDbNutritionFormat` や `convertToLegacyNutrition` などで変換) へ変換します。
     *   **将来目標:** データベーススキーマも `StandardizedMealNutrition` の構造に合わせて変更し、この変換処理を廃止します (リファクタリング計画 ステップ7の検討事項)。
+2.  **既存コードの互換性維持:**
+    *   サービス層の一部、データアクセス層 (`src/lib/supabase/client.ts`)、カスタムフック (`src/hooks/useNutrition.ts` で `BasicNutritionData` を使用)、および多数のテストコードで、依然として旧型が直接使用されています。
+    *   これらの箇所は、**段階的に `StandardizedMealNutrition` を使用するようにリファクタリングする必要があります。**
 
-**原則として、新規開発や主要なロジック内で `NutritionData` 型を直接扱うことはありません。** 既存のコードでも、`StandardizedMealNutrition` を使用するようにリファクタリングされています。
+**原則として、新規開発部分では `StandardizedMealNutrition` を使用してください。** 既存コードのリファクタリングを進め、旧型の使用箇所を削減していきます。
 
-## 4. 開発ガイドライン: 型の使い分けと変換
+## 4. 開発ガイドライン: 型の使い分けと変換 (移行期)
 
-以下に、アプリケーションの各レイヤーや処理におけるデータ型の基本的な扱い方を示します。
+以下に、アプリケーションの各レイヤーや処理におけるデータ型の基本的な扱い方を示します (**移行期のガイドライン**)。
 
 1.  **サービス層 (NutritionService, MealService など):**
-    *   内部ロジックでは原則として **`StandardizedMealNutrition` を使用**します。
-    *   メソッドの引数や戻り値も `StandardizedMealNutrition` (またはその一部) を基準とします。
+    *   内部ロジックでは原則として **`StandardizedMealNutrition` の使用を目指します。** ただし、既存コードでは旧型が使用されている場合があります。
+    *   メソッドの引数や戻り値も `StandardizedMealNutrition` (またはその一部) を基準としますが、互換性のために旧型を扱う場合もあります。
 2.  **データアクセス層 (リポジトリ、例: `MealService` 内のDB操作部分):**
     *   データベースとのインターフェースとなるため、**型変換の境界**となります。
     *   データベースから読み取ったデータを DB形式から **`StandardizedMealNutrition` に変換**してサービス層に返します。
-    *   サービス層から受け取った `StandardizedMealNutrition` を **DB保存可能な形式 (`convertToDbNutritionFormat` 等で変換)** してデータベースに書き込みます。
+    *   サービス層から受け取った `StandardizedMealNutrition` を **DB保存可能な形式 (`convertToDbNutritionFormat` や `convertToLegacyNutrition` 等で変換)** してデータベースに書き込みます。
 3.  **API Route Handlers (`/api/v2/...`):**
     *   サービス層から受け取った `StandardizedMealNutrition` をレスポンスの `data.nutrition` フィールドなどに設定します。
-    *   後方互換性のための `legacyNutrition` フィールドは削除されました。
+    *   ~~後方互換性のための `legacyNutrition` フィールドは削除されました。~~ **(要確認・未完了の可能性)** APIによっては後方互換性のためのフィールドが残っている可能性があります。リファクタリング時に確認・削除が必要です。
     *   リクエストのバリデーション (Zod) では、期待する入力形式を定義します。
 4.  **UI コンポーネント (React):**
-    *   全てのコンポーネントは、Props として **`StandardizedMealNutrition` を受け取る**ように修正されています。
-5.  **型変換ユーティリティ (`nutrition-type-utils.ts`):**
-    *   DBとの境界での型変換が必要な場合は、**必ずこのファイル内の関連関数 (`convertToStandardizedNutrition`, `convertToDbNutritionFormat` など) を利用**してください。これにより、変換ロジックが一元管理され、一貫性が保たれます。
-    *   `convertToLegacyNutrition` など、旧型への変換関数は不要になったため削除されました (リファクタリング計画 ステップ5で実施済み)。
+    *   新規コンポーネントやリファクタリングされたコンポーネントは、Props として **`StandardizedMealNutrition` を受け取る**ようにします。
+    *   既存コンポーネントでは、カスタムフックなどを通じて旧型データを受け取っている場合があります。これらも段階的にリファクタリング対象となります。
+5.  **型変換ユーティリティ (`nutrition-type-utils.ts`, `nutrition-utils.ts`):**
+    *   DBとの境界での型変換や、旧型と新標準型の間の変換が必要な場合は、**必ずこれらのファイル内の関連関数 (`convertToStandardizedNutrition`, `convertToLegacyNutrition`, `convertToDbNutritionFormat` など) を利用**してください。これにより、変換ロジックが一元管理され、一貫性が保たれます。
+    *   `convertOldToNutritionData` や `safeConvertNutritionData` 内の `'old'` 形式処理は、使用箇所が限定的であり、将来的に削除される可能性があります。
 
-**図解: データフローと型変換**
+**図解: データフローと型変換 (移行期の理想形)**
 
 ```mermaid
 graph LR
     DB[(Supabase DB)] -- Read (DB Format) --> Repo(Data Access Layer)
     Repo -- Convert DB Format to Standard --> Service(Service Layer)
-    Service -- Use Standard --> Service
+    Service -- Use Standard (Goal) --> Service
     Service -- Return Standard --> API(API Route Handler)
     Repo -- Convert Standard to DB Format --> DB
     Service -- Write Standard --> Repo
@@ -107,16 +117,17 @@ graph LR
     style API fill:#cef,stroke:#333
     style UI fill:#efc,stroke:#333
 ```
-*図: 主要レイヤー間のデータフローと型変換のポイント（統一後）*
+*図: 主要レイヤー間のデータフローと型変換のポイント（移行後の理想形）*
 
 ## 5. 最終目標
 
-アプリケーション全体で `StandardizedMealNutrition` が標準データ型として一貫して使用されるようになりました。今後の目標は以下の通りです。
+アプリケーション全体で `StandardizedMealNutrition` が標準データ型として一貫して使用される状態を目指します。達成すべき目標は以下の通りです。
 
-1.  ~~API レスポンスから `legacyNutrition` フィールドを削除します。~~ (完了)
-2.  ~~`NutritionData` 型への変換処理 (`convertToLegacyNutrition` など) を削除します。~~ (完了)
-3.  データベーススキーマを `StandardizedMealNutrition` に合わせて最適化し、データアクセス層での変換を不要にします。
-4.  最終的に、`NutritionData` 型定義そのものをコードベースから削除します。
+1.  API レスポンスから後方互換性のための旧型フィールド (`legacyNutrition` など) を削除します。
+2.  `NutritionData`, `BasicNutritionData`, `MealNutrient` 型への変換処理 (`convertToLegacyNutrition` など) を、DB永続化のための変換を除き、削除します。
+3.  サービス層、フック、コンポーネントなど、DB連携以外の箇所での旧型の直接使用をなくします。
+4.  **[推奨]** データベーススキーマを `StandardizedMealNutrition` に合わせて最適化し、データアクセス層での変換を不要にします。
+5.  最終的に、不要になった旧型の型定義 (`NutritionData`, `BasicNutritionData`, `MealNutrient`) そのものをコードベースから削除します。
 
 これにより、シンプルで一貫性があり、保守性の高いコードベースを実現します。
 
