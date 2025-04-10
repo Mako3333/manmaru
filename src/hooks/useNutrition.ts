@@ -30,10 +30,6 @@ export const useNutrition = () => {
             const progress = await getNutritionProgress(formattedDate);
             setDailyProgress(progress);
 
-            // 栄養目標がまだ取得されていない場合、トライメスターに基づいて取得
-            if (progress && !nutritionTarget) {
-                fetchNutritionTarget(progress.trimester);
-            }
         } catch (err) {
             console.error('栄養進捗取得エラー:', err);
             setError('栄養データの取得に失敗しました');
