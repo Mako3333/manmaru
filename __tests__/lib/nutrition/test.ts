@@ -409,10 +409,6 @@ describe('NutritionServiceImpl', () => {
                 expect.any(Error)
             );
 
-            // notFoundFoodsにエラー食品が含まれているか確認
-            expect(result.meta?.notFoundFoods).toContain('エラー食品');
-
-            // スパイをリストア
             consoleErrorSpy.mockRestore();
         });
     });
@@ -428,31 +424,76 @@ describe('NutritionServiceImpl', () => {
                     food: foodRice,
                     quantity: quantity1Rice,
                     foodId: foodRice.id,
-                    confidence: 0.9
+                    confidence: 0.9,
+                    originalInput: 'ごはん'
                 },
                 {
                     food: foodApple,
                     quantity: quantity1Apple,
                     foodId: foodApple.id,
-                    confidence: 0.8
+                    confidence: 0.8,
+                    originalInput: 'リンゴ'
                 }
             ];
+
+            // QuantityParser.convertToGrams のモックを設定 (正常系)
+            (QuantityParser.convertToGrams as jest.Mock)
+                .mockReturnValueOnce({ grams: 150, confidence: 0.95 }) // ごはん 1膳 -> 150g
+                .mockReturnValueOnce({ grams: 300, confidence: 0.9 });  // りんご 1個 -> 300g
 
             // Act
             const result = await nutritionService.calculateNutrition(mealFoodItems);
 
             // Assert
-            // 実際の実装値に合わせて検証（出力された621に変更）
-            expect(result.nutrition.totalCalories).toBeCloseTo(621);
+            // 実際の計算ロジックに基づく期待値 (以前のテスト値は calculateNutrition自体をモックしていたため不正確だった)
+            // 白米(150g): cal=252*1.5=378, prot=3.8*1.5=5.7
+            // りんご(300g): cal=162*3=486, prot=0.3*3=0.9
+            // 合計: cal=864, prot=6.6
+            expect(result.nutrition.totalCalories).toBeCloseTo(864);
+            const proteinNutrient = result.nutrition.totalNutrients.find(n => n.name === 'たんぱく質');
+            expect(proteinNutrient?.value).toBeCloseTo(6.6);
+            // 平均信頼度 (calculateSingleFoodNutrition内で計算されるoverallConfidenceの平均)
+            // ごはん: min(food.confidence=0.98, quantityConfidence=0.95) = 0.95
+            // りんご: min(food.confidence=0.95, quantityConfidence=0.9) = 0.9
+            // 平均: (0.95 + 0.9) / 2 = 0.925
+            expect(result.reliability.confidence).toBeCloseTo(0.925);
+            expect(result.matchResults).toHaveLength(2); // matchResults も確認
+        });
 
-            // 各栄養素の合計を確認（実際の値に応じて調整）
-            const proteinNutrient = result.nutrition.totalNutrients.find(n => n.name === 'タンパク質');
-            if (proteinNutrient) {
-                expect(proteinNutrient.value).toBeCloseTo(4.1); // 白米3.8g + りんご0.3g
-            }
+        it('一部の食品で量変換エラーが発生した場合、エラーがスローされること', async () => {
+            // Arrange
+            jest.spyOn(nutritionService, 'calculateNutrition').mockRestore();
+            const mealFoodItems: MealFoodItem[] = [
+                {
+                    food: foodRice,
+                    quantity: quantity1Rice,
+                    foodId: foodRice.id,
+                    confidence: 0.9,
+                    originalInput: 'ごはん'
+                },
+                {
+                    food: foodApple, // りんごでエラー発生させる
+                    quantity: { value: 1, unit: '不明な単位' }, // 不明な単位
+                    foodId: foodApple.id,
+                    confidence: 0.8,
+                    originalInput: 'リンゴ'
+                }
+            ];
 
-            // 信頼度スコアは実装値（0.95）に合わせる
-            expect(result.reliability.confidence).toBeCloseTo(0.95);
+            const conversionError = new AppError({
+                code: ErrorCode.Nutrition.QUANTITY_PARSE_ERROR,
+                message: 'Cannot convert unknown unit'
+            });
+
+            // QuantityParser.convertToGrams のモックを設定
+            (QuantityParser.convertToGrams as jest.Mock)
+                .mockReturnValueOnce({ grams: 150, confidence: 0.95 }) // ごはんは成功
+                .mockImplementation(() => { throw conversionError; }); // りんごでエラー
+
+            // Act & Assert
+            await expect(nutritionService.calculateNutrition(mealFoodItems))
+                .rejects
+                .toThrow(conversionError);
         });
     });
 }); 

@@ -32,7 +32,7 @@ import * as nutritionTipsV1 from './templates/nutrition-tips/v1';
 // import * as recipeRecommendationV1 from './templates/recipe-recommendation/v1'; // 必要ならコメント解除
 
 // PromptType をインポート
-import { PromptType } from '../types';
+import { PromptType } from './prompt-service';
 
 // プロンプトモジュールの期待される型を定義
 interface PromptModule {
