@@ -2,11 +2,12 @@ import { ErrorCode, AnyErrorCode } from '@/lib/error';
 import type { ApiResponse, ApiState, SuccessResponse, ErrorResponse } from './api';
 import type {
     NutritionData as ImportedNutritionData,
-    // NutritionReliability, // Removed import
+    NutritionReliability,
     // RecognizedFood, // Removed import
     StandardizedMealNutrition,
     NutritionAdvice // Assuming NutritionAdvice is in nutrition.ts or another specific file
 } from '@/types/nutrition'; // Adjust path if needed
+import type { RecognizedFood } from '@/types/ai'; // Added import
 // If MealAnalysisResult and RecipeAnalysisResult are defined elsewhere, import them too
 // import type { MealAnalysisResult } from '@/types/meal'; // Example
 // import type { RecipeAnalysisResult } from '@/types/recipe'; // Example
@@ -82,21 +83,21 @@ export interface PaginationMeta {
 }
 
 // Restore local definition for NutritionReliability
-export interface NutritionReliability {
-    confidence: number;
-    balanceScore?: number;
-    completeness: number;
-}
+// export interface NutritionReliability {
+//     confidence: number;
+//     balanceScore?: number;
+//     completeness: number;
+// }
 
 // NutritionData is imported, remove local definition
 // export interface NutritionData { ... }
 
 // Restore local definition for RecognizedFood
-export interface RecognizedFood {
-    name: string;
-    quantity: string;
-    confidence: number;
-}
+// export interface RecognizedFood {
+//     name: string;
+//     quantity: string;
+//     confidence: number;
+// }
 
 // NutritionResult uses imported types and restored local types
 export interface NutritionResult {

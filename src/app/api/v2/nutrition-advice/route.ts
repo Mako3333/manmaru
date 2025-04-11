@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { withErrorHandling } from '@/lib/api/middleware';
-import { createServerClient } from '@supabase/ssr'; // type CookieOptions を削除
+import { createServerClient, type CookieOptions } from '@supabase/ssr'; // type CookieOptions を追加
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from "next/headers";
 import { z } from 'zod';
@@ -82,12 +82,16 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
         {
             cookies: {
                 get(name: string) {
-                    return cookieStore.get(name)?.value
+                    return cookieStore.get(name)?.value;
                 },
-                // Route Handlers (GET) では set/remove は通常不要
-                // もし必要なら実装する
-                /* (略)
-                */
+                set(name: string, value: string, options: CookieOptions) {
+                    // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
+                    // Route Handler 内の cookieStore は読み取り専用のため no-op にする
+                },
+                remove(name: string, options: CookieOptions) {
+                    // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
+                    // Route Handler 内の cookieStore は読み取り専用のため no-op にする
+                },
             },
         }
     )

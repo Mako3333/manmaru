@@ -23,10 +23,12 @@ const createSupabaseClient = async () => {
                     return cookieStore.get(name)?.value;
                 },
                 set(name: string, value: string, options: CookieOptions) {
-                    cookieStore.set({ name, value, ...options });
+                    // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
+                    // Route Handler 内の cookieStore は読み取り専用のため no-op にする
                 },
                 remove(name: string, options: CookieOptions) {
-                    cookieStore.delete({ name, ...options });
+                    // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
+                    // Route Handler 内の cookieStore は読み取り専用のため no-op にする
                 },
             },
         }

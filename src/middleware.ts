@@ -40,7 +40,7 @@ const createSupabaseMiddlewareClient = (req: NextRequest, res: NextResponse) => 
             res.cookies.set({ name, value, ...options });
         },
         remove: (name: string, options: CookieOptions) => {
-            res.cookies.set({ name, value: '', ...options });
+            res.cookies.delete({ name, ...options });
         },
     };
 

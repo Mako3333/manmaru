@@ -45,16 +45,12 @@ export async function GET(_req: NextRequest) {
                         return cookieStore.get(name)?.value;
                     },
                     set(name: string, value: string, options: CookieOptions) {
-                        // In Route Handlers, modifying cookies via config's set/remove is problematic
-                        // because the cookie store is read-only. Supabase interactions like
-                        // getSession primarily use the 'get' method. Cookie setting/removal
-                        // for auth state changes happens via response headers in the final return.
-                        // This function is required by the type signature but should be a no-op here.
-                        // console.warn('Supabase client attempted to set cookie via config (noop in Route Handler):', name);
+                        // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
+                        // Route Handler 内の cookieStore は読み取り専用のため no-op にする
                     },
                     remove(name: string, options: CookieOptions) {
-                        // Similar to 'set', make this a no-op in Route Handlers.
-                        // console.warn('Supabase client attempted to remove cookie via config (noop in Route Handler):', name);
+                        // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
+                        // Route Handler 内の cookieStore は読み取り専用のため no-op にする
                     },
                 },
             }

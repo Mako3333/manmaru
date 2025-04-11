@@ -456,9 +456,9 @@ export interface StandardizedMealNutrition {
         balanceScore?: number;
         /**
          * 必須栄養素データがどの程度網羅されているかを示す完全性スコア (0.0 - 1.0)。
-         * 例えば、必須アミノ酸や特定のビタミン・ミネラルのデータが不足している場合に低くなる（オプショナル）。
+         * 例えば、必須アミノ酸や特定のビタミン・ミネラルのデータが不足している場合に低くなる。
          */
-        completeness?: number;
+        completeness: number;
     };
 }
 
@@ -603,4 +603,25 @@ export interface NutrientDeficiency {
     fulfillmentRatio: number;  // 充足率 (0.0-1.0)
     currentValue: number;      // 現在値
     targetValue: number;       // 目標値
+}
+
+/**
+ * 栄養計算結果の信頼性情報
+ */
+export interface NutritionReliability {
+    /**
+     * 算出された栄養価全体の確信度 (0.0 - 1.0)。
+     * 各 foodItems の confidence や、分析手法の不確実性を総合的に評価した値。
+     */
+    confidence: number;
+    /**
+     * 栄養バランスの評価スコア (0 - 100)。
+     * 主要栄養素（PFCバランスなど）や推奨される栄養パターンに基づいて算出（オプショナル）。
+     */
+    balanceScore?: number;
+    /**
+     * 必須栄養素データがどの程度網羅されているかを示す完全性スコア (0.0 - 1.0)。
+     * 例えば、必須アミノ酸や特定のビタミン・ミネラルのデータが不足している場合に低くなる。
+     */
+    completeness: number;
 }

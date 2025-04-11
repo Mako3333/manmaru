@@ -22,10 +22,12 @@ export class RecipeService {
                             return cookieStore.get(name)?.value;
                         },
                         set(name: string, value: string, options: CookieOptions) {
-                            cookieStore.set({ name, value, ...options });
+                            // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
+                            // Service層からはCookie書き込みを行わないため no-op
                         },
                         remove(name: string, options: CookieOptions) {
-                            cookieStore.delete({ name, ...options });
+                            // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
+                            // Service層からはCookie書き込みを行わないため no-op
                         },
                     },
                 }
@@ -112,10 +114,12 @@ export class RecipeService {
                             return cookieStore.get(name)?.value;
                         },
                         set(name: string, value: string, options: CookieOptions) {
-                            cookieStore.set({ name, value, ...options });
+                            // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
+                            // Service層からはCookie書き込みを行わないため no-op
                         },
                         remove(name: string, options: CookieOptions) {
-                            cookieStore.delete({ name, ...options });
+                            // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
+                            // Service層からはCookie書き込みを行わないため no-op
                         },
                     },
                 }
@@ -367,10 +371,12 @@ export class RecipeService {
                             return cookieStore.get(name)?.value;
                         },
                         set(name: string, value: string, options: CookieOptions) {
-                            cookieStore.set({ name, value, ...options });
+                            // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
+                            // Service層からはCookie書き込みを行わないため no-op
                         },
                         remove(name: string, options: CookieOptions) {
-                            cookieStore.delete({ name, ...options });
+                            // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
+                            // Service層からはCookie書き込みを行わないため no-op
                         },
                     },
                 }

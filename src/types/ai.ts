@@ -215,4 +215,13 @@ export interface AIServiceV2 {
      * @returns 解析結果
      */
     analyzeRecipeText(recipeText: string): Promise<AIProcessResult>;
+}
+
+/**
+ * AIによって認識された食品アイテム
+ */
+export interface RecognizedFood {
+    name: string;
+    quantity: string;
+    confidence: number;
 } 
