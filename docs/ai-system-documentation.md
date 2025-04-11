@@ -191,12 +191,13 @@ flowchart TD
     *   `/api/v2/meal/analyze` (画像): `GeminiProcessResult` の `foods` と `aiEstimatedNutrition` をクライアントに返します。
     *   `/api/v2/meal/text-analyze` (テキスト): `GeminiProcessResult` の `foods` を元に、`NutritionService.calculateNutritionFromNameQuantities` を呼び出して栄養計算を行い、その結果 (`StandardizedMealNutrition`) と `aiEstimatedNutrition` をクライアントに返します。
     *   エラーがあれば統合エラーハンドラ (`middleware.ts` 内の `withErrorHandling`) に処理を委譲するか、適切なエラーレスポンスを生成します。
+    *   `/api/v2/recipe/parse` (レシピURL): `GeminiProcessResult` (AI解析の場合) または専用パーサーの結果 (`FoodInputParseResult[]`) を元に、`NutritionService.calculateNutritionFromNameQuantities` を呼び出して栄養計算を行い、その結果 (`StandardizedMealNutrition`) と解析されたレシピ情報 (`title`, `servings`, `ingredients`) をクライアントに返します。
 
 ### 4. プロンプトテンプレート解説
 
 `src/lib/ai/prompts/templates/` 以下に格納されている主要なプロンプトテンプレート (v1) の概要です。
 
-*   **食品分析 (画像) (`food-analysis/v1.ts`)**: 食事の写真から食品名、量の目安、信頼度を識別するプロンプト。**栄養素の推定要求部分は削除され、食品特定に集中**しています。AIが栄養素を推定する可能性はありますが、主要な目的ではありません。JSON形式での出力を期待。
+*   **食品分析 (画像) (`food-analysis/v1.ts`)**: 食事の写真から食品名、量の目安、信頼度を識別するプロンプト。AIが栄養素を推定します。
     *   **最新状態**: 栄養計算は保存API (`/api/meals`) 側で行われるため、AIの役割は食品特定に集中しています。
 *   **テキスト入力分析 (`text-input-analysis/v1.ts`)**: ユーザーが入力した食事テキストから食品名、量、信頼度を識別するプロンプト。料理名を主要食材に分解する指示も含まれます。JSON形式での出力を期待。
     *   **最新状態**: `GeminiResponseParser` はこの形式に対応しています。
@@ -204,6 +205,7 @@ flowchart TD
     *   **最新状態**: `GeminiResponseParser` はこの形式に対応しています。テンプレートファイルの構造が他のテンプレートと異なり、`prompt` が関数になっていますが、`PromptVersionManager` での `require` 経由での読み込みは機能しているようです。
 *   **栄養アドバイス (`nutrition-advice/v1.ts`)**: 妊娠週数、不足栄養素、過去データ、季節などを考慮して、栄養アドバイス（要約、詳細、推奨食品）を生成するプロンプト。JSON形式での出力を期待。
     *   **最新状態**: `GeminiService.getNutritionAdvice` が未実装のため、**このプロンプトは使用されていません。**
+*   レシピURL解析の改善（専用パーサー優先、AIフォールバック）。
 
 ### 5. フェーズ2での改善内容
 
@@ -217,11 +219,9 @@ flowchart TD
     1. AI推定栄養価 (`aiEstimatedNutrition`) を直接使用せず、DBベースの栄養計算結果 (`NutritionService` による) を一貫して使用。
     2. データフローの簡素化と信頼性の向上。
     3. 型の一貫性の強化。
-
 *   **レシピURL解析の改善**: HTML前処理の強化と、専用パーサーを優先的に使用するハイブリッドアプローチの確立：
-    1. 既存の専用パーサー（`cookpad.ts`, `delishkitchen.ts` など）の更新
-    2. HTMLクリーンアップの改善によるAIの解析精度向上とトークン数削減
-    3. 専用パーサーが失敗した場合のスムーズなAI解析へのフォールバック
+    1. HTMLクリーンアップの改善によるAIの解析精度向上とトークン数削減
+    2. 専用パーサーが失敗した場合のスムーズなAI解析へのフォールバック
 
 ### 6. 注意点・改善点
 

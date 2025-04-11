@@ -6,23 +6,23 @@ export interface ClippedRecipe {
     id: string;
     user_id: string;
     title: string;
-    image_url?: string;
+    image_url?: string | undefined;
     source_url: string;
-    source_platform?: string;
-    content_id?: string;
-    recipe_type?: string;
+    source_platform?: string | undefined;
+    content_id?: string | undefined;
+    recipe_type?: string | undefined;
     ingredients: RecipeIngredient[];
     nutrition_per_serving: StandardizedMealNutrition;
-    caution_foods?: string[];
-    caution_level?: 'low' | 'medium' | 'high';
+    caution_foods?: string[] | undefined;
+    caution_level?: 'low' | 'medium' | 'high' | undefined;
     is_favorite: boolean;
     servings: number;
     clipped_at: string;
-    last_used_at?: string;
+    last_used_at?: string | undefined;
     created_at: string;
     updated_at: string;
-    is_social_media?: boolean;
-    use_placeholder?: boolean;
+    is_social_media?: boolean | undefined;
+    use_placeholder?: boolean | undefined;
 }
 
 // レシピの材料
@@ -77,19 +77,36 @@ export interface RecipeUrlClipRequest {
 }
 
 // URLクリップ時のレスポンスデータ型
+// src/app/api/v2/recipe/parse のレスポンス形式に合わせる
 export interface RecipeUrlClipResponse {
-    title: string;
+    recipe: {
+        title: string;
+        servings: string | null;
+        ingredients: RecipeIngredient[];
+        sourceUrl: string;
+        imageUrl?: string;
+    };
+    nutritionResult: {
+        nutrition: StandardizedMealNutrition;
+        perServing?: StandardizedMealNutrition;
+        legacyNutrition?: import('@/types/nutrition').NutritionData; // 古い型も念のため保持
+        legacyPerServing?: import('@/types/nutrition').NutritionData;
+        reliability: {
+            confidence: number;
+            completeness: number;
+        };
+        matchResults?: any[]; // 必要であれば NutritionService の FoodMatchResult 型をインポート
+    };
+    // 以下のプロパティはAPIレスポンスには含まれないが、クリップ処理中にフロントエンドで付与される可能性があるため残す
     image_url?: string;
-    source_url: string;
     source_platform?: string;
-    ingredients: RecipeIngredient[];
-    nutrition_per_serving: StandardizedMealNutrition;
     caution_foods?: string[];
     caution_level?: 'low' | 'medium' | 'high';
-    content_id: string | undefined;
+    content_id?: string;
     is_social_media?: boolean;
     description?: string;
-    use_placeholder?: boolean | undefined;
+    use_placeholder?: boolean;
+    recipe_type?: string; // handleRecipeTypeChange で設定される
 }
 
 // レシピ編集フォームデータ型

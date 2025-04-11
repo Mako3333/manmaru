@@ -315,3 +315,89 @@
 
 以上の手順で、プロジェクト全体のany型を排除する作業を計画的に実施してください。これにより、より安全で堅牢なコードベースへ移行でき、将来の開発が容易になります。
 
+## 12. 実践例（manmaruの実例）
+
+### 12.1 型安全なエラーハンドリング（栄養計算サービス）
+
+栄養計算サービス（`nutrition-service-impl.ts`）では、以下のような型安全なエラーハンドリングを実装しています：
+
+```typescript
+// 適切なエラーコードと型を持つAppErrorの使用
+throw new AppError({
+    code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+    message: `Unusually high calories detected: ${calories}kcal`,
+    userMessage: '栄養計算で異常な値が検出されました。結果が正確でない可能性があります。',
+    details: { calories, inputs: originalInputs },
+    severity: 'warning' // 警告レベル
+});
+```
+
+### 12.2 カスタム型ガード関数の活用（データ変換）
+
+型の安全性を高めるためのカスタム型ガード関数の実装例：
+
+```typescript
+/**
+ * 値がStandardizedMealNutrition型かどうかをチェックする型ガード関数
+ */
+export function isStandardizedMealNutrition(data: unknown): data is StandardizedMealNutrition {
+    return (
+        typeof data === 'object' &&
+        data !== null &&
+        'totalCalories' in data &&
+        'totalNutrients' in data &&
+        Array.isArray((data as StandardizedMealNutrition).totalNutrients)
+    );
+}
+
+// 使用例
+if (nutritionResult.nutrition && isStandardizedMealNutrition(nutritionResult.nutrition)) {
+    // ここでは nutritionResult.nutrition は StandardizedMealNutrition 型として扱える
+    standardizedNutrition = nutritionResult.nutrition;
+} else {
+    // 型変換が必要な場合
+    const originalNutritionData = nutritionResult.nutrition as unknown as NutritionData;
+    standardizedNutrition = createStandardizedMealNutrition(originalNutritionData);
+}
+```
+
+### 12.3 Union型とオプショナルプロパティの活用（レシピパース）
+
+レシピURL解析では、以下のようにUnion型とオプショナルプロパティを活用して型安全性を高めています：
+
+```typescript
+type AnalysisSource = 'parser' | 'ai';  // Union型による有限値の型定義
+
+interface RecipeData {
+    title: string;
+    servings: string;
+    ingredients: Array<{ name: string; quantity?: string }>;  // オプショナルプロパティ
+    sourceUrl: string;
+    imageUrl?: string;  // オプショナルプロパティ
+}
+```
+
+### 12.4 配列アクセスの安全な処理（量パーサー）
+
+配列アクセスの結果が `undefined` になる可能性を考慮した安全な処理：
+
+```typescript
+private static parseValueString(valueStr: string): number {
+    if (valueStr.includes('/')) {
+        const parts = valueStr.split('/');
+        if (parts.length === 2) {
+            const part0 = parts[0];
+            const part1 = parts[1];
+            if (part0 !== undefined && part1 !== undefined) {
+                const numerator = parseFloat(part0);
+                const denominator = parseFloat(part1);
+                if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+                    return numerator / denominator;
+                }
+            }
+        }
+    }
+    // ... 以下省略
+}
+```
+

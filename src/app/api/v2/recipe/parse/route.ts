@@ -9,7 +9,8 @@ import type { RecipeAnalysisResult } from '@/types/ai';
 import { z } from 'zod';
 import {
     createStandardizedMealNutrition,
-    convertToLegacyNutrition
+    convertToLegacyNutrition,
+    isStandardizedMealNutrition
 } from '@/lib/nutrition/nutrition-type-utils';
 import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
 import { IAIService } from '@/lib/ai/ai-service.interface';
@@ -19,6 +20,7 @@ import { getRecipeParser } from '@/lib/recipe-parsers/parser-factory';
 import { RecipeParser } from '@/lib/recipe-parsers/parser-interface';
 import { GenericParser } from '@/lib/recipe-parsers/generic';
 import * as cheerio from 'cheerio';
+import { getSourcePlatformName } from '@/lib/recipe-parsers/parser-factory';
 
 // リクエストの検証スキーマ
 const requestSchema = z.object({
@@ -115,6 +117,8 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         let servingsString: string | undefined = '1人分';
         let ingredients: FoodInputParseResult[] = [];
         let analysisSource: 'parser' | 'ai' = 'parser'; // 解析ソースを記録
+        let imageUrl: string | undefined; // 画像URL保存用の変数を追加
+        let meta: { image_url?: string } = {};
 
         // 3. パーサー実行 or AI実行
         if (!(parser instanceof GenericParser)) {
@@ -123,6 +127,11 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
             try {
                 recipeTitle = parser.extractTitle(document) || recipeTitle;
                 ingredients = parser.extractIngredients(document);
+                // 画像URLを取得
+                imageUrl = parser.extractImage(document);
+                if (imageUrl) {
+                    console.log(`[API Route] Image URL extracted by dedicated parser: ${imageUrl}`);
+                }
                 // TODO: servings はインターフェースにないので、別途取得方法を検討
                 // 例: const servings = parser.extractServings ? parser.extractServings(document) : servingsString;
 
@@ -139,6 +148,15 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         // 汎用パーサー(未対応サイト) または 専用パーサーエラーの場合 -> AIフォールバック
         if (parser instanceof GenericParser || analysisSource === 'ai') {
             console.log(`[API Route] Analyzing with AI for: ${url} (Source: ${analysisSource})`);
+
+            // 汎用パーサーでも画像URLの取得を試みる（専用パーサーで失敗した場合や、最初から汎用パーサーの場合）
+            if (!imageUrl && parser instanceof GenericParser) {
+                imageUrl = parser.extractImage(document);
+                if (imageUrl) {
+                    console.log(`[API Route] Image URL extracted by GenericParser: ${imageUrl}`);
+                }
+            }
+
             const aiService: IAIService = AIServiceFactory.getService(AIServiceType.GEMINI);
 
             // --- HTMLクリーンアップ (cheerio) --- START
@@ -170,14 +188,21 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 } else {
                     // 主要コンテンツが見つからない場合は、クリーンアップされた全体のHTMLを使用
                     cleanedHtml = $.html();
-                    // logger.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`);
-                    // console.warn(`[HTML Cleanup] Could not find main content container. Using cleaned full HTML.`); // logger 代替コメントアウト
+                    console.warn('[HTML Cleanup] Could not find main content container. Using cleaned full HTML.'); // logger 代替コメントアウト
                 }
 
-                // さらに不要な空白や改行を削除してトークン数を削減
+                // タグ間のスペースを保持しつつ、連続する空白や改行を整理
+                // 1. タグ間のスペースを維持するために、一度特殊なマーカーに置き換える
+                cleanedHtml = cleanedHtml.replace(/>\s+</g, '>___SPACE___<');
+                // 2. HTMLタグを除去 (innerTextのような挙動を目指す)
+                cleanedHtml = cleanedHtml.replace(/<[^>]*>/g, ' ');
+                // 3. 特殊マーカーを改行に置き換え（リスト項目などを区切るため）
+                cleanedHtml = cleanedHtml.replace(/___SPACE___/g, '\n');
+                // 4. 連続する空白を1つに、連続する改行を1つに、前後の空白を削除
                 cleanedHtml = cleanedHtml.replace(/\s{2,}/g, ' ').replace(/\n{2,}/g, '\n').trim();
+
                 // logger.debug(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`);
-                // console.log(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`); // logger 代替コメントアウト
+                console.log(`[HTML Cleanup] Cleaned HTML length: ${cleanedHtml.length}`); // logger 代替コメントアウト
 
             } catch (cleanupError) {
                 // logger.error(`[HTML Cleanup Error] Failed to clean HTML for ${url}`, cleanupError);
@@ -203,6 +228,15 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
             ingredients = aiResult.ingredients || []; // RecipeAnalysisResult型のプロパティに合わせる
             console.log(`[API Route] Parsed by AI: ${ingredients.length} ingredients found.`);
             analysisSource = 'ai';
+        }
+
+        // 画像URLの取得ができていない場合は、og:image メタタグから直接取得を試みる最終手段
+        if (!imageUrl && document) {
+            const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+            if (ogImage) {
+                imageUrl = ogImage;
+                console.log(`[API Route] Image URL extracted from og:image meta tag: ${imageUrl}`);
+            }
         }
 
         // 4. servingsString から数値を取得 (1人前計算用) - 共通処理
@@ -240,9 +274,9 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         // すでに StandardizedMealNutrition 型の場合はそのまま使用
         let standardizedNutrition: StandardizedMealNutrition;
 
-        if (nutritionResult.nutrition && 'totalCalories' in nutritionResult.nutrition) {
+        if (nutritionResult.nutrition && isStandardizedMealNutrition(nutritionResult.nutrition)) {
             // すでに StandardizedMealNutrition 型の場合（テスト環境など）
-            standardizedNutrition = nutritionResult.nutrition as StandardizedMealNutrition;
+            standardizedNutrition = nutritionResult.nutrition;
         } else {
             // Legacy 形式から変換が必要な場合
             const originalNutritionData = nutritionResult.nutrition as unknown as NutritionData;
@@ -273,6 +307,28 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
             warningMessage = (warningMessage ? warningMessage + ' ' : '') + 'AIによる解析のため、精度が低い可能性があります。';
         }
 
+        // 結果の整形
+        // ここでは互換性のために StandardizedMealNutrition を legacy NutritionData に変換
+        const servingNutrition = { ...nutritionResult.nutrition };
+        let responseData = {
+            title: recipeTitle,
+            servings: servingsNum,
+            servings_text: servingsString,
+            ingredients: ingredients.map(ing => ({
+                name: ing.foodName,
+                quantity: ing.quantityText || undefined
+            })),
+            nutrition_per_serving: servingNutrition,
+            nutrition_total: servingNutrition, // 現状では serving = total
+            meta: {
+                source: analysisSource as 'parser' | 'ai',
+                parsing_time_ms: Date.now() - startTime,
+                platform: getSourcePlatformName(url),
+                image_url: imageUrl, // 画像URLを含める
+                analysisSource
+            }
+        };
+
         return NextResponse.json({
             success: true,
             data: {
@@ -280,7 +336,8 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                     title: recipeTitle,
                     servings: servingsString,
                     ingredients: nameQuantityPairs,
-                    sourceUrl: url
+                    sourceUrl: url,
+                    imageUrl: imageUrl // 画像URLを追加
                 },
                 nutritionResult: {
                     nutrition: standardizedNutrition,

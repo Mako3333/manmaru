@@ -105,6 +105,22 @@ interface FoodItemNutrition {
     *   **注意:** 保存APIでは、テキスト入力の場合は原則としてフロントエンドから送られてきた計算済み栄養データをそのまま利用します。ただし、将来的に編集内容に応じて再計算するロジックが追加される可能性はあります。
     *   バックエンドは受け取った `StandardizedMealNutrition` データを `meals` テーブルの `nutrition_data` カラムにJSONB形式で保存します。
 
+### レシピURL入力の場合 (レシピクリップ機能)
+
+1.  **レシピ解析・栄養計算段階:**
+    *   ユーザーがレシピページのURLを入力します。
+    *   フロントエンドは `/api/v2/recipe/parse` エンドポイントにURLを送信します。
+    *   バックエンドはURLを解析します。対応サイト（クックパッド等）であれば専用パーサーを、それ以外や失敗時はAI (Gemini) を使用してHTMLからレシピ情報（タイトル、材料リスト等）を抽出します。
+    *   抽出した材料リストを `NutritionService.calculateNutritionFromNameQuantities` に渡して**栄養計算を実行**します。
+    *   計算結果として `StandardizedMealNutrition` オブジェクトが生成されます。
+    *   APIは解析されたレシピ情報と計算された `StandardizedMealNutrition` データをフロントエンドに返します。
+
+2.  **(将来的な)クリップ・保存段階:**
+    *   フロントエンドは受け取ったレシピ情報と栄養データを表示します。
+    *   ユーザーが「クリップ」ボタンをクリックした場合、フロントエンドはレシピ情報（タイトル、URL、材料、計算済み栄養データ等）を別の保存用API（例: `/api/recipes` POST - 別途定義）に送信します。
+    *   保存用APIは、受け取ったデータを `clipped_recipes` テーブルなどに保存します。
+    *   **注意:** `/api/v2/recipe/parse` 自体はDBへの保存を行いません。
+
 ---
 
 ### （共通）栄養計算の詳細 (`NutritionService.calculateNutritionFromNameQuantities`)

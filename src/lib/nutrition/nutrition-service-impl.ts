@@ -130,35 +130,120 @@ export class NutritionServiceImpl implements NutritionService {
     ): Promise<NutritionCalculationResult> {
         // MealFoodItem 形式に変換
         const foodItems: MealFoodItem[] = [];
+        const parseFailed: Array<{ name: string; quantity?: string | undefined; reason: string }> = []; // パース失敗記録用
 
         for (const item of foodNameQuantities) {
-            // 名前から食品を検索
-            const foodMatches = await this.foodRepository.searchFoodsByFuzzyMatch(item.name);
+            try {
+                // 名前から食品を検索
+                const foodMatches = await this.foodRepository.searchFoodsByFuzzyMatch(item.name);
 
-            if (foodMatches.length > 0 && foodMatches[0] && foodMatches[0].food) {
-                // 最もマッチする食品を使用
-                const bestMatch = foodMatches[0].food;
+                if (foodMatches.length > 0 && foodMatches[0] && foodMatches[0].food) {
+                    // 最もマッチする食品を使用
+                    const bestMatch = foodMatches[0].food;
 
-                // 量を解析
-                const parsedQuantity = QuantityParser.parseQuantity(
-                    item.quantity,
-                    bestMatch.name,
-                    bestMatch.category
-                );
+                    // 量を解析
+                    const parsedQuantity = QuantityParser.parseQuantity(
+                        item.quantity,
+                        bestMatch.name,
+                        bestMatch.category
+                    );
 
-                // MealFoodItem を作成
-                foodItems.push({
-                    foodId: bestMatch.id,
-                    food: bestMatch,
-                    quantity: parsedQuantity.quantity,
-                    confidence: parsedQuantity.confidence,
-                    originalInput: item.name
+                    // 量の信頼度が低い場合（0.6未満）は警告ログを出す
+                    if (parsedQuantity.confidence < 0.6) {
+                        console.warn(`[NutritionService] Low confidence quantity parse for "${item.name}" with quantity "${item.quantity}". Confidence: ${parsedQuantity.confidence}`);
+
+                        // 標準量が設定されている場合はそれを使用、そうでなければ標準的な1人前（100g）を使用
+                        if (parsedQuantity.quantity.unit === '標準量' && parsedQuantity.quantity.value === 1) {
+                            console.info(`[NutritionService] Using default portion (100g) for "${item.name}"`);
+                        }
+                    }
+
+                    // MealFoodItem を作成
+                    foodItems.push({
+                        foodId: bestMatch.id,
+                        food: bestMatch,
+                        quantity: parsedQuantity.quantity,
+                        confidence: parsedQuantity.confidence,
+                        originalInput: item.name
+                    });
+                } else {
+                    // 食品が見つからなかった場合
+                    parseFailed.push({
+                        name: item.name,
+                        quantity: item.quantity,
+                        reason: '食品データベースに一致する食品が見つかりませんでした'
+                    });
+                    console.warn(`[NutritionService] No matching food found for "${item.name}"`);
+                }
+            } catch (error) {
+                // 例外発生時のエラーハンドリング
+                parseFailed.push({
+                    name: item.name,
+                    quantity: item.quantity,
+                    reason: error instanceof Error ? error.message : '不明なエラー'
                 });
+                console.error(`[NutritionService] Error processing "${item.name}": ${error instanceof Error ? error.message : error}`);
             }
         }
 
+        // パース失敗した項目がある場合のログ出力
+        if (parseFailed.length > 0) {
+            console.warn(`[NutritionService] Failed to parse ${parseFailed.length} food items:`, JSON.stringify(parseFailed, null, 2));
+        }
+
         // 食品リストの栄養素を計算
-        return this.calculateNutrition(foodItems);
+        const result = await this.calculateNutrition(foodItems);
+
+        // 計算結果の異常値チェック
+        this.validateNutritionResult(result, foodNameQuantities);
+
+        return result;
+    }
+
+    /**
+     * 栄養計算結果の妥当性を検証し、異常値があれば警告を出す
+     * @param result 栄養計算結果
+     * @param originalInputs 元の入力データ（ログ用）
+     * @private
+     */
+    private validateNutritionResult(
+        result: NutritionCalculationResult,
+        originalInputs: Array<{ name: string; quantity?: string }>
+    ): void {
+        const { nutrition } = result;
+
+        // カロリーの異常値チェック（1食分として現実的な上限を超える場合）
+        const calories = nutrition.totalCalories;
+        if (calories > 2000) {
+            throw new AppError({
+                code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                message: `Unusually high calories detected: ${calories}kcal`,
+                userMessage: '栄養計算で異常な値が検出されました。結果が正確でない可能性があります。',
+                details: { calories, inputs: originalInputs },
+                severity: 'warning' // 警告レベル
+            });
+        }
+
+        // 主要栄養素の異常値チェック
+        const checkNutrient = (name: string, maxValue: number, unit: string) => {
+            const value = getNutrientValueByName(nutrition, name);
+            if (value > maxValue) {
+                throw new AppError({
+                    code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                    message: `Unusually high ${name} value detected: ${value}${unit} (max expected: ${maxValue}${unit})`,
+                    userMessage: `栄養成分（${name}）の計算値が一般的な範囲を超えています。結果が正確でない可能性があります。`,
+                    details: { nutrient: name, value, maxValue, unit, inputs: originalInputs },
+                    severity: 'warning'
+                });
+            }
+        };
+
+        // 主要な栄養素の現実的な上限値をチェック（1食分として）
+        checkNutrient('protein', 100, 'g');      // タンパク質: 1食100g超えは過剰
+        checkNutrient('iron', 30, 'mg');         // 鉄分: 1食30mg超えは過剰
+        checkNutrient('calcium', 1000, 'mg');    // カルシウム: 1食1000mg超えは過剰
+        checkNutrient('folic_acid', 1000, 'mcg'); // 葉酸: 1食1000mcg超えは過剰
+        checkNutrient('vitamin_d', 50, 'mcg');   // ビタミンD: 1食50mcg超えは過剰
     }
 
     /**

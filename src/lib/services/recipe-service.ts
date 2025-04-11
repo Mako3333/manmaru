@@ -3,7 +3,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { AppError, ErrorCode } from '@/lib/error';
 import { validateUrl } from '@/lib/validation/response-validators';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertDbFormatToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export class RecipeService {
@@ -74,7 +74,7 @@ export class RecipeService {
             // 栄養データを標準化フォーマットに変換
             if (recipe.nutrition_per_serving) {
                 // DB形式からStandardizedMealNutrition形式に変換
-                const standardizedNutrition = convertToStandardizedNutrition(recipe.nutrition_per_serving);
+                const standardizedNutrition = convertDbFormatToStandardizedNutrition(recipe.nutrition_per_serving as Record<string, unknown> | null);
                 return {
                     ...recipe,
                     nutrition_per_serving: standardizedNutrition

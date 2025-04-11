@@ -102,38 +102,25 @@
 ---
 
 
-### タスク 2.6: AI連携部分の修正 (画像解析プロンプト)
+### タスク 2.7: レシピURL解析の改善と栄養データ変換修正
 
-*   **目的:** 画像解析プロンプトとパーサーの間の不整合を解消する。
+*   **目的:** レシピクリップ機能 (`/recipes/clip`) におけるURL解析の精度向上（ハイブリッドアプローチ改善）と、レシピ取得時の栄養データ形式の整合性を確保する。
 *   **担当範囲:**
-    *   `src/lib/ai/prompts/templates/food-analysis/v1.ts`
-    *   `src/lib/ai/gemini-response-parser.ts`
-    *   `src/app/api/v2/image/analyze/route.ts` (影響確認)
-*   **詳細指示:**
-    1.  **方針決定:** プロンプトから栄養素推定の要求を削除するか、パーサー (`GeminiResponseParser`) が栄養素情報を解析できるように修正するか、方針を決定する。**推奨は、プロンプトから栄養素推定要求を削除し、栄養計算は `NutritionService` に完全に任せる方針**です。これにより、AIの役割が食品特定に集中し、結果の安定性が向上する可能性があります。
-    2.  **修正:**
-        *   **(推奨方針の場合)** `food-analysis/v1.ts` のプロンプトテンプレートから `"nutrition": { ... }` の部分と、それに関する指示を削除する。
-        *   **(パーサー修正方針の場合)** `gemini-response-parser.ts` の `parseResponse` メソッドを修正し、応答JSON内の `nutrition` オブジェクトを解析して `GeminiParseResult` の `nutrition` プロパティに格納するようにする。
-    3.  **影響確認:** `/api/v2/image/analyze/route.ts` で、修正後のプロンプトまたはパーサーからの応答を正しく処理できているか確認する。特に、栄養データ (`aiEstimatedNutrition`) の取得方法が変わる可能性があるため注意する。
-*   **完了条件:** 画像解析プロンプトとパーサーの間の不整合が解消され、`/api/v2/image/analyze` が意図通りに動作すること。
-
----
-
-### タスク 2.7: AI連携部分の修正 (レシピURL解析)
-
-*   **目的:** レシピURL解析の精度と安定性を向上させるため、専用パーサーを優先し、AIをフォールバックとして使用するハイブリッドアプローチを確立・改善する。
-*   **担当範囲:**
-    *   `src/app/api/v2/recipe/parse/route.ts`
-    *   `src/lib/recipe-parsers/` (各パーサー、ファクトリ、インターフェース)
-    *   `src/lib/ai/services/gemini-service.ts` (`parseRecipeFromUrl` - 呼び出し側)
+    *   `src/app/api/v2/recipe/parse/route.ts` (ハイブリッドロジック、栄養計算呼び出し)
+    *   `src/lib/recipe-parsers/` (各専用パーサー、ファクトリ、インターフェース)
+    *   `src/lib/ai/services/gemini-service.ts` (`parseRecipeFromUrl`)
     *   `src/lib/ai/prompts/templates/recipe-url-analysis/v1.ts` (AI用プロンプト)
+    *   `src/lib/services/recipe-service.ts` (`getRecipeById` - 栄養データ変換修正)
+    *   `src/lib/nutrition/nutrition-type-utils.ts` (`convertDbFormatToStandardizedNutrition` - 呼び出し確認)
 *   **詳細指示:**
-    1.  **処理フロー確認:** `/api/v2/recipe/parse/route.ts` の処理フローを確認する。
-        *   HTML取得 → `getRecipeParser` でパーサー選択 → 専用パーサー実行 → 失敗 or 汎用パーサーならHTMLクリーンアップ → AI実行 (`aiService.parseRecipeFromUrl`) → 材料リスト取得 → 栄養計算、という流れになっているか確認する。
-    2.  **専用パーサーの改善:**
-        *   既存の専用パーサー (`cookpad.ts`, `delishkitchen.ts` など) が最新のサイト構造に対応しているか確認し、必要であればセレクタ等を修正する。
-        *   エラーハンドリングを強化し、解析失敗時に明確なエラーまたは空の結果を返すようにする。
-    3.  **HTMLクリーンアップ改善:** AIに渡す前のHTMLクリーンアップ処理 (`cheerio` を使用) を改善し、不要な要素（広告、ヘッダー、フッター、コメント欄など）をより効果的に除去し、レシピ本文（特に材料リスト）を抽出しやすくする。これによりAIの解析精度向上とトークン数削減を目指す。
-    4.  **AIプロンプト調整:** `recipe-url-analysis/v1.ts` のプロンプトが、クリーンアップされたHTMLから材料名と量を正確に抽出するように最適化されているか確認・調整する。JSON形式の指示を明確にする。
-    5.  **フォールバック連携:** 専用パーサーが失敗した場合に、スムーズにAI解析にフォールバックし、その結果を利用して処理が継続されることを確認する。解析ソース（`parser` or `ai`）をメタデータとして返すようにする。
-*   **完了条件:** レシピURL解析において、対応サイトでは専用パーサーが優先的に使用され、未対応サイトや解析失敗時にはAIによる解析が行われ、材料リストが取得できること。HTMLクリーンアップ処理が改善されていること。
+    1.  **ハイブリッドアプローチ改善 (`recipe/parse/route.ts`):**
+        *   **専用パーサーレビュー/修正:** 各専用パーサー (`cookpad.ts` など) が最新のサイト構造で動作するか確認し、必要ならセレクタ等を修正してください。エラーハンドリングを強化し、失敗時にAIフォールバックがトリガーされるようにしてください。
+        *   **HTMLクリーンアップ強化:** `cheerio` を使用したHTMLクリーンアップ処理を改善し、AIに渡すテキストのノイズを減らし、材料リスト抽出の精度を高めてください。
+        *   **AIプロンプト調整:** `recipe-url-analysis/v1.ts` のプロンプトを見直し、クリーンアップされたHTMLから材料名と量をより正確に抽出できるように指示を明確化・調整してください。
+        *   **フォールバック連携確認:** 専用パーサー失敗時にスムーズにAI解析に移行し、結果が利用されることを確認してください。`meta.analysisSource` で解析元を返すようにしてください。
+    2.  **栄養データ変換修正 (`recipe-service.ts`):**
+        *   `RecipeService.getRecipeById` 関数内で、DBから取得した `nutrition_per_serving` (JSONB) を、タスク6で実装した `convertDbFormatToStandardizedNutrition` 関数を使用して `StandardizedMealNutrition` 型に正しく変換するように修正してください。
+*   **完了条件:**
+    *   レシピURL解析APIが、対応サイトでは専用パーサーを優先し、それ以外や失敗時には改善されたHTMLクリーンアップとAIプロンプトを用いて解析を行うこと。
+    *   `RecipeService.getRecipeById` がDBから取得した栄養データを正しく `StandardizedMealNutrition` に変換すること。
+

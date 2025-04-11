@@ -458,3 +458,18 @@ export function convertDbFormatToStandardizedNutrition(
 
     return standardizedData;
 }
+
+/**
+ * 値がStandardizedMealNutrition型かどうかをチェックする型ガード関数
+ * @param data チェック対象のデータ
+ * @returns StandardizedMealNutrition型かどうか
+ */
+export function isStandardizedMealNutrition(data: unknown): data is StandardizedMealNutrition {
+    return (
+        typeof data === 'object' &&
+        data !== null &&
+        'totalCalories' in data &&
+        'totalNutrients' in data &&
+        Array.isArray((data as StandardizedMealNutrition).totalNutrients)
+    );
+}
