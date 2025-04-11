@@ -50,6 +50,8 @@ export const ErrorCode = {
     Resource: {
         RATE_LIMIT_EXCEEDED: 'rate_limit_exceeded',
         QUOTA_EXCEEDED: 'quota_exceeded',
+        DB_ERROR: 'db_error',
+        NOT_FOUND: 'resource_not_found',
     },
 
     // ファイル処理関連
@@ -128,6 +130,8 @@ export const DEFAULT_ERROR_MESSAGES: Record<AnyErrorCode, string> = {
     // Resource
     rate_limit_exceeded: 'リクエスト制限に達しました。しばらく経ってからお試しください。',
     quota_exceeded: '使用制限に達しました。しばらく経ってからお試しください。',
+    db_error: 'データベース処理中にエラーが発生しました。',
+    resource_not_found: 'リソースが見つかりませんでした。',
 
     // File
     file_upload_error: 'ファイルのアップロードに失敗しました。',

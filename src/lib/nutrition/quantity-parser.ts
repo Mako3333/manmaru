@@ -127,6 +127,9 @@ const CATEGORY_UNIT_GRAMS: CategoryUnitGrams = {
     },
     '調味料': {
         'かけ': 20, // カレールウひとかけ
+    },
+    '卵類': {
+        '個': 60 // 卵1個あたり約60gとする
     }
 };
 
@@ -189,29 +192,37 @@ export class QuantityParser {
         let parsedSuccessfully = false;
 
         // --- 数値・単位抽出ロジック改善 --- START
-        // 正規表現: (数値部分) (任意スペース) (単位部分)
+        // 正規表現: (数値部分) (任意スペース) (単位部分) OR (単位部分) (任意スペース) (数値部分)
         // 数値部分: 整数, 小数, N/D形式の分数, 漢数字(一二三...半)
         // 単位部分: 英字, 日本語文字 (記号除く)
-        // 単位部分に「かけら」も追加
-        const mainRegex = /^(\d+(?:\.\d+)?(?:[\/／]\d+(?:\.\d+)?)?|\d+[\/／]\d+|[一二三四五六七八九十半]+)\s*([a-zぁ-んァ-ヶー一-龠々個本枚切合缶袋束尾かけ杯人前ら]+)$/i;
-        const match = mainRegex.exec(normalizedStr);
+        const numUnitRegex = /^(\d+(?:\.\d+)?(?:[\/／]\d+(?:\.\d+)?)?|\d+[\/／]\d+|[一二三四五六七八九十半]+)\s*([a-zぁ-んァ-ヶー一-龠々個本枚切合缶袋束尾かけ杯人前ら]+)$/i;
+        const unitNumRegex = /^([a-zぁ-んァ-ヶー一-龠々個本枚切合缶袋束尾かけ杯人前ら]+)\s*(\d+(?:\.\d+)?(?:[\/／]\d+(?:\.\d+)?)?|\d+[\/／]\d+|[一二三四五六七八九十半]+)$/i;
 
-        if (match && match[1] && match[2]) {
+        const numUnitMatch = numUnitRegex.exec(normalizedStr);
+        const unitNumMatch = unitNumRegex.exec(normalizedStr);
+
+        let valueStr: string | undefined;
+        let unitText: string | undefined;
+
+        if (numUnitMatch && numUnitMatch[1] && numUnitMatch[2]) {
             parsedSuccessfully = true;
-            const valueStr = match[1].replace('／', '/'); // 全角スラッシュを半角に
-            const unitText = match[2];
+            valueStr = numUnitMatch[1].replace('／', '/');
+            unitText = numUnitMatch[2];
+        } else if (unitNumMatch && unitNumMatch[1] && unitNumMatch[2]) {
+            parsedSuccessfully = true;
+            unitText = unitNumMatch[1];
+            valueStr = unitNumMatch[2].replace('／', '/');
+        }
 
-            const value = this.parseValueString(valueStr); // parseValueString で分数や漢数字を処理
-            const lookupKey = unitText.toLowerCase(); // 単位は小文字で統一してマッピング検索
-            const normalizedUnit = UNIT_MAPPING[lookupKey] || unitText; // マッピングにあれば標準単位に、なければそのまま
+        if (parsedSuccessfully && valueStr && unitText) {
+            const value = this.parseValueString(valueStr);
+            const lookupKey = unitText.toLowerCase();
+            const normalizedUnit = UNIT_MAPPING[lookupKey] || unitText;
+            const knownUnits = Object.keys(UNIT_TO_GRAM).concat(Object.keys(UNIT_MAPPING));
 
-            // 特定単位はそのまま返す (グラム換算は convertToGrams で行う)
-            const knownUnits = Object.keys(UNIT_TO_GRAM).concat(Object.keys(UNIT_MAPPING)); // 認識可能な単位リスト
             if (knownUnits.includes(normalizedUnit) || knownUnits.includes(lookupKey)) {
-                // console.log(`[QuantityParser] Parsed as value=${value}, unit=${normalizedUnit} for "${quantityStr}"`);
                 return { quantity: { value, unit: normalizedUnit }, confidence: 0.9 };
             } else {
-                // マッピングにも主要単位リストにもない未知の単位
                 console.warn(`[QuantityParser] Unknown unit after mapping: "${normalizedUnit}" (original: "${unitText}") for "${quantityStr}". Assuming '標準量'.`);
                 return { quantity: { value, unit: '標準量' }, confidence: 0.65 };
             }

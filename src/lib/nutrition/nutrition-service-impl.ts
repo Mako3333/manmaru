@@ -59,7 +59,8 @@ export class NutritionServiceImpl implements NutritionService {
             const food = item.food;
             const { nutrition: singleFoodNutrition, confidence: singleFoodConfidence } = await this.calculateSingleFoodNutrition(
                 food,
-                item.quantity
+                item.quantity,
+                food.category
             );
 
             // 修正された accumulateNutrients を使用
@@ -123,10 +124,12 @@ export class NutritionServiceImpl implements NutritionService {
     /**
      * 食品名と量のリストから栄養素を計算する
      * @param foodNameQuantities 食品名と量のリスト
+     * @param servingsNum レシピの人数 (バリデーション用)
      * @returns 計算された栄養素データ
      */
     async calculateNutritionFromNameQuantities(
-        foodNameQuantities: Array<{ name: string; quantity?: string }>
+        foodNameQuantities: Array<{ name: string; quantity?: string }>,
+        servingsNum: number // 人数パラメータを追加
     ): Promise<NutritionCalculationResult> {
         // MealFoodItem 形式に変換
         const foodItems: MealFoodItem[] = [];
@@ -195,7 +198,7 @@ export class NutritionServiceImpl implements NutritionService {
         const result = await this.calculateNutrition(foodItems);
 
         // 計算結果の異常値チェック
-        this.validateNutritionResult(result, foodNameQuantities);
+        this.validateNutritionResult(result, foodNameQuantities, servingsNum);
 
         return result;
     }
@@ -204,52 +207,65 @@ export class NutritionServiceImpl implements NutritionService {
      * 栄養計算結果の妥当性を検証し、異常値があれば警告を出す
      * @param result 栄養計算結果
      * @param originalInputs 元の入力データ（ログ用）
+     * @param servingsNum レシピの人数 (1人前チェック用)
      * @private
      */
     private validateNutritionResult(
         result: NutritionCalculationResult,
-        originalInputs: Array<{ name: string; quantity?: string }>
+        originalInputs: Array<{ name: string; quantity?: string }>,
+        servingsNum: number // 人数パラメータを追加
     ): void {
         const { nutrition } = result;
 
-        // カロリーの異常値チェック（1食分として現実的な上限を超える場合）
-        const calories = nutrition.totalCalories;
-        if (calories > 2000) {
+        // 人数が有効かチェック (0以下ならチェックをスキップ)
+        if (servingsNum <= 0) {
+            console.warn(`[validateNutritionResult] Invalid servings number (${servingsNum}). Skipping validation.`);
+            return;
+        }
+
+        // --- 1人前あたりの値でチェックするように修正 --- START
+        // カロリーの異常値チェック（1人前あたり）
+        const caloriesPerServing = nutrition.totalCalories / servingsNum;
+        const CALORIE_THRESHOLD_PER_SERVING = 1500; // 1人前あたりの閾値 (例: 1500kcal)
+        if (caloriesPerServing > CALORIE_THRESHOLD_PER_SERVING) {
             throw new AppError({
                 code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
-                message: `Unusually high calories detected: ${calories}kcal`,
-                userMessage: '栄養計算で異常な値が検出されました。結果が正確でない可能性があります。',
-                details: { calories, inputs: originalInputs },
-                severity: 'warning' // 警告レベル
+                message: `Unusually high calories per serving detected: ${caloriesPerServing.toFixed(2)}kcal/serving (Total: ${nutrition.totalCalories}kcal / ${servingsNum} servings)`,
+                userMessage: `1人前あたりのカロリー (${caloriesPerServing.toFixed(0)}kcal) が高すぎます。結果が正確でない可能性があります。`,
+                details: { caloriesPerServing, totalCalories: nutrition.totalCalories, servingsNum, threshold: CALORIE_THRESHOLD_PER_SERVING, inputs: originalInputs },
+                severity: 'warning'
             });
         }
 
-        // 主要栄養素の異常値チェック
-        const checkNutrient = (name: string, maxValue: number, unit: string) => {
-            const value = getNutrientValueByName(nutrition, name);
-            if (value > maxValue) {
+        // 主要栄養素の異常値チェック（1人前あたり）
+        const checkNutrientPerServing = (name: string, maxValuePerServing: number, unit: string) => {
+            const totalValue = getNutrientValueByName(nutrition, name);
+            const valuePerServing = totalValue / servingsNum;
+            if (valuePerServing > maxValuePerServing) {
                 throw new AppError({
                     code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
-                    message: `Unusually high ${name} value detected: ${value}${unit} (max expected: ${maxValue}${unit})`,
-                    userMessage: `栄養成分（${name}）の計算値が一般的な範囲を超えています。結果が正確でない可能性があります。`,
-                    details: { nutrient: name, value, maxValue, unit, inputs: originalInputs },
+                    message: `Unusually high ${name} value per serving detected: ${valuePerServing.toFixed(2)}${unit}/serving (Total: ${totalValue}${unit} / ${servingsNum} servings)`,
+                    userMessage: `1人前あたりの栄養成分（${name}）(${valuePerServing.toFixed(1)}${unit}) が多すぎます。結果が正確でない可能性があります。`,
+                    details: { nutrient: name, valuePerServing, totalValue, servingsNum, threshold: maxValuePerServing, unit, inputs: originalInputs },
                     severity: 'warning'
                 });
             }
         };
 
-        // 主要な栄養素の現実的な上限値をチェック（1食分として）
-        checkNutrient('protein', 100, 'g');      // タンパク質: 1食100g超えは過剰
-        checkNutrient('iron', 30, 'mg');         // 鉄分: 1食30mg超えは過剰
-        checkNutrient('calcium', 1000, 'mg');    // カルシウム: 1食1000mg超えは過剰
-        checkNutrient('folic_acid', 1000, 'mcg'); // 葉酸: 1食1000mcg超えは過剰
-        checkNutrient('vitamin_d', 50, 'mcg');   // ビタミンD: 1食50mcg超えは過剰
+        // 主要な栄養素の現実的な上限値をチェック（1人前あたり）- 閾値を見直し
+        checkNutrientPerServing('protein', 60, 'g');      // タンパク質: 1食60g
+        checkNutrientPerServing('iron', 20, 'mg');         // 鉄分: 1食20mg
+        checkNutrientPerServing('calcium', 800, 'mg');    // カルシウム: 1食800mg
+        checkNutrientPerServing('folic_acid', 600, 'mcg'); // 葉酸: 1食600mcg
+        checkNutrientPerServing('vitamin_d', 30, 'mcg');   // ビタミンD: 1食30mcg
+        // --- 1人前あたりの値でチェックするように修正 --- END
     }
 
     /**
      * 単一の食品の栄養素を計算する
      * @param food 食品データ
      * @param quantity 量
+     * @param category 食品カテゴリ (オプション)
      * @returns 計算された栄養素データと信頼度
      * @throws {AppError(ErrorCode.Nutrition.QUANTITY_CONVERSION_ERROR)} 量の変換に失敗した場合
      * @remarks Food 型から StandardizedMealNutrition への変換ロジックが含まれる。
@@ -257,12 +273,13 @@ export class NutritionServiceImpl implements NutritionService {
      */
     async calculateSingleFoodNutrition(
         food: Food,
-        quantity: FoodQuantity
+        quantity: FoodQuantity,
+        category?: string
     ): Promise<{ nutrition: StandardizedMealNutrition; confidence: number }> {
         const { grams, confidence: quantityConfidence } = QuantityParser.convertToGrams(
             quantity,
             food.name,
-            food.category
+            category
         );
 
         const scaledNutrition: StandardizedMealNutrition = this.initializeStandardizedNutrition();

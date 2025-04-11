@@ -7463,7 +7463,9 @@
       "aliases": [
         "ポークバラ",
         "豚バラ肉",
-        "三枚肉"
+        "豚こま",
+        "豚こま肉",
+        "豚小間肉"
       ]
     },
     "pork-ham": {
@@ -11739,6 +11741,22 @@
       "aliases": [
         "マーボー豆腐",
         "マーボードウフ"
+      ]
+    },
+    "water-plain": {
+      "name": "水",
+      "id": "water-plain",
+      "category": "飲料",
+      "calories": 0,
+      "protein": 0,
+      "iron": 0,
+      "folic_acid": 0,
+      "calcium": 0,
+      "vitamin_d": 0,
+      "standard_quantity": "100g",
+      "aliases": [
+        "水",
+        "お水"
       ]
     }
   }

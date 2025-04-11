@@ -82,6 +82,7 @@ export interface RecipeUrlClipResponse {
     recipe: {
         title: string;
         servings: string | null;
+        servingsNum: number;
         ingredients: RecipeIngredient[];
         sourceUrl: string;
         imageUrl?: string;
@@ -98,7 +99,7 @@ export interface RecipeUrlClipResponse {
         matchResults?: any[]; // 必要であれば NutritionService の FoodMatchResult 型をインポート
     };
     // 以下のプロパティはAPIレスポンスには含まれないが、クリップ処理中にフロントエンドで付与される可能性があるため残す
-    image_url?: string;
+    image_url?: string | undefined;
     source_platform?: string;
     caution_foods?: string[];
     caution_level?: 'low' | 'medium' | 'high';

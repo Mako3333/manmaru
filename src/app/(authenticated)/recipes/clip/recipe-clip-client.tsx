@@ -63,9 +63,28 @@ export default function RecipeClipClient() {
                 body: JSON.stringify({ url: data.url }),
             });
 
+            let errorToThrow: Error | null = null;
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'URLの解析に失敗しました');
+                let errorData;
+                let errorMessage = 'URLの解析中に不明なエラーが発生しました';
+                try {
+                    errorData = await response.json();
+                    // ガイドラインに沿って userMessage を優先、なければ message を使用
+                    errorMessage = errorData?.error?.userMessage || errorData?.error?.message || errorMessage;
+                } catch (jsonError) {
+                    // JSON パース失敗時はレスポンスステータスを含めるなど、より詳細な情報を提供
+                    errorMessage = `URLの解析に失敗しました (ステータス: ${response.status})。レスポンスの形式が不正な可能性があります。`;
+                    console.error('Failed to parse error JSON response:', jsonError);
+                }
+                // Error オブジェクトを作成して後で throw する
+                errorToThrow = new Error(errorMessage);
+                // 可能であれば、詳細情報を cause に持たせる (Error Cause proposal)
+                // try { (errorToThrow as any).cause = errorData; } catch {} 
+            }
+
+            // エラーがあればここで throw
+            if (errorToThrow) {
+                throw errorToThrow;
             }
 
             const responseData = await response.json();
@@ -122,25 +141,25 @@ export default function RecipeClipClient() {
             setEditedRecipe(recipeToSet);
             setError(null);
             setStep('confirm');
+
+            // --- 修正: APIから取得した人数で servings ステートを初期化 --- START
+            if (apiResponseData.recipe.servingsNum && apiResponseData.recipe.servingsNum > 0) {
+                setServings(apiResponseData.recipe.servingsNum);
+                console.log(`[RecipeClipClient] Initial servings set to: ${apiResponseData.recipe.servingsNum}`);
+            } else {
+                // 人数が取得できなかった場合はデフォルト値 (2) を維持
+                setServings(2);
+                console.log(`[RecipeClipClient] Servings number not found in API response or is invalid. Using default: 2`);
+            }
+            // --- 修正: APIから取得した人数で servings ステートを初期化 --- END
+
         } catch (error) {
             console.error('レシピ解析エラー:', error); // 詳細なエラー情報をコンソールに出力
             let displayMessage = '不明なエラーが発生しました。時間を置いて再試行してください。'; // デフォルトメッセージ
 
             if (error instanceof Error) {
-                // APIエラーの場合、error.message に API からのメッセージが含まれることを期待
-                // (response.ok でない場合に throw new Error(errorData.error...) しているため)
-                const apiErrorMessage = error.message;
-
-                if (apiErrorMessage === '[object Object]') {
-                    // API がオブジェクトのエラーを返し、それが文字列化された場合
-                    // 本来は API レスポンスの userMessage を表示したい
-                    displayMessage = 'レシピ情報の取得中にエラーが発生しました (詳細不明)。';
-                    console.warn('API returned a complex error object which could not be displayed. Check server logs for details.');
-                } else if (apiErrorMessage) {
-                    // API が文字列のエラーメッセージを返した場合
-                    displayMessage = apiErrorMessage;
-                }
-                // else の場合はデフォルトメッセージを使用
+                // catch ブロックでは error.message をそのまま表示すればOK
+                displayMessage = error.message;
             } else {
                 // Error インスタンスでない稀なケース
                 displayMessage = String(error) || displayMessage;
@@ -148,12 +167,6 @@ export default function RecipeClipClient() {
 
             // ユーザーに表示するメッセージを設定
             setError(displayMessage);
-
-            // ガイドライン準拠のための注意点:
-            // 本来は API レスポンスの error.userMessage を優先的に表示すべきです。
-            // 現在の実装では、API が返す errorData.error の内容に依存しています。
-            // API 側で一貫して AppError 形式 (userMessage を含む) のエラーを返し、
-            // クライアント側でそれを適切に解析する方がより堅牢です。
         } finally {
             setIsLoading(false);
         }
@@ -161,6 +174,10 @@ export default function RecipeClipClient() {
 
     const handleSaveRecipe = async () => {
         if (!editedRecipe) return;
+
+        // ★★★ デバッグ用ログ追加 ★★★
+        console.log('[RecipeClipClient] Saving recipe. Current servings state:', servings);
+        console.log('[RecipeClipClient] Saving editedRecipe:', editedRecipe);
 
         setIsLoading(true);
         setError(null);

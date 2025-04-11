@@ -118,6 +118,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         let ingredients: FoodInputParseResult[] = [];
         let analysisSource: 'parser' | 'ai' = 'parser'; // 解析ソースを記録
         let imageUrl: string | undefined; // 画像URL保存用の変数を追加
+        let servingsNum = 1; // パースした人数（数値）を保持する変数
         let meta: { image_url?: string } = {};
 
         // 3. パーサー実行 or AI実行
@@ -127,13 +128,19 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
             try {
                 recipeTitle = parser.extractTitle(document) || recipeTitle;
                 ingredients = parser.extractIngredients(document);
-                // 画像URLを取得
                 imageUrl = parser.extractImage(document);
                 if (imageUrl) {
                     console.log(`[API Route] Image URL extracted by dedicated parser: ${imageUrl}`);
                 }
-                // TODO: servings はインターフェースにないので、別途取得方法を検討
-                // 例: const servings = parser.extractServings ? parser.extractServings(document) : servingsString;
+                // --- 修正: 人数情報を抽出 --- START
+                if (typeof parser.extractServings === 'function') {
+                    const extractedServings = parser.extractServings(document);
+                    if (extractedServings) {
+                        servingsString = extractedServings;
+                        console.log(`[API Route] Servings string extracted by dedicated parser: ${servingsString}`);
+                    }
+                }
+                // --- 修正: 人数情報を抽出 --- END
 
                 console.log(`[API Route] Parsed by dedicated parser: ${ingredients.length} ingredients found.`);
                 analysisSource = 'parser';
@@ -240,12 +247,15 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         }
 
         // 4. servingsString から数値を取得 (1人前計算用) - 共通処理
-        let servingsNum = 1;
         if (servingsString) {
-            const match = servingsString.match(/\d+/);
-            if (match) {
-                const parsed = parseInt(match[0], 10);
-                if (!isNaN(parsed) && parsed > 0) servingsNum = parsed;
+            // 正規表現で最初の数字列を取得 (例: 「3〜4人前」-> 3)
+            const match = servingsString.match(/[\d０-９]+/);
+            if (match && match[0]) {
+                const parsed = parseInt(match[0].replace(/[０-９]/g, m => String.fromCharCode(m.charCodeAt(0) - 0xFEE0)), 10);
+                if (!isNaN(parsed) && parsed > 0) {
+                    servingsNum = parsed;
+                    console.log(`[API Route] Parsed servings number: ${servingsNum}`);
+                }
             }
         }
 
@@ -274,9 +284,9 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         // すでに StandardizedMealNutrition 型の場合はそのまま使用
         let standardizedNutrition: StandardizedMealNutrition;
 
-        if (nutritionResult.nutrition && isStandardizedMealNutrition(nutritionResult.nutrition)) {
+        if (nutritionResult.nutrition && 'totalCalories' in nutritionResult.nutrition) {
             // すでに StandardizedMealNutrition 型の場合（テスト環境など）
-            standardizedNutrition = nutritionResult.nutrition;
+            standardizedNutrition = nutritionResult.nutrition as StandardizedMealNutrition;
         } else {
             // Legacy 形式から変換が必要な場合
             const originalNutritionData = nutritionResult.nutrition as unknown as NutritionData;
@@ -284,7 +294,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         }
 
         // 1人前あたりの栄養素を計算
-        const perServingNutrition: StandardizedMealNutrition | undefined = servingsNum > 1
+        const perServingNutrition: StandardizedMealNutrition | undefined = servingsNum > 0 // 0除算を防ぐ
             ? {
                 ...standardizedNutrition,
                 totalCalories: standardizedNutrition.totalCalories / servingsNum,
@@ -312,7 +322,8 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
         const servingNutrition = { ...nutritionResult.nutrition };
         let responseData = {
             title: recipeTitle,
-            servings: servingsNum,
+            servings: servingsString,
+            servingsNum: servingsNum,
             servings_text: servingsString,
             ingredients: ingredients.map(ing => ({
                 name: ing.foodName,
@@ -335,6 +346,7 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
                 recipe: {
                     title: recipeTitle,
                     servings: servingsString,
+                    servingsNum: servingsNum,
                     ingredients: nameQuantityPairs,
                     sourceUrl: url,
                     imageUrl: imageUrl // 画像URLを追加

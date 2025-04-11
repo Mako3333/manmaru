@@ -1,18 +1,20 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { RecipeUrlClipResponse } from '@/types/recipe';
+import { RecipeUrlClipResponse, ClippedRecipe } from '@/types/recipe';
 import { StandardizedMealNutrition } from '@/types/nutrition';
 import { withErrorHandling } from '@/lib/api/middleware';
 import { AppError, ErrorCode } from '@/lib/error';
 import { convertToDbNutritionFormat, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
-// リクエストボディの拡張型定義
+// ★★★ RecipeSaveRequest 型定義を再度削除 ★★★
+/*
 interface RecipeSaveRequest extends RecipeUrlClipResponse {
     recipe_type?: string;
-    servings?: number;
+    servings?: number; 
     use_placeholder?: boolean;
 }
+*/
 
 export const POST = withErrorHandling(async (req: NextRequest) => {
     // ユーザー認証確認
@@ -47,29 +49,18 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         });
     }
 
-    // リクエストボディからレシピデータを取得
-    // TODO: より安全な型検証（例: zod）を導入することを推奨
-    const recipeData = await req.json() as RecipeSaveRequest;
+    // ★★★ 型アサーションを Partial<ClippedRecipe> に戻す ★★★
+    const recipeData = await req.json() as Partial<ClippedRecipe>;
 
-    // nutrition_per_serving を DB 保存形式に変換
-    let dbNutritionData = null;
-    if (recipeData.nutrition_per_serving) {
-        try {
-            // ここで StandardizedMealNutrition 型であることを想定
-            dbNutritionData = convertToDbNutritionFormat(recipeData.nutrition_per_serving as StandardizedMealNutrition);
-        } catch (conversionError) {
-            console.error('POST /api/recipes/save: 栄養データをDB形式に変換中にエラー:', conversionError);
-            throw new AppError({
-                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                message: 'リクエスト内の栄養データの形式変換に失敗しました',
-                originalError: conversionError instanceof Error ? conversionError : undefined,
-                details: { requestNutritionData: recipeData.nutrition_per_serving }
-            });
-        }
-    }
+    // ★★★ 栄養データへのアクセスを recipeData.nutrition_per_serving に戻す ★★★
+    const standardizedNutritionData = recipeData.nutrition_per_serving as StandardizedMealNutrition | undefined;
 
-    console.log('保存するレシピデータ:', JSON.stringify(recipeData, null, 2));
+    /* 変換処理は不要 */
 
+    console.log('保存するレシピデータ (リクエスト):', JSON.stringify(recipeData, null, 2));
+    console.log('保存する栄養データ (標準化済み):', standardizedNutritionData);
+
+    // ★★★ バリデーションを直接アクセスに戻す ★★★
     if (!recipeData.title || !recipeData.source_url) {
         throw new AppError({
             code: ErrorCode.Base.DATA_VALIDATION_ERROR,
@@ -103,7 +94,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     console.log('利用可能なカラム:', columns);
 
-    // 同じURLのレシピが既に存在するかチェック
+    // ★★★ 同じURLのレシピチェックを直接アクセスに戻す ★★★
     const { data: existingRecipe } = await supabase
         .from('clipped_recipes')
         .select('id')
@@ -111,28 +102,23 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         .eq('source_url', recipeData.source_url)
         .maybeSingle();
 
-    // 保存用のデータを準備 - 基本情報（すべてのテーブルに存在するカラム）
-    // TODO: より具体的な型定義を使用することが望ましいですが、
-    // Supabaseの動的なスキーマに対応するため、現時点ではRecord型を使用
-    // TODO: 将来的にはSupabaseの型生成機能などを活用し、テーブルスキーマに合わせた型を使用する
+    // ★★★ 保存用データ準備を直接アクセスに戻す ★★★
     const saveData: Record<string, unknown> = {
         title: recipeData.title,
+        source_url: recipeData.source_url,
+        ingredients: recipeData.ingredients,
         image_url: recipeData.image_url,
         source_platform: recipeData.source_platform,
         content_id: recipeData.content_id,
         recipe_type: recipeData.recipe_type || 'main_dish',
-        ingredients: recipeData.ingredients,
-        nutrition_per_serving: dbNutritionData,
         caution_foods: recipeData.caution_foods,
         caution_level: recipeData.caution_level,
+        nutrition_per_serving: standardizedNutritionData,
     };
 
     // カラムが存在するときだけ値を設定する
     if (columns.includes('use_placeholder')) {
-        console.log('use_placeholderカラムが存在します。値を設定します:', recipeData.use_placeholder || false);
         saveData.use_placeholder = recipeData.use_placeholder || false;
-    } else {
-        console.log('use_placeholderカラムがテーブルに存在しないため、このフィールドはスキップします');
     }
 
     if (columns.includes('is_social_media')) {
@@ -140,6 +126,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     }
 
     if (columns.includes('servings')) {
+        // ★★★ DBのservingsには recipeData.servings (トップレベル) を保存 ★★★
         saveData.servings = recipeData.servings || 1;
     }
 
@@ -173,7 +160,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     // 新規レシピとして保存
     saveData.user_id = user.id;
-    saveData.source_url = recipeData.source_url;
+    // source_url は既に saveData に含まれているため不要
     saveData.is_favorite = false;
     saveData.clipped_at = new Date().toISOString();
 

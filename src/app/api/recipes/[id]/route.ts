@@ -11,7 +11,8 @@ import type { User } from '@supabase/supabase-js'; // User 型をインポート
 //     params: { id: string };
 // };
 
-// Supabaseクライアント作成関数 (async に変更)
+// Supabaseクライアント作成関数 (async に変更) -> 削除
+/*
 const createSupabaseClient = async () => {
     const cookieStore = await cookies(); // await を追加
     return createServerClient(
@@ -34,6 +35,7 @@ const createSupabaseClient = async () => {
         }
     );
 };
+*/
 
 // レシピの取得
 export const GET = withAuthAndErrorHandling(
@@ -73,11 +75,27 @@ export const PATCH = withAuthAndErrorHandling(
             // レシピの存在確認 (RecipeServiceを使用)
             await RecipeService.getRecipeById(id, user.id);
 
-            // Supabaseクライアント初期化 (共通関数を使用, await を追加)
-            const supabase = await createSupabaseClient();
+            // Supabaseクライアント初期化
+            const cookieStore = await cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            // Route Handler 内の cookieStore は読み取り専用のため no-op
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            // Route Handler 内の cookieStore は読み取り専用のため no-op
+                        },
+                    },
+                }
+            );
 
             // リクエストボディからレシピ更新用データを取得
-            // TODO: より安全な型検証（例: zod）と具体的な型定義を導入することを推奨
             const updateData = await req.json() as Record<string, unknown>;
 
             // データ更新
@@ -94,10 +112,11 @@ export const PATCH = withAuthAndErrorHandling(
 
             if (error) {
                 throw new AppError({
-                    code: ErrorCode.Base.API_ERROR,
+                    code: ErrorCode.Base.API_ERROR, // PATCHではDBエラーをAPIエラーとして扱う（変更可）
                     message: `レシピ更新エラー: ${error.message}`,
                     userMessage: 'レシピの更新中にエラーが発生しました',
-                    originalError: error instanceof Error ? error : undefined
+                    originalError: error instanceof Error ? error : new Error(String(error)), // エラーオブジェクト保証
+                    details: { recipeId: id, userId: user.id, updateData } // 詳細情報追加
                 });
             }
 
@@ -124,11 +143,28 @@ export const DELETE = withAuthAndErrorHandling(
         }
 
         try {
-            // レシピの存在確認 (RecipeServiceを使用)
+            // レシピの存在確認
             await RecipeService.getRecipeById(id, user.id);
 
-            // Supabaseクライアント初期化 (共通関数を使用, await を追加)
-            const supabase = await createSupabaseClient();
+            // Supabaseクライアント初期化
+            const cookieStore = await cookies();
+            const supabase = createServerClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                {
+                    cookies: {
+                        get(name: string) {
+                            return cookieStore.get(name)?.value;
+                        },
+                        set(name: string, value: string, options: CookieOptions) {
+                            // Route Handler 内の cookieStore は読み取り専用のため no-op
+                        },
+                        remove(name: string, options: CookieOptions) {
+                            // Route Handler 内の cookieStore は読み取り専用のため no-op
+                        },
+                    },
+                }
+            );
 
             // レシピ削除
             const { error } = await supabase
@@ -139,10 +175,11 @@ export const DELETE = withAuthAndErrorHandling(
 
             if (error) {
                 throw new AppError({
-                    code: ErrorCode.Base.API_ERROR,
+                    code: ErrorCode.Resource.DB_ERROR,
                     message: `レシピ削除エラー: ${error.message}`,
                     userMessage: 'レシピの削除中にエラーが発生しました',
-                    originalError: error instanceof Error ? error : undefined
+                    originalError: error instanceof Error ? error : new Error(String(error)),
+                    details: { recipeId: id, userId: user.id }
                 });
             }
 
@@ -151,7 +188,6 @@ export const DELETE = withAuthAndErrorHandling(
                 'レシピを削除しました'
             ));
         } catch (error) {
-            // withAuthAndErrorHandlingによって適切にハンドリングされる
             throw error;
         }
     }

@@ -1,19 +1,59 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Heart, Clock, Plus, ExternalLink, Trash } from 'lucide-react';
-import { ClippedRecipe } from '@/types/recipe';
+import { ArrowLeft, Heart, Clock, Plus, ExternalLink, Trash, AlertCircle, Users } from 'lucide-react';
+import { ClippedRecipe, RecipeIngredient } from '@/types/recipe';
 import { AddToMealDialog } from '@/components/recipes/add-to-meal-dialog';
 import { toast } from 'sonner';
-import { getNutrientDisplayName, getNutrientUnit } from '@/lib/nutrition-utils';
+import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
 import { openOriginalSocialMedia } from '@/lib/utils/deep-link';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { getNutrientDisplayName, getNutrientUnit } from '@/lib/nutrition-utils';
 
 interface RecipeDetailClientProps {
     initialData: ClippedRecipe;
 }
+
+// 1人前の栄養価を計算するヘルパー関数
+const calculatePerServingNutrition = (
+    totalNutrition: StandardizedMealNutrition | null | undefined,
+    servings: number
+): StandardizedMealNutrition | null => {
+    if (!totalNutrition || servings <= 0) {
+        return null;
+    }
+
+    const safeServings = Math.max(1, servings);
+
+    const perServingNutrients = totalNutrition.totalNutrients?.map(nutrient => ({
+        ...nutrient,
+        value: nutrient.value / safeServings,
+    })) || [];
+
+    const perServingCalories = totalNutrition.totalCalories / safeServings;
+
+    // 元の構造を維持しつつ、計算後の値で上書きする
+    return {
+        ...totalNutrition,
+        totalCalories: perServingCalories,
+        totalNutrients: perServingNutrients,
+        // foodItems など他のプロパティはそのまま保持（ここでは表示しないが）
+    };
+};
 
 export default function RecipeDetailClient({ initialData }: RecipeDetailClientProps) {
     const [recipe, setRecipe] = useState<ClippedRecipe>(initialData);
@@ -22,6 +62,22 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
     const [showMealDialog, setShowMealDialog] = useState<boolean>(false);
     const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
     const router = useRouter();
+
+    // 人数情報を取得 (デフォルトは1人前とする)
+    const numberOfServings = useMemo(() => {
+        // recipe.servings が number 型であり、0より大きいことを確認
+        return (recipe.servings && recipe.servings > 0) ? recipe.servings : 1;
+    }, [recipe.servings]);
+
+    // 1人前の栄養価を計算
+    const perServingNutrition = useMemo(() => {
+        return calculatePerServingNutrition(recipe.nutrition_per_serving, numberOfServings);
+    }, [recipe.nutrition_per_serving, numberOfServings]);
+
+    // 人数表示用の文字列 (例: "4人前")
+    const servingsDisplayText = useMemo(() => {
+        return `${numberOfServings}人前`;
+    }, [numberOfServings]);
 
     // ソーシャルメディアかどうかを判定
     const isSocialMedia = recipe.source_platform === 'Instagram' || recipe.source_platform === 'TikTok';
@@ -34,7 +90,7 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
 
             // 楽観的UI更新（即時に状態を更新）
             setIsFavorite(newFavoriteState);
-            setRecipe({ ...recipe, is_favorite: newFavoriteState });
+            setRecipe(prev => ({ ...prev, is_favorite: newFavoriteState }));
 
             // APIリクエスト
             const response = await fetch(`/api/recipes/${recipe.id}/favorite`, {
@@ -48,7 +104,7 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
             if (!response.ok) {
                 // APIリクエストが失敗した場合は元の状態に戻す
                 setIsFavorite(!newFavoriteState);
-                setRecipe({ ...recipe, is_favorite: !newFavoriteState });
+                setRecipe(prev => ({ ...prev, is_favorite: !newFavoriteState }));
                 throw new Error('お気に入り設定の更新に失敗しました');
             }
         } catch (error) {
@@ -78,7 +134,7 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                 recipe.source_platform,
                 recipe.content_id
             );
-        } else {
+        } else if (recipe.source_url) {
             // 通常のレシピサイトの場合は新しいタブで開く
             window.open(recipe.source_url, '_blank');
         }
@@ -96,11 +152,33 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
     };
 
     // 注意レベルに基づくスタイルクラスを取得
-    const getCautionStyleClass = () => {
-        if (!recipe.caution_level) return '';
-        if (recipe.caution_level === 'high') return 'bg-red-50 border-red-200 text-red-700';
-        if (recipe.caution_level === 'medium') return 'bg-yellow-50 border-yellow-200 text-yellow-700';
-        return '';
+    const getCautionStyleClass = (type: 'alert' | 'title' | 'list') => {
+        const level = recipe.caution_level;
+        if (!level) return '';
+
+        if (level === 'high') {
+            switch (type) {
+                case 'alert': return 'bg-red-50 border-red-200 text-red-700';
+                case 'title': return 'text-red-800';
+                case 'list': return 'text-red-700';
+                default: return '';
+            }
+        }
+        if (level === 'medium') {
+            switch (type) {
+                case 'alert': return 'bg-yellow-50 border-yellow-200 text-yellow-700';
+                case 'title': return 'text-yellow-800';
+                case 'list': return 'text-yellow-700';
+                default: return '';
+            }
+        }
+        // 'low' or other cases
+        switch (type) {
+            case 'alert': return 'bg-blue-50 border-blue-200 text-blue-700';
+            case 'title': return 'text-blue-800';
+            case 'list': return 'text-blue-700';
+            default: return '';
+        }
     };
 
     const handleDeleteRecipe = async () => {
@@ -117,12 +195,13 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
                 throw new Error(errorData.error || 'レシピの削除に失敗しました');
             }
 
+            toast.success('レシピを削除しました');
             // 削除成功後、レシピ一覧ページに戻る
             router.push('/recipes');
             router.refresh();
         } catch (error) {
             console.error('削除エラー:', error);
-            alert('レシピの削除に失敗しました。もう一度お試しください。');
+            toast.error(`レシピの削除に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
         } finally {
             setLoading(false);
             setShowDeleteDialog(false);
@@ -137,213 +216,229 @@ export default function RecipeDetailClient({ initialData }: RecipeDetailClientPr
         setShowDeleteDialog(false);
     };
 
+    // 栄養成分表示用データ
+    const displayNutrients = useMemo(() => {
+        if (!perServingNutrition) return [];
+
+        // カロリーをリストの先頭に追加
+        const nutrientsToShow: { name: string, value: number, unit: string }[] = [
+            { name: 'カロリー', value: perServingNutrition.totalCalories, unit: 'kcal' },
+        ];
+
+        // totalNutrients から主要なものを抽出・整形 (例)
+        // 必要に応じて表示する栄養素を調整してください
+        const mainNutrients = ['タンパク質', '脂質', '炭水化物', '食物繊維', '食塩相当量', 'カルシウム', '鉄', '亜鉛', 'ビタミンA', 'ビタミンB1', 'ビタミンB2', 'ビタミンC', '葉酸'];
+        perServingNutrition.totalNutrients?.forEach(n => {
+            if (mainNutrients.includes(n.name)) {
+                nutrientsToShow.push({ name: n.name, value: n.value, unit: n.unit });
+            }
+        });
+
+        return nutrientsToShow;
+
+    }, [perServingNutrition]);
+
     return (
         <div className="container max-w-4xl mx-auto px-4 py-6">
             {/* 戻るボタンとアクションボタン */}
             <div className="flex justify-between items-center mb-6">
-                <Button variant="ghost" onClick={() => router.back()} className="flex items-center gap-1">
+                <Button variant="ghost" onClick={() => router.back()} className="flex items-center gap-1 text-gray-600 hover:text-gray-800">
                     <ArrowLeft size={16} />
                     戻る
                 </Button>
 
                 <div className="flex gap-2">
+                    <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="outline" className="text-red-600 border-red-600 hover:bg-red-50 hover:text-red-700">
+                                <Trash size={16} className="mr-1" />
+                                削除
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>レシピの削除</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    「{recipe.title}」を削除しますか？この操作は元に戻せません。
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={closeDeleteDialog}>キャンセル</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={handleDeleteRecipe}
+                                    disabled={loading}
+                                    className="bg-red-600 hover:bg-red-700"
+                                >
+                                    {loading ? '削除中...' : '削除する'}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+
                     <Button
                         variant={isFavorite ? "default" : "outline"}
                         onClick={handleFavoriteToggle}
                         disabled={loading}
-                        className={isFavorite ? "bg-red-500 hover:bg-red-600" : ""}
+                        className={`${isFavorite ? "bg-pink-500 hover:bg-pink-600 text-white" : "text-pink-600 border-pink-600 hover:bg-pink-50 hover:text-pink-700"} flex items-center gap-1`}
                     >
-                        <Heart size={16} className="mr-1" fill={isFavorite ? "white" : "none"} />
-                        {isFavorite ? "お気に入り済み" : "お気に入り"}
+                        <Heart size={16} fill={isFavorite ? "currentColor" : "none"} />
+                        {isFavorite ? "お気に入り" : "お気に入り"}
                     </Button>
 
-                    <Button variant="default" onClick={handleOpenMealDialog}>
-                        <Plus size={16} className="mr-1" />
+                    <Button
+                        variant="default"
+                        onClick={handleOpenMealDialog}
+                        className="bg-green-600 hover:bg-green-700 flex items-center gap-1"
+                    >
+                        <Plus size={16} />
                         食事記録に追加
                     </Button>
                 </div>
             </div>
 
             {/* レシピ情報 */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 {/* レシピ画像 */}
-                <div className="relative h-64 w-full">
+                <div className="relative h-64 w-full bg-gray-100">
                     {recipe.image_url && !recipe.use_placeholder ? (
                         <Image
                             src={recipe.image_url}
                             alt={recipe.title}
                             fill
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                             className="object-cover"
+                            priority
                         />
                     ) : isSocialMedia ? (
                         // ソーシャルメディアのプレースホルダー
                         <div className={`w-full h-full ${getPlaceholderBgColor()} flex items-center justify-center`}>
-                            <div className="flex flex-col items-center p-4 text-white">
+                            <div className="flex flex-col items-center p-4 text-white text-center">
                                 <div className="relative w-16 h-16 mb-3">
                                     <Image
-                                        src={`/icons/${recipe.source_platform?.toLowerCase()}.svg`}
-                                        alt={recipe.source_platform || ''}
+                                        src={`/icons/${recipe.source_platform?.toLowerCase() || 'other'}.svg`}
+                                        alt={recipe.source_platform || 'Social Media'}
                                         width={64}
                                         height={64}
-                                        className="object-contain"
+                                        className="object-contain filter drop-shadow-lg"
                                     />
                                 </div>
-                                <h3 className="text-xl font-semibold text-center">{recipe.title}</h3>
+                                <h3 className="text-xl font-semibold">{recipe.title}</h3>
                                 <p className="text-sm opacity-80 mt-1">{recipe.source_platform}のレシピ</p>
                             </div>
                         </div>
                     ) : (
-                        <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                            <span className="text-gray-400 text-4xl">🍽️</span>
+                        <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <span className="text-gray-400 text-5xl">🍽️</span>
                         </div>
                     )}
 
-                    {/* ソーシャルメディアアイコン */}
-                    {isSocialMedia && (
-                        <div className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-md">
-                            {recipe.source_platform === 'Instagram' ? (
-                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <linearGradient id="instagramGradient" x1="0" y1="0" x2="1" y2="1">
-                                        <stop offset="0%" stopColor="#FBCD07" />
-                                        <stop offset="50%" stopColor="#E94E76" />
-                                        <stop offset="100%" stopColor="#6B54D7" />
-                                    </linearGradient>
-                                    <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="url(#instagramGradient)" fill="url(#instagramGradient)" />
-                                    <circle cx="12" cy="12" r="5" stroke="white" fill="none" strokeWidth="2" />
-                                    <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
-                                </svg>
-                            ) : (
-                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M19.321 5.562C18.7206 4.98345 17.8873 4.73633 16.714 4.73633H7.286C6.11267 4.73633 5.27867 4.98345 4.679 5.562C4.07933 6.14055 3.75 7.00973 3.75 8.14052V15.8587C3.75 16.9895 4.07933 17.859 4.679 18.4375C5.27867 19.0161 6.11267 19.2632 7.286 19.2632H16.714C17.8873 19.2632 18.7213 19.0161 19.321 18.4375C19.9207 17.859 20.25 16.9895 20.25 15.8587V8.14052C20.25 7.00973 19.9207 6.14055 19.321 5.562Z" fill="#FF0050" />
-                                    <path d="M9.16797 15.8164V8.18262L16.1078 12.8383L9.16797 15.8164Z" fill="white" />
-                                </svg>
-                            )}
+                    {recipe.source_platform && (
+                        <div className="absolute top-4 right-4 bg-white/80 backdrop-blur-sm rounded-full p-2 shadow-md cursor-pointer" onClick={handleOpenOriginalRecipe} title="元のレシピを開く">
+                            <Image
+                                src={`/icons/${recipe.source_platform.toLowerCase()}.svg`}
+                                alt={`${recipe.source_platform} icon`}
+                                width={24}
+                                height={24}
+                            />
+                        </div>
+                    )}
+                    {!isSocialMedia && recipe.source_url && (
+                        <div className="absolute top-4 right-4 bg-white/80 backdrop-blur-sm rounded-full p-2 shadow-md cursor-pointer" onClick={handleOpenOriginalRecipe} title="元のレシピサイトを開く">
+                            <ExternalLink size={20} className="text-gray-600" />
                         </div>
                     )}
                 </div>
 
                 {/* レシピ詳細 */}
-                <div className="p-6">
-                    <h1 className="text-2xl font-bold mb-2">{recipe.title}</h1>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                        <span className="text-sm bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                <div className="p-6 md:p-8">
+                    <h1 className="text-3xl font-bold mb-3 leading-tight">{recipe.title}</h1>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 mb-6 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                            <span className={`inline-block w-3 h-3 rounded-full mr-1 ${recipe.recipe_type === 'main_dish' ? 'bg-green-500' :
+                                recipe.recipe_type === 'side_dish' ? 'bg-yellow-500' :
+                                    recipe.recipe_type === 'soup' ? 'bg-blue-500' :
+                                        recipe.recipe_type === 'staple_food' ? 'bg-orange-500' :
+                                            recipe.recipe_type === 'dessert' ? 'bg-pink-500' : 'bg-gray-400'
+                                }`}></span>
                             {recipe.recipe_type === 'main_dish' ? '主菜' :
                                 recipe.recipe_type === 'side_dish' ? '副菜' :
-                                    recipe.recipe_type === 'soup' ? '汁物' : 'その他'}
+                                    recipe.recipe_type === 'soup' ? '汁物' :
+                                        recipe.recipe_type === 'staple_food' ? '主食' :
+                                            recipe.recipe_type === 'dessert' ? 'デザート' : 'その他'}
                         </span>
-                        <span className="text-sm bg-gray-50 text-gray-700 px-2 py-1 rounded-full flex items-center">
-                            <Clock size={14} className="mr-1" />
-                            {recipe.source_platform || 'レシピサイト'}
+                        <span className="flex items-center gap-1">
+                            <Clock size={14} />
+                            {recipe.source_platform || (recipe.source_url ? new URL(recipe.source_url).hostname : 'レシピサイト')}
                         </span>
+                        {numberOfServings > 0 && (
+                            <span className="flex items-center gap-1 font-medium text-gray-700">
+                                <Users size={14} />
+                                {servingsDisplayText}
+                            </span>
+                        )}
                     </div>
 
-                    {/* 注意事項表示 */}
                     {recipe.caution_foods && recipe.caution_foods.length > 0 && (
-                        <div className={`mb-6 p-4 rounded-lg border ${getCautionStyleClass()}`}>
-                            <h3 className="font-semibold mb-2">
-                                {recipe.caution_level === 'high' ? '⚠️ 注意が必要な食材' :
-                                    recipe.caution_level === 'medium' ? '⚠️ 注意した方が良い食材' :
-                                        '参考情報'}
-                            </h3>
-                            <ul className="list-disc list-inside">
-                                {recipe.caution_foods.map((food, index) => (
-                                    <li key={index}>{food}</li>
-                                ))}
-                            </ul>
-                        </div>
+                        <Alert className={`mb-6 ${getCautionStyleClass('alert')}`}>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle className={`${getCautionStyleClass('title')} font-semibold`}>
+                                {recipe.caution_level === 'high' ? '注意が必要な食材が含まれています' :
+                                    recipe.caution_level === 'medium' ? '注意した方が良い食材が含まれています' :
+                                        '含まれる食材に関する情報'}
+                            </AlertTitle>
+                            <AlertDescription className={`${getCautionStyleClass('list')}`}>
+                                {recipe.caution_foods.join('、')}
+                            </AlertDescription>
+                        </Alert>
                     )}
 
-                    {/* 栄養素情報 */}
-                    <div className="mb-6">
-                        <h2 className="text-lg font-semibold mb-3">栄養成分</h2>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                            {recipe.nutrition_per_serving && Object.entries(recipe.nutrition_per_serving)
-                                .filter(([key]) => ['calories', 'protein', 'iron', 'folic_acid', 'calcium', 'vitamin_d'].includes(key))
-                                .map(([key, value]) => (
-                                    <div key={key} className="bg-gray-50 p-3 rounded-lg">
-                                        <h3 className="text-sm text-gray-500">{getNutrientDisplayName(key)}</h3>
-                                        <p className="text-lg font-semibold">
-                                            {typeof value === 'number' ? value.toFixed(1) : value} {getNutrientUnit(key)}
-                                        </p>
-                                    </div>
-                                ))
-                            }
-                        </div>
-                    </div>
-
-                    {/* 材料リスト */}
-                    <div className="mb-6">
-                        <h2 className="text-lg font-semibold mb-3">材料</h2>
-                        <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="md:col-span-2">
+                            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                                材料
+                                {numberOfServings > 0 && <span className="text-sm font-normal text-gray-500">({servingsDisplayText})</span>}
+                            </h2>
                             {recipe.ingredients && recipe.ingredients.length > 0 ? (
-                                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {recipe.ingredients.map((ingredient, index) => (
-                                        <li key={index} className="flex justify-between">
-                                            <span>{ingredient.name}</span>
-                                            <span className="text-gray-500">{ingredient.quantity || ''}</span>
+                                <ul className="space-y-2 list-disc list-inside text-gray-700">
+                                    {recipe.ingredients.map((ingredient: RecipeIngredient, index: number) => (
+                                        <li key={index}>
+                                            <span className="font-medium">{ingredient.name}</span>
+                                            {ingredient.quantity && <span className="ml-2 text-gray-600">{ingredient.quantity}</span>}
                                         </li>
                                     ))}
                                 </ul>
                             ) : (
-                                <p className="text-gray-500">材料情報がありません</p>
+                                <p className="text-gray-500">材料情報がありません。</p>
                             )}
                         </div>
-                    </div>
 
-                    {/* 元サイトへのリンクとクリップ解除ボタン */}
-                    <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                        <Button
-                            variant="outline"
-                            className="flex-1"
-                            onClick={handleOpenOriginalRecipe}
-                        >
-                            <ExternalLink size={16} className="mr-2" />
-                            {isSocialMedia ? `元の${recipe.source_platform}を開く` : '元のレシピを見る'}
-                        </Button>
-
-                        <Button
-                            variant="outline"
-                            className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                            onClick={openDeleteDialog}
-                        >
-                            <Trash size={16} className="mr-2" />
-                            クリップの解除
-                        </Button>
+                        <div>
+                            <h2 className="text-xl font-semibold mb-4">栄養成分 (1人前あたり)</h2>
+                            {displayNutrients.length > 0 ? (
+                                <div className="space-y-2">
+                                    {displayNutrients.map((nutrient) => (
+                                        <div key={nutrient.name} className="flex justify-between items-center border-b pb-1">
+                                            <span className="text-sm text-gray-600">{nutrient.name}:</span>
+                                            <span className="font-medium text-gray-800">
+                                                {nutrient.value !== undefined ? Math.round(nutrient.value * 10) / 10 : '-'} {nutrient.unit}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gray-500">栄養情報がありません。</p>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* 食事記録追加ダイアログ */}
-            <AddToMealDialog
-                isOpen={showMealDialog}
-                onClose={handleCloseMealDialog}
-                recipe={recipe}
-            />
-
-            {/* 削除確認ダイアログ */}
-            {showDeleteDialog && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                        <h3 className="text-xl font-semibold mb-4">レシピのクリップを解除</h3>
-                        <p className="mb-6">「{recipe.title}」のクリップを解除しますか？一度削除すると元に戻せません。</p>
-                        <div className="flex justify-end gap-3">
-                            <Button
-                                variant="outline"
-                                onClick={closeDeleteDialog}
-                                disabled={loading}
-                            >
-                                キャンセル
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                onClick={handleDeleteRecipe}
-                                disabled={loading}
-                            >
-                                {loading ? '処理中...' : '削除する'}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
+            {showMealDialog && (
+                <AddToMealDialog
+                    isOpen={showMealDialog}
+                    onClose={handleCloseMealDialog}
+                    recipe={recipe}
+                />
             )}
         </div>
     );

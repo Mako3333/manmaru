@@ -209,4 +209,55 @@ export class DelishKitchenParser implements RecipeParser {
         console.warn('[DelishKitchenParser] Could not extract image URL.');
         return undefined;
     }
+
+    /**
+     * レシピの分量（何人前か）を抽出
+     * @param document HTMLドキュメントオブジェクト
+     * @returns 抽出された人数情報の文字列 (例: "2人分", "3〜4人前")、見つからない場合は undefined
+     */
+    extractServings(document: Document): string | undefined {
+        // 試行するセレクタのリスト (より具体的、一般的と思われる順)
+        const selectors = [
+            'dd.recipe-servings__text',  // dd タグに人数情報があるパターン
+            '.recipe-yield',            // class="recipe-yield"
+            '[itemprop="recipeYield"]', // schema.org
+            '.recipe-info__servings',  // class="recipe-info__servings"
+            '.servings span',          // class="servings" 内の span
+            '.person'                  // class="person"
+        ];
+
+        for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            if (element?.textContent) {
+                const servingsText = element.textContent.trim();
+                // 「〇人分」「〇人前」「〇〜〇人分」のようなテキストが含まれるか確認
+                if (servingsText.match(/[\d０-９〜]+人[分前]/)) {
+                    console.log(`[DelishKitchenParser] Found servings via selector ${selector}: ${servingsText}`);
+                    return servingsText;
+                }
+            }
+        }
+
+        // JSON-LDからも試行 (補助的に)
+        try {
+            const jsonLdData = extractJsonLd(document);
+            if (jsonLdData) {
+                const recipeData = jsonLdData.find((item: Record<string, any>) => item['@type'] === 'Recipe');
+                if (recipeData && recipeData.recipeYield) {
+                    const yieldData = recipeData.recipeYield;
+                    // 配列の場合と文字列の場合がある
+                    const servingsText = Array.isArray(yieldData) ? yieldData[0] : yieldData;
+                    if (typeof servingsText === 'string') {
+                        console.log(`[DelishKitchenParser] Found servings via JSON-LD: ${servingsText}`);
+                        return servingsText;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[DelishKitchenParser] Error parsing JSON-LD for servings:', e);
+        }
+
+        console.warn('[DelishKitchenParser] Could not extract servings information.');
+        return undefined; // 見つからなかった場合
+    }
 } 

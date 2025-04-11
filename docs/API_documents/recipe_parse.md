@@ -44,6 +44,7 @@
     "recipe": { // 解析されたレシピ情報
       "title": "string", // レシピタイトル
       "servings": "string | null", // 何人分か (例: "2人分", "作りやすい分量", null)
+      "servingsNum": "number", // 人数 (数値、抽出・計算された場合)
       "ingredients": [ // 材料リスト
         {
           "name": "string", // 材料名
@@ -54,9 +55,9 @@
       "sourceUrl": "string" // 元のレシピURL
     },
     "nutritionResult": { // 栄養計算結果
-      "nutrition": { /* StandardizedMealNutrition */ }, // 食事全体の標準化栄養データ
+      "nutrition": { /* StandardizedMealNutrition */ }, // レシピ全体の標準化栄養データ (合計値)
       "perServing": { /* StandardizedMealNutrition | undefined */ }, // 1人前あたりの標準化栄養データ (計算可能な場合)
-      "legacyNutrition": { /* NutritionData */ }, // 互換性のための旧栄養データ形式
+      "legacyNutrition": { /* NutritionData */ }, // 互換性のための旧栄養データ形式 (合計値)
       "legacyPerServing": { /* NutritionData | undefined */ }, // 互換性のための旧1人前データ
       "reliability": { // 信頼性情報
         "confidence": "number", // 総合的な信頼度 (食品DBマッチング精度など)

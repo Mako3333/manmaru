@@ -142,7 +142,7 @@ flowchart TD
     *   **`analyzeMealImage`**: 画像を解析し、食品リスト (`foods`) とAI推定栄養価 (`aiEstimatedNutrition` - 参考値) を含む `GeminiProcessResult` を返します。**栄養計算は行いません。**
     *   **`analyzeMealText`**: テキストを解析し、食品リスト (`foods`) とAI推定栄養価 (`aiEstimatedNutrition` - 参考値) を含む `GeminiProcessResult` を返します。**（注意：このサービス自体は栄養計算を行いませんが、呼び出し元のAPIルート (`/api/v2/meal/text-analyze`) で続けて栄養計算が実行されます）**
     *   処理結果（解析結果、生応答、処理時間、エラー情報）を `GeminiProcessResult` 型にまとめて返します。
-    *   `parseRecipeFromUrl` では、内部で `fetch` を使用して指定されたURLからHTMLコンテンツを取得し、簡単な前処理（script/styleタグ除去、文字数制限）を行った上でAIに渡します。
+    *   `parseRecipeFromUrl` では、内部で `fetch` を使用して指定されたURLからHTMLコンテンツを取得し、簡単な前処理（script/styleタグ除去、文字数制限）を行った上でAIに渡し、**解析結果（タイトル、材料リスト、人数(`servingsNum`)）とAI推定栄養価を含むオブジェクト**を返します。（**注意:** このメソッド自体は栄養計算を行いません。計算は呼び出し元の `/api/v2/recipe/parse` で行われます。）
     *   `getNutritionAdvice` は現在未実装です（TODOコメントあり）。
     *   各メソッド内で `try-catch` によるエラーハンドリングを行い、エラー発生時はエラー情報を含む `GeminiProcessResult` を返します。
 *   **`gemini-service.ts` (ルート直下)**: `services/gemini-service.ts` の古いバージョンと考えられます。`parseRecipeFromUrl` や `getNutritionAdvice` メソッドがなく、設定値やログ出力も異なります。**削除することが推奨されます。**
@@ -178,8 +178,8 @@ flowchart TD
 #### 3.4. レスポンスパーサー (`src/lib/ai`)
 
 *   **`gemini-response-parser.ts` (`GeminiResponseParser`, `GeminiParseResult`)**: Gemini API からの応答（主にテキスト形式）を解析し、構造化されたデータ (`GeminiParseResult`) に変換するクラスです。
-    *   `GeminiParseResult`: 解析結果の型。`foods` (`FoodInputParseResult[]`), `confidence`, `title`, `servings`, `error`, `debug` などのプロパティを持ちます。
-    *   `parseResponse`: 主な解析メソッド。応答テキストから ```json ... ``` コードブロックを正規表現で抽出します。見つからない場合は、応答全体がJSONである可能性を試します。抽出したJSON文字列をパースし、キーの存在 (`title`/`servings`/`ingredients` または `foods`) によってレシピ解析結果か食事/テキスト解析結果かを判断し、対応する `GeminiParseResult` オブジェクトを構築して返します。JSONの抽出やパースに失敗した場合、または予期しない構造の場合は、`error` プロパティにエラーメッセージを設定して返します。
+    *   `GeminiParseResult`: 解析結果の型。`foods` (`FoodInputParseResult[]`), `confidence`, `title`, `servings` (文字列), **`servingsNum` (数値)**, `ingredients` (レシピ解析時), `error`, `debug` などのプロパティを持ちます。
+    *   `parseResponse`: 主な解析メソッド。応答テキストから ```json ... ``` コードブロックを正規表現で抽出します。見つからない場合は、応答全体がJSONである可能性を試します。抽出したJSON文字列をパースし、キーの存在 (`title`/`servings`/`ingredients` または `foods`) によってレシピ解析結果か食事/テキスト解析結果かを判断し、対応する `GeminiParseResult` オブジェクトを構築して返します。レシピ解析の場合、`servings` (文字列) から `servingsNum` (数値) を可能な範囲で抽出・計算します。JSONの抽出やパースに失敗した場合、または予期しない構造の場合は、`error` プロパティにエラーメッセージを設定して返します。
 
 #### 3.5. エラーハンドリング (`src/lib/error`)
 

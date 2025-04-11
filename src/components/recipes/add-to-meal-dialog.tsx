@@ -34,6 +34,9 @@ import { cn } from "@/lib/utils";
 
 import { MealType } from "@/types/nutrition";
 import { ClippedRecipe } from "@/types/recipe";
+import { AppError } from "@/lib/error/types/base-error";
+import { ErrorCode } from "@/lib/error/codes/error-codes";
+import { handleError } from "@/lib/error/utils";
 
 interface AddToMealDialogProps {
     isOpen: boolean;
@@ -68,16 +71,25 @@ export function AddToMealDialog({ isOpen, onClose, recipe }: AddToMealDialogProp
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || '食事記録の保存に失敗しました');
+                // AppError 形式を考慮してエラーを生成
+                throw new AppError({
+                    code: errorData?.error?.code || ErrorCode.Base.API_ERROR,
+                    message: errorData?.error?.message || '食事記録の保存に失敗しました',
+                    userMessage: errorData?.error?.userMessage || errorData?.message || '食事記録の追加に失敗しました。',
+                    details: errorData?.error?.details
+                });
             }
 
             const data = await response.json();
             toast.success('食事記録に追加しました');
             onClose();
             router.refresh();
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('食事記録追加エラー:', error);
-            toast.error((error as Error).message || '食事記録の追加に失敗しました');
+            handleError(error, {
+                showToast: true,
+                toastOptions: { title: '食事記録追加エラー' }
+            });
         } finally {
             setIsSubmitting(false);
         }
