@@ -81,14 +81,18 @@ export class RecipeService {
 
             return recipe;
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
-                code: ErrorCode.Base.API_ERROR,
-                message: `レシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
-                userMessage: 'レシピの取得中にエラーが発生しました',
-                details: error,
-                severity: 'error'
+                code: ErrorCode.Base.API_ERROR, // API_ERROR がより適切か
+                message: `レシピ取得中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'レシピの取得中に予期しない問題が発生しました。',
+                details: { originalError: error },
+                severity: 'error' // 深刻度を追加
             });
         }
     }
@@ -171,15 +175,19 @@ export class RecipeService {
                 isFavorite: finalRecipe.is_favorite
             };
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
-                code: ErrorCode.Base.API_ERROR,
-                message: `お気に入り更新エラー: ${error instanceof Error ? error.message : String(error)}`,
-                userMessage: 'お気に入り状態の更新中にエラーが発生しました',
-                details: error,
+                code: ErrorCode.Base.API_ERROR, // API_ERROR がより適切か
+                message: `お気に入り更新中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'お気に入り状態の更新中に予期しない問題が発生しました。',
+                details: { originalError: error },
                 severity: 'error',
-                suggestions: ['しばらく経ってからもう一度お試しください']
+                suggestions: ['しばらく経ってからもう一度お試しください'] // 提案を追加
             });
         }
     }
@@ -320,13 +328,18 @@ export class RecipeService {
 
             return recipeData;
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
+            console.error('parseRecipeFromUrl error:', error);
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
-                code: ErrorCode.Base.API_ERROR,
-                message: `レシピ解析エラー: ${error instanceof Error ? error.message : String(error)}`,
-                userMessage: 'レシピの解析中にエラーが発生しました',
-                details: error,
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR, // データ処理中のエラーとする
+                message: `URL解析中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'レシピURLの解析中に予期しない問題が発生しました。',
+                details: { originalError: error },
                 severity: 'error'
             });
         }
@@ -402,13 +415,18 @@ export class RecipeService {
                 }
             };
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
+            console.error('お気に入りレシピ取得エラー:', error);
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
-                code: ErrorCode.Base.API_ERROR,
-                message: `お気に入りレシピ取得エラー: ${error instanceof Error ? error.message : String(error)}`,
-                userMessage: 'お気に入りレシピの取得中にエラーが発生しました',
-                details: error,
+                code: ErrorCode.Base.API_ERROR, // API_ERROR がより適切か
+                message: `お気に入りレシピ取得中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                userMessage: 'お気に入りレシピの取得中に予期しない問題が発生しました。',
+                details: { originalError: error },
                 severity: 'error'
             });
         }

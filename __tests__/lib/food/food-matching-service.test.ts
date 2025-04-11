@@ -113,7 +113,7 @@ describe('FoodMatchingServiceImpl', () => {
         test('リポジトリがnullやfoodを含まない結果を返した場合、nullを返す', async () => {
             // Arrange
             const inputName = 'データ不備';
-            mockSearchFoodsByFuzzyMatch.mockResolvedValue([{ food: null, similarity: 0.9 } as any]); // foodがnull
+            mockSearchFoodsByFuzzyMatch.mockResolvedValue([{ food: null, similarity: 0.9 } as unknown as { food: Food; similarity: number }[]]); // Replaced any
 
             // Act
             let result = await foodMatchingService.matchFood(inputName);
@@ -121,7 +121,7 @@ describe('FoodMatchingServiceImpl', () => {
             expect(result).toBeNull();
 
             // Arrange 2
-            mockSearchFoodsByFuzzyMatch.mockResolvedValue([null] as any); // 結果自体がnull
+            mockSearchFoodsByFuzzyMatch.mockResolvedValue([null] as unknown as { food: Food; similarity: number }[]); // Replaced any
             // Act 2
             result = await foodMatchingService.matchFood(inputName);
             // Assert 2
@@ -349,6 +349,23 @@ describe('FoodMatchingServiceImpl', () => {
         ])('$confidence -> $expected.message', ({ confidence, expected }) => {
             const displayInfo = foodMatchingService.getConfidenceDisplay(confidence);
             expect(displayInfo).toEqual(expected);
+        });
+    });
+
+    describe('determineConfidenceLevel', () => {
+        test('閾値未満の場合、VERY_LOWを返す', async () => {
+            // Arrange
+            const inputName = 'データ不備';
+            mockSearchFoodsByFuzzyMatch.mockResolvedValue([{ food: null, similarity: 0.9 } as unknown as { food: Food; similarity: number }[]]); // Replaced any
+
+            // Act
+            let result = await foodMatchingService.matchFood(inputName);
+
+            // Assert
+            expect(result).toBeNull();
+            expect((foodMatchingService as unknown as { determineConfidenceLevel: (sim: number) => ConfidenceLevel }).determineConfidenceLevel(0.15)).toBe(ConfidenceLevel.VERY_LOW);
+            expect((foodMatchingService as unknown as { determineConfidenceLevel: (sim: number) => ConfidenceLevel }).determineConfidenceLevel(0.0)).toBe(ConfidenceLevel.VERY_LOW);
+            expect((foodMatchingService as unknown as { determineConfidenceLevel: (sim: number) => ConfidenceLevel }).determineConfidenceLevel(-0.1)).toBe(ConfidenceLevel.VERY_LOW);
         });
     });
 }); 

@@ -1,5 +1,5 @@
 import { StandardApiResponse } from '@/types/api-interfaces';
-import { ErrorCode } from '@/lib/error/codes/error-codes';
+import { ErrorCode, AnyErrorCode, DEFAULT_ERROR_MESSAGES } from '@/lib/error/codes/error-codes';
 import { NutritionData, StandardizedMealNutrition, FoodItem, Nutrient, FoodItemNutrition, NutrientUnit } from '@/types/nutrition';
 import { convertToLegacyNutrition, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 import { AppError } from '@/lib/error/types/base-error';
@@ -46,16 +46,15 @@ export class ApiAdapter {
     static convertLegacyToStandard<T>(legacyResponse: unknown): StandardApiResponse<T> {
         const startTime = performance.now();
 
-        // エラーコードとメッセージを取得するヘルパー関数
-        const getLegacyError = (): { code: string; message: string; details: unknown; suggestions: string[] } => {
-            let code: string = ErrorCode.Base.UNKNOWN_ERROR;
+        const getLegacyError = (): { code: AnyErrorCode; message: string; details: unknown; suggestions: string[] } => {
+            let codeStr: string = ErrorCode.Base.UNKNOWN_ERROR;
             let message = '不明なエラーが発生しました';
             let details: unknown = {};
             let suggestions: string[] = [];
 
             if (isObject(legacyResponse)) {
                 if (hasProperty(legacyResponse, 'errorCode') && isString(legacyResponse.errorCode) && legacyResponse.errorCode) {
-                    code = legacyResponse.errorCode;
+                    codeStr = legacyResponse.errorCode;
                 }
                 if (hasProperty(legacyResponse, 'error') && isString(legacyResponse.error) && legacyResponse.error) {
                     message = legacyResponse.error;
@@ -69,22 +68,21 @@ export class ApiAdapter {
                     suggestions = legacyResponse.suggestions.filter(isString);
                 }
             }
+            const code = codeStr as AnyErrorCode;
             return { code, message, details, suggestions };
         };
 
-        // エラーの検出 (errorCode または error プロパティの存在を確認)
         const isError = isObject(legacyResponse) && (
             (hasProperty(legacyResponse, 'errorCode') && legacyResponse.errorCode) ||
             (hasProperty(legacyResponse, 'error') && legacyResponse.error)
         );
-
 
         if (isError) {
             const { code, message, details, suggestions } = getLegacyError();
             return {
                 success: false,
                 error: {
-                    code,
+                    code: code,
                     message,
                     details,
                     suggestions
@@ -155,18 +153,19 @@ export class ApiAdapter {
      */
     static createErrorResponse(
         message: string,
-        code: string = ErrorCode.Base.UNKNOWN_ERROR,
-        details?: unknown // details は任意の型を受け入れる
+        codeStr: string = ErrorCode.Base.UNKNOWN_ERROR,
+        details?: unknown
     ): StandardApiResponse<null> {
+        const code = codeStr as AnyErrorCode;
         return {
             success: false,
             error: {
-                code,
+                code: code,
                 message,
                 details
             },
             meta: {
-                processingTimeMs: 0 // エラー生成時は0でよいか、または計測するか
+                processingTimeMs: 0
             }
         };
     }

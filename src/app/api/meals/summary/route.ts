@@ -1,6 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
+import { withErrorHandling } from '@/lib/api/middleware';
+import { AppError, ErrorCode } from '@/lib/error';
 
 // 栄養素サマリーの型定義
 interface NutrientSummary {
@@ -64,7 +66,7 @@ interface SupabaseMeal {
     meal_nutrients: SupabaseMealNutrient[] | null; // null の可能性を考慮
 }
 
-export async function GET(request: Request) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
     try {
         // URLからクエリパラメータを取得
         const { searchParams } = new URL(request.url);
@@ -72,19 +74,19 @@ export async function GET(request: Request) {
 
         // パラメータの検証
         if (!date) {
-            return NextResponse.json(
-                { error: '日付は必須です' },
-                { status: 400 }
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '日付パラメータ(date)は必須です。'
+            });
         }
 
         // 日付の形式を検証（YYYY-MM-DD）
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!dateRegex.test(date)) {
-            return NextResponse.json(
-                { error: '無効な日付形式です。YYYY-MM-DD形式を使用してください。' },
-                { status: 400 }
-            );
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '無効な日付形式です。YYYY-MM-DD形式を使用してください。'
+            });
         }
 
         // サーバーサイドSupabaseクライアントの初期化
@@ -111,10 +113,11 @@ export async function GET(request: Request) {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
-            return NextResponse.json(
-                { error: '認証されていません' },
-                { status: 401 }
-            );
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: '認証されていません',
+                userMessage: 'この操作にはログインが必要です。'
+            });
         }
 
         // 指定された日付の食事データを取得
@@ -142,10 +145,12 @@ export async function GET(request: Request) {
 
         if (error) {
             console.error('Supabase取得エラー:', error);
-            return NextResponse.json(
-                { error: '食事データの取得に失敗しました', details: error.message },
-                { status: 500 }
-            );
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: `Supabase query error: ${error.message}`,
+                userMessage: '食事データの取得に失敗しました。',
+                originalError: error
+            });
         }
 
         // Supabase からの応答が null の場合のフォールバック
@@ -218,4 +223,4 @@ export async function GET(request: Request) {
             { status: 500 }
         );
     }
-} 
+}); 

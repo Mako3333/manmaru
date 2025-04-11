@@ -29,7 +29,7 @@ import { profileFetcher, targetsFetcher, progressFetcher } from '@/lib/fetchers/
 interface HomeClientProps {
     initialData: {
         profile: UserProfile | null;
-        targets: NutritionTarget | null;
+        targets: typeof DEFAULT_NUTRITION_TARGETS | null;
         progress: NutritionProgress | null;
     };
     user: User | null;

@@ -2,10 +2,8 @@ import { GeminiService } from '@/lib/ai/services/gemini-service';
 import { AIModelService } from '@/lib/ai/core/ai-model-service';
 import { PromptService, PromptType } from '@/lib/ai/prompts/prompt-service';
 import { GeminiResponseParser, GeminiParseResult } from '@/lib/ai/gemini-response-parser';
-import { MealAnalysisResult, NutritionAdviceResult, RecipeAnalysisResult } from '@/types/ai';
-import { ModelOptions } from '@/lib/ai/core/ai-model-factory';
+import { NutritionAdviceResult } from '@/types/ai';
 import { AppError, ErrorCode } from '@/lib/error';
-import { Food, FoodMatchResult, ConfidenceLevel } from '@/types/food';
 
 // 依存関係をモック
 jest.mock('@/lib/ai/core/ai-model-service');
@@ -33,9 +31,9 @@ describe('GeminiService', () => {
         geminiService = new GeminiService();
 
         // コンストラクタ内で new されるインスタンスを差し替えたい場合 (上記で jest.mock していれば不要な場合も)
-        (geminiService as any).modelService = mockModelService;
-        (geminiService as any).promptService = mockPromptService;
-        (geminiService as any).parser = mockResponseParser;
+        (geminiService as unknown as { modelService: AIModelService }).modelService = mockModelService;
+        (geminiService as unknown as { promptService: PromptService }).promptService = mockPromptService;
+        (geminiService as unknown as { parser: GeminiResponseParser }).parser = mockResponseParser;
 
     });
 
@@ -204,11 +202,16 @@ describe('GeminiService', () => {
 
         test('レスポンスのパースでエラーが発生した場合 (parseResult.error)', async () => {
             // Arrange
-            const parseErrorMessage = 'Unexpected token';
-            const errorParsedResult: GeminiParseResult = { ...parsedResult, error: parseErrorMessage };
+            const parseErrorMessage = 'Invalid JSON in text response';
+            const textParseErrorResult: GeminiParseResult = {
+                foods: [{ foodName: 'りんご', quantityText: '1個', confidence: 0.9 }],
+                confidence: 0.9,
+                nutrition: undefined,
+                error: parseErrorMessage
+            };
             mockPromptService.generatePrompt.mockResolvedValue(promptText);
             mockModelService.invokeText.mockResolvedValue(rawApiResponse);
-            mockResponseParser.parseResponse.mockResolvedValue(errorParsedResult);
+            mockResponseParser.parseResponse.mockResolvedValue(textParseErrorResult);
 
             // Act
             const result = await geminiService.analyzeMealText(inputText);

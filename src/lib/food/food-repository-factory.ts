@@ -1,5 +1,6 @@
 import { FoodRepository } from './food-repository';
 import { BasicFoodRepository } from './basic-food-repository';
+import { AppError, ErrorCode } from '@/lib/error';
 
 /**
  * 食品リポジトリの種類
@@ -22,7 +23,11 @@ export class FoodRepositoryFactory {
                 return BasicFoodRepository.getInstance();
             case FoodRepositoryType.SUPABASE:
                 // TODO: Supabaseリポジトリの実装
-                throw new Error('Supabaseリポジトリは未実装です');
+                throw new AppError({
+                    code: ErrorCode.Base.NOT_IMPLEMENTED,
+                    message: 'Supabase food repository is not implemented yet.',
+                    userMessage: '現在この機能は利用できません。'
+                });
             default:
                 return BasicFoodRepository.getInstance();
         }

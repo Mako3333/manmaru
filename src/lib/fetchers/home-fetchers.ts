@@ -5,7 +5,7 @@ import { NutritionTarget, NutritionProgress } from '@/types/nutrition';
 import { DEFAULT_NUTRITION_TARGETS } from '@/lib/nutrition/nutrition-display-utils';
 import { calculatePregnancyWeek, getTrimesterNumber, getJapanDate } from '@/lib/date-utils';
 
-// Supabase クライアントをここで初期化するか、外部から渡す
+// Restore internal client creation
 const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

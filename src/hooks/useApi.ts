@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ApiAdapter } from '@/lib/api/api-adapter';
-import { ApiResponse } from '@/types/api-interfaces';
-import { AppError, ErrorCode } from '@/lib/error';
+import { StandardApiResponse } from '@/types/api-interfaces';
+import { AppError, ErrorCode, AnyErrorCode, BaseErrorCode, AIErrorCode } from '@/lib/error';
 
 /**
  * API通信の状態を表す型
@@ -33,7 +33,7 @@ export function useApi<T>() {
         url: string,
         options?: RequestInit,
         legacyFormat = false
-    ): Promise<ApiResponse<R> | null> => {
+    ): Promise<StandardApiResponse<R> | null> => {
         setState({ loading: true });
 
         try {
@@ -50,77 +50,102 @@ export function useApi<T>() {
                 try {
                     errorData = await response.json();
                 } catch {
-                    throw new Error(`${response.status}: ${response.statusText}`);
+                    throw new AppError({
+                        code: ErrorCode.Base.NETWORK_ERROR,
+                        message: `API response parsing failed: ${response.status} ${response.statusText}`,
+                        userMessage: 'サーバーからの応答の解析に失敗しました。'
+                    });
                 }
 
                 // エラーレスポンスの解析
-                if (errorData.error) {
-                    throw new Error(
-                        typeof errorData.error === 'string'
-                            ? errorData.error
-                            : errorData.error.message || '不明なエラーが発生しました'
-                    );
+                if (errorData?.error) {
+                    const errDetails = errorData.error as {
+                        code?: AnyErrorCode;
+                        message?: string;
+                        userMessage?: string;
+                        details?: unknown;
+                    };
+                    throw new AppError({
+                        code: (errDetails.code && Object.values(ErrorCode.Base).includes(errDetails.code as BaseErrorCode))
+                            || (errDetails.code && Object.values(ErrorCode.AI).includes(errDetails.code as AIErrorCode))
+                            ? errDetails.code as AnyErrorCode
+                            : ErrorCode.Base.API_ERROR,
+                        message: errDetails.message || '不明なAPIエラーが発生しました',
+                        userMessage: errDetails.userMessage || 'サーバー処理中にエラーが発生しました。',
+                        details: errDetails.details
+                    });
                 }
 
-                throw new Error('サーバーエラーが発生しました');
+                throw new AppError({
+                    code: ErrorCode.Base.API_ERROR,
+                    message: `Server error: ${response.status}`,
+                    userMessage: 'サーバーエラーが発生しました。'
+                });
             }
 
             const result = await response.json();
 
             // 標準APIレスポンス形式かどうかを判定
-            const isStandardFormat = 'success' in result && (result.data !== undefined || result.error !== undefined);
+            const typedResult = result as StandardApiResponse<R>;
 
-            if (isStandardFormat && !legacyFormat) {
+            if (!legacyFormat) {
                 // 標準APIレスポンス形式の処理
-                const typedResult = result as ApiResponse<R>;
-
                 if (!typedResult.success) {
-                    throw new Error(
-                        typedResult.error?.message || '不明なエラーが発生しました',
-                        { cause: typedResult.error }
-                    );
+                    throw new AppError({
+                        code: typedResult.error?.code || ErrorCode.Base.API_ERROR,
+                        message: typedResult.error?.message || 'API returned success=false with no error details',
+                        userMessage: typedResult.error?.userMessage || 'サーバーでエラーが発生しました。',
+                        details: typedResult.error?.details,
+                        originalError: typedResult.error ? new Error(typedResult.error.message) : undefined
+                    });
                 }
 
                 // 型Tとして状態を更新（同じ型の場合のみ）
-                if (typedResult.data as unknown === result.data) {
+                if (typedResult.data !== undefined) {
                     setState({
                         data: typedResult.data as unknown as T,
                         loading: false
                     });
                 }
 
-                // undefined の場合は null を返す
+                // undefined の場合は null を返す -> 標準形式なのでそのまま返す
                 return typedResult;
-            } else if (isStandardFormat && legacyFormat) {
-                // 標準形式から旧形式への変換
-                console.warn('ApiAdapter.convertStandardToLegacy is temporarily disabled due to type mismatch.');
-                const legacyData = null; // 一時的に null を設定
-
-                // 型Tとして状態を更新（同じ型の場合のみ）
-                // if (legacyData !== null && legacyData !== undefined) { // legacyData が null なので実行されない
-                //     setState({
-                //         data: legacyData as unknown as T,
-                //         loading: false
-                //     });
-                // }
-
-                // undefined の場合は null を返す -> ApiResponse形式で返す必要あり
-                // return { success: true, data: legacyData }; // legacyData は null なので data: null で返す
-                // legacyFormat が true の場合、旧形式 (データのみ) を期待している可能性もあるが、
-                // ここでは ApiResponse 形式で統一し、データがないことを示す
-                return { success: false, error: { code: ErrorCode.Base.DATA_PROCESSING_ERROR, message: 'Legacy format conversion is disabled.' }, data: undefined };
             } else {
-                // 旧形式のAPIレスポンス（そのまま返す）
-                // 型Tとして状態を更新（同じ型の場合のみ）
-                if (result as unknown === result) {
+                // 旧形式（データのみ）を返すことを期待されていると仮定
+                // ただし、エラーの場合はエラー情報を返す必要があるかもしれない
+                if (!typedResult.success) {
+                    // レガシー形式でもエラーはエラーとして返す
+                    // throw new AppError(...) としてもよいが、呼び出し元でのハンドリングに任せるため null を返すか、
+                    // もしくはエラー情報を含む ApiResponse を返す
+                    console.error('Legacy API request failed:', typedResult.error);
                     setState({
-                        data: result as unknown as T,
+                        loading: false,
+                        error: new AppError({
+                            code: typedResult.error?.code || ErrorCode.Base.API_ERROR,
+                            message: typedResult.error?.message || 'Legacy API failed',
+                            userMessage: typedResult.error?.userMessage || 'データ取得に失敗しました。',
+                            details: typedResult.error?.details
+                        }),
+                        errorDetails: typedResult.error?.details
+                    });
+                    return null; // エラー時は null を返す（呼び出し元で処理）
+                }
+
+                const legacyData = typedResult.data;
+
+                // 型Tとして状態を更新（同じ型の場合のみ）
+                if (legacyData !== undefined) {
+                    setState({
+                        data: legacyData as unknown as T,
                         loading: false
                     });
                 }
 
-                // undefined の場合は null を返す
-                return { success: true, data: result as R };
+                // レガシー形式の場合、成功時はデータのみを返すように見せかける必要があるかもしれないが、
+                // このフックの戻り値型は StandardApiResponse<R> | null のため、適合させる
+                // return legacyData as R; // これは型エラーになる
+                // 成功時は data のみを含む StandardApiResponse を返す
+                return { success: true, data: legacyData as R };
             }
 
         } catch (error) {
@@ -154,7 +179,7 @@ export function useApi<T>() {
         endpoint: string,
         method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
         body?: unknown
-    ): Promise<ApiResponse<R> | null> => {
+    ): Promise<StandardApiResponse<R> | null> => {
         const options: RequestInit = {
             method,
             ...(body ? { body: JSON.stringify(body) } : {})
@@ -175,7 +200,7 @@ export function useApi<T>() {
         endpoint: string,
         method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
         body?: unknown
-    ): Promise<ApiResponse<R> | null> => {
+    ): Promise<StandardApiResponse<R> | null> => {
         const options: RequestInit = {
             method,
             ...(body ? { body: JSON.stringify(body) } : {})
@@ -196,21 +221,21 @@ export function useApi<T>() {
         text?: string;
         image?: string;
         meal_type?: string;
-    }): Promise<ApiResponse<R> | null> => {
+    }): Promise<StandardApiResponse<R> | null> => {
         return requestV2<R>('meal/analyze', 'POST', data);
     }, [requestV2]);
 
     /**
      * 食品テキスト解析API（v2）
      */
-    const analyzeFoodText = useCallback(<R>(text: string): Promise<ApiResponse<R> | null> => {
+    const analyzeFoodText = useCallback(<R>(text: string): Promise<StandardApiResponse<R> | null> => {
         return requestV2<R>('food/parse', 'POST', { text });
     }, [requestV2]);
 
     /**
      * レシピ解析API（v2）
      */
-    const analyzeRecipe = useCallback(<R>(url: string): Promise<ApiResponse<R> | null> => {
+    const analyzeRecipe = useCallback(<R>(url: string): Promise<StandardApiResponse<R> | null> => {
         return requestV2<R>('recipe/parse', 'POST', { url });
     }, [requestV2]);
 

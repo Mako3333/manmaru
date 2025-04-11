@@ -150,8 +150,9 @@ export interface StandardApiResponse<T> {
     success: boolean;
     data?: T;
     error?: {
-        code: string;
+        code: AnyErrorCode;
         message: string;
+        userMessage?: string;
         details?: unknown;
         suggestions?: string[];
     };

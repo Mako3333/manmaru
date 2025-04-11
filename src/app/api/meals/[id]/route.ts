@@ -4,15 +4,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { MealService } from '@/lib/services/meal-service';
+import { withErrorHandling } from '@/lib/api/middleware';
 
 /**
  * 食事データを削除するAPI
  * DELETE /api/meals/[id]
  */
-export async function DELETE(
+export const DELETE = withErrorHandling(async (
     req: NextRequest,
-    { params }: { params: { id: string } }
-) {
+    context: { params: Record<string, string> }
+) => {
     const cookieStore = await cookies();
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,73 +33,35 @@ export async function DELETE(
         }
     );
 
-    try {
-        // セッション確認
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !session) {
-            return NextResponse.json(
-                {
-                    error: 'ログインしていないか、セッションが無効です。',
-                    code: ErrorCode.Base.AUTH_ERROR
-                },
-                { status: 401 }
-            );
-        }
-
-        const userId = session.user.id;
-        const mealId = params.id;
-
-        if (!mealId) {
-            return NextResponse.json(
-                {
-                    error: '食事IDが指定されていません。',
-                    code: ErrorCode.Base.DATA_VALIDATION_ERROR
-                },
-                { status: 400 }
-            );
-        }
-
-        // MealServiceを使用して食事データを削除
-        await MealService.deleteMeal(supabase, mealId, userId);
-
-        return NextResponse.json(
-            {
-                message: '食事データが正常に削除されました',
-                data: { id: mealId }
-            },
-            { status: 200 }
-        );
-    } catch (error) {
-        console.error('食事削除エラー:', error);
-
-        // ApiErrorの場合はそのメッセージとコードを使用
-        if (error instanceof AppError) {
-            // エラーコードに応じたステータスコードを設定
-            let statusCode = 500;
-            if (error.code === ErrorCode.Base.AUTH_ERROR) {
-                statusCode = 401;
-            } else if (error.code === ErrorCode.Base.DATA_VALIDATION_ERROR || error.code === ErrorCode.Base.DATA_NOT_FOUND) {
-                statusCode = 400;
-            }
-            // 他のエラーコードに対するステータスコードのマッピングを追加可能
-
-            return NextResponse.json(
-                {
-                    error: error.userMessage || '食事データの削除中にエラーが発生しました。',
-                    code: error.code,
-                    details: error.details
-                },
-                { status: statusCode } // error.statusCode の代わりに算出されたstatusCodeを使用
-            );
-        }
-
-        // その他のエラー
-        return NextResponse.json(
-            {
-                error: '食事データの削除中に予期しないエラーが発生しました。',
-                code: ErrorCode.Base.UNKNOWN_ERROR
-            },
-            { status: 500 }
-        );
+    // セッション確認
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+        throw new AppError({
+            code: ErrorCode.Base.AUTH_ERROR,
+            message: 'ログインしていないか、セッションが無効です。',
+            userMessage: '認証情報が無効です。再度ログインしてください。'
+        });
     }
-} 
+
+    const userId = session.user.id;
+    const mealId = context.params.id as string;
+
+    if (!mealId) {
+        throw new AppError({
+            code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+            message: '食事IDが指定されていません。'
+        });
+    }
+
+    // MealServiceを使用して食事データを削除
+    await MealService.deleteMeal(supabase, mealId, userId);
+
+    // 成功レスポンス
+    return NextResponse.json(
+        {
+            message: '食事データが正常に削除されました',
+            data: { id: mealId }
+        },
+        { status: 200 } // 削除成功時は 200 OK または 204 No Content が一般的
+    );
+}); 

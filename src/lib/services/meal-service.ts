@@ -125,9 +125,13 @@ export class MealService {
 
             return { id: savedMeal.id };
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
             console.error('Unexpected error in saveMealWithNutrition:', error);
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
                 code: ErrorCode.Base.UNKNOWN_ERROR,
                 message: `食事保存中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
@@ -231,9 +235,13 @@ export class MealService {
 
             return meals;
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
             console.error('Unexpected error in getMealsByDate:', error);
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
                 code: ErrorCode.Base.UNKNOWN_ERROR,
                 message: `食事データの取得中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
@@ -310,12 +318,16 @@ export class MealService {
 
             return true;
         } catch (error) {
-            if (error instanceof AppError) throw error;
+            if (error instanceof AppError) {
+                // すでに AppError の場合はそのままスロー
+                throw error;
+            }
 
             console.error('Unexpected error in deleteMeal:', error);
+            // AppError でない場合は UNKNOWN_ERROR としてラップしてスロー
             throw new AppError({
                 code: ErrorCode.Base.UNKNOWN_ERROR,
-                message: `食事削除中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+                message: `食事データの削除中に予期せぬエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
                 userMessage: '食事データの削除中に予期しない問題が発生しました。',
                 originalError: error instanceof Error ? error : undefined,
                 details: { originalError: error }

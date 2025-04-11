@@ -228,7 +228,14 @@ export class GeminiService implements IAIService {
                     },
                     signal: AbortSignal.timeout(15000)
                 });
-                if (!response.ok) throw new Error(`Failed to fetch URL ${url}: ${response.status}`);
+                if (!response.ok) {
+                    throw new AppError({
+                        code: ErrorCode.Base.NETWORK_ERROR,
+                        message: `URLの取得に失敗しました: ${url}, Status: ${response.status}`,
+                        userMessage: 'レシピ情報の取得に失敗しました。URLを確認するか、時間をおいて再度お試しください。',
+                        details: { url, status: response.status }
+                    });
+                }
                 fetchedHtml = await response.text();
                 console.log(`[GeminiService] Fetched HTML content (length: ${fetchedHtml.length}) from: ${url}`);
             } else {

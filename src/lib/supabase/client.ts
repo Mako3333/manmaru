@@ -26,6 +26,7 @@ import {
     convertToStandardizedNutrition,
     convertToDbNutritionFormat
 } from "@/lib/nutrition/nutrition-type-utils";
+import { AppError, ErrorCode } from '@/lib/error';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -43,7 +44,11 @@ export const getUserProfile = async (): Promise<UserProfile | null> => {
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -70,7 +75,11 @@ export const updateUserProfile = async (profileData: ProfileUpdateData): Promise
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -104,7 +113,11 @@ export const saveMealWithNutrients = async (mealData: MealCreateData): Promise<M
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         console.log('食事データ保存開始:', {
@@ -185,7 +198,11 @@ export const getMealsByDate = async (date: string): Promise<Meal[]> => {
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -213,7 +230,11 @@ export const getMealsWithNutrientsByDate = async (date: string): Promise<MealWit
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -258,7 +279,11 @@ export const getMealSummaryByDateRange = async (
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data: mealsData, error } = await supabase
@@ -369,7 +394,11 @@ export const getNutritionProgress = async (date: string): Promise<NutritionProgr
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -401,7 +430,11 @@ export const getNutritionProgressByDateRange = async (
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -430,7 +463,11 @@ export const getDailyNutritionAdvice = async (date: string): Promise<NutritionAd
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -484,7 +521,11 @@ export const saveDailyNutritionLog = async (
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         // 既存のログを確認
@@ -544,7 +585,11 @@ export const saveWeightLog = async (weightData: WeightLogCreateData): Promise<We
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -580,7 +625,11 @@ export const getWeightLogsByDateRange = async (
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase
@@ -608,7 +657,11 @@ export const getLatestWeightLog = async (): Promise<WeightLog | null> => {
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            throw new Error('ログインセッションが無効です');
+            throw new AppError({
+                code: ErrorCode.Base.AUTH_ERROR,
+                message: 'ログインセッションが無効です',
+                userMessage: '認証情報が見つかりません。再度ログインしてください。'
+            });
         }
 
         const { data, error } = await supabase

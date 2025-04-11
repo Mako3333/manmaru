@@ -1,5 +1,6 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type { User } from '@supabase/supabase-js'
+import { AppError, ErrorCode } from '@/lib/error'
 
 export interface Profile {
     id: string;
@@ -67,7 +68,11 @@ export async function createProfile(userId: string, profileData: Partial<Profile
 
         if (!userId) {
             console.error('プロフィール作成エラー: userIdが空です')
-            throw new Error('ユーザーIDが必要です')
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'ユーザーIDが空です',
+                userMessage: 'ユーザーIDが取得できませんでした。再度お試しください。'
+            });
         }
 
         const { data, error } = await supabase

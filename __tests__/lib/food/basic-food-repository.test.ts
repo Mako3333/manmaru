@@ -32,11 +32,11 @@ describe('BasicFoodRepository', () => {
         jest.clearAllMocks();
         // BasicFoodRepository のプライベートプロパティをリセット (シングルトンのため)
         const instance = BasicFoodRepository.getInstance();
-        (instance as any).foods = new Map();
-        (instance as any).foodsByName = new Map();
-        (instance as any).aliasMap = new Map();
-        (instance as any).cacheLoaded = false;
-        (instance as any).isInitialized = false;
+        (instance as unknown as { foods: Map<string, Food> }).foods = new Map();
+        (instance as unknown as { foodsByName: Map<string, Food> }).foodsByName = new Map();
+        (instance as unknown as { aliasMap: Map<string, string> }).aliasMap = new Map();
+        (instance as unknown as { cacheLoaded: boolean }).cacheLoaded = false;
+        (instance as unknown as { isInitialized: boolean }).isInitialized = false;
 
         // readFileSync がダミーデータを返すように設定
         mockReadFileSync.mockReturnValue(JSON.stringify(dummyFoodData));
@@ -59,12 +59,12 @@ describe('BasicFoodRepository', () => {
             // Assert
             expect(mockReadFileSync).toHaveBeenCalledTimes(1);
             // キャッシュが正しく構築されたか (内部状態のアサーション)
-            expect((repository as any).cacheLoaded).toBe(true);
-            expect((repository as any).isInitialized).toBe(true);
-            expect((repository as any).foods.size).toBe(3);
-            expect((repository as any).foodsByName.size).toBe(3);
-            expect((repository as any).aliasMap.size).toBe(3); // りんご(2), ごはん(1)
-            expect((repository as any).aliasMap.get('りんご')).toBe('f-apple');
+            expect((repository as unknown as { cacheLoaded: boolean }).cacheLoaded).toBe(true);
+            expect((repository as unknown as { isInitialized: boolean }).isInitialized).toBe(true);
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.size).toBe(3);
+            expect((repository as unknown as { foodsByName: Map<string, Food> }).foodsByName.size).toBe(3);
+            expect((repository as unknown as { aliasMap: Map<string, string> }).aliasMap.size).toBe(3); // りんご(2), ごはん(1)
+            expect((repository as unknown as { aliasMap: Map<string, string> }).aliasMap.get('りんご')).toBe('f-apple');
         });
 
         test('不正なデータ形式の場合、エラーログを出力しキャッシュは空のまま', async () => {
@@ -79,10 +79,10 @@ describe('BasicFoodRepository', () => {
             expect(consoleErrorSpy).toHaveBeenCalledWith(
                 'BasicFoodRepository: 有効な食品データが見つかりませんでした'
             );
-            expect((repository as any).cacheLoaded).toBe(true); // ロード試行は完了
-            expect((repository as any).isInitialized).toBe(true);
-            expect((repository as any).foods.size).toBe(0);
-            expect((repository as any).foodsByName.size).toBe(0);
+            expect((repository as unknown as { cacheLoaded: boolean }).cacheLoaded).toBe(true); // ロード試行は完了
+            expect((repository as unknown as { isInitialized: boolean }).isInitialized).toBe(true);
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.size).toBe(0);
+            expect((repository as unknown as { foodsByName: Map<string, Food> }).foodsByName.size).toBe(0);
 
             consoleErrorSpy.mockRestore();
         });
@@ -176,8 +176,8 @@ describe('BasicFoodRepository', () => {
         test('limit オプションが正しく適用される', async () => {
             // ダミーデータに「米」を含む食品を追加してテスト
             const instance = BasicFoodRepository.getInstance();
-            (instance as any).foods.set('f-brown-rice', { id: 'f-brown-rice', name: '玄米', category: '穀物' } as Food);
-            (instance as any).foodsByName.set('げんまい', { id: 'f-brown-rice', name: '玄米', category: '穀物' } as Food);
+            (instance as unknown as { foods: Map<string, Food> }).foods.set('f-brown-rice', { id: 'f-brown-rice', name: '玄米', category: '穀物' } as Food);
+            (instance as unknown as { foodsByName: Map<string, Food> }).foodsByName.set('げんまい', { id: 'f-brown-rice', name: '玄米', category: '穀物' } as Food);
 
             const resultsLimit1 = await repository.searchFoodsByPartialName('米', 1);
             expect(resultsLimit1).toHaveLength(1);
@@ -239,8 +239,8 @@ describe('BasicFoodRepository', () => {
             // ダミーデータに「バナ」を含む食品を追加してテスト
             const instance = BasicFoodRepository.getInstance();
             // foods にも追加する必要がある
-            (instance as any).foods.set('f-banana-smoothie', { id: 'f-banana-smoothie', name: 'バナナスムージー', category: '飲料' } as Food);
-            (instance as any).foodsByName.set('ばななすむーじー', { id: 'f-banana-smoothie', name: 'バナナスムージー', category: '飲料' } as Food);
+            (instance as unknown as { foods: Map<string, Food> }).foods.set('f-banana-smoothie', { id: 'f-banana-smoothie', name: 'バナナスムージー', category: '飲料' } as Food);
+            (instance as unknown as { foodsByName: Map<string, Food> }).foodsByName.set('ばななすむーじー', { id: 'f-banana-smoothie', name: 'バナナスムージー', category: '飲料' } as Food);
 
             const resultsLimit1 = await repository.searchFoodsByFuzzyMatch('バナ', 1); // 修正: 引数を2つに
             expect(resultsLimit1).toHaveLength(1);
@@ -259,6 +259,17 @@ describe('BasicFoodRepository', () => {
         test('空文字列で検索した場合、空の配列を返す', async () => {
             const results = await repository.searchFoodsByFuzzyMatch('');
             expect(results).toHaveLength(0);
+        });
+
+        test('検索結果がソートされている (類似度順 - 現状は未実装)', async () => {
+            // 現状の実装では類似度ソートは行われないため、テストは部分一致の順序に依存する
+            const instance = BasicFoodRepository.getInstance();
+            (instance as unknown as { foods: Map<string, Food> }).foods.set('f-rice-ball', { id: 'f-rice-ball', name: 'おにぎり (米)', category: '穀物' } as Food);
+            (instance as unknown as { foodsByName: Map<string, Food> }).foodsByName.set('おにぎり (こめ)', { id: 'f-rice-ball', name: 'おにぎり (米)', category: '穀物' } as Food);
+
+            const results = await repository.searchFoodsByFuzzyMatch('米'); // 修正: 引数を1つに
+            expect(results.length).toBeGreaterThanOrEqual(2); // 白米, おにぎり(米)
+            // TODO: string-similarity 実装後、類似度でのソート順を検証する
         });
     });
 
@@ -286,7 +297,7 @@ describe('BasicFoodRepository', () => {
         test('カテゴリ名の正規化 (大文字/小文字、スペース) をテスト', async () => {
             // ダミーデータに 大文字/スペースを含むカテゴリ を追加
             const instance = BasicFoodRepository.getInstance();
-            (instance as any).foods.set('f-test-cat', { id: 'f-test-cat', name: 'テスト食品', category: ' テスト カテゴリ ', aliases: [], standard_quantity: '1個', calories: 1, protein: 0, iron: 0, calcium: 0, folic_acid: 0, vitamin_d: 0, confidence: 1 } as any as Food);
+            (instance as unknown as { foods: Map<string, Food> }).foods.set('f-test-cat', { id: 'f-test-cat', name: 'テスト食品', category: ' テスト カテゴリ ', aliases: [], standard_quantity: '1個', calories: 1, protein: 0, iron: 0, calcium: 0, folic_acid: 0, vitamin_d: 0, confidence: 1 } as any as Food);
             // category検索は foods マップを直接見ているので、上記追加だけで良いはず
 
             const resultsLower = await repository.searchFoodsByCategory('テスト カテゴリ');
@@ -359,8 +370,8 @@ describe('BasicFoodRepository', () => {
         test('新しいデータでキャッシュが正しく更新される', async () => {
             // Arrange: 最初のキャッシュをロード
             await repository.getFoodById('f-apple');
-            expect((repository as any).foods.size).toBe(3);
-            expect((repository as any).foods.has('f-grape')).toBe(false);
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.size).toBe(3);
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.has('f-grape')).toBe(false);
 
             // 新しいデータを用意
             const updatedFoodData = {
@@ -385,18 +396,18 @@ describe('BasicFoodRepository', () => {
             await repository.refreshCache();
 
             // Assert: キャッシュが更新されたことを確認
-            expect((repository as any).foods.size).toBe(3); // f-apple, f-banana, f-grape
-            expect((repository as any).foods.has('f-grape')).toBe(true);
-            expect((repository as any).foods.get('f-grape')?.name).toBe('ぶどう');
-            expect((repository as any).foods.get('f-apple')?.calories).toBe(110); // 更新されたか
-            expect((repository as any).foods.has('f-rice')).toBe(false); // 削除されたか
-            expect((repository as any).foodsByName.has('はくまい')).toBe(false); // foodsByNameも更新されるか
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.size).toBe(3); // f-apple, f-banana, f-grape
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.has('f-grape')).toBe(true);
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.get('f-grape')?.name).toBe('ぶどう');
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.get('f-apple')?.calories).toBe(110); // 更新されたか
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.has('f-rice')).toBe(false); // 削除されたか
+            expect((repository as unknown as { foodsByName: Map<string, Food> }).foodsByName.has('はくまい')).toBe(false); // foodsByNameも更新されるか
         });
 
         test('ファイル読み込みエラーが発生した場合、エラーログを出力しキャッシュは古いまま', async () => {
             // Arrange: 最初のキャッシュをロード
             await repository.getFoodById('f-apple');
-            const initialFoodCount = (repository as any).foods.size;
+            const initialFoodCount = (repository as unknown as { foods: Map<string, Food> }).foods.size;
             const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
             // ファイル読み込みエラーを発生させるようにモックを設定
@@ -411,10 +422,31 @@ describe('BasicFoodRepository', () => {
                 'BasicFoodRepository: キャッシュの更新中にエラーが発生しました:',
                 readError
             );
-            expect((repository as any).foods.size).toBe(initialFoodCount); // キャッシュサイズが変わらない
-            expect((repository as any).foods.get('f-apple')?.name).toBe('りんご'); // 古いデータが残っている
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.size).toBe(initialFoodCount); // キャッシュサイズが変わらない
+            expect((repository as unknown as { foods: Map<string, Food> }).foods.get('f-apple')?.name).toBe('りんご'); // 古いデータが残っている
 
             consoleErrorSpy.mockRestore();
         });
     });
+
+    describe('normalizeString', () => {
+        // プライベートメソッドのテスト (必要であれば)
+        test('文字列を正規化 (小文字化、全角->半角、スペース除去) する', () => {
+            const instance = BasicFoodRepository.getInstance();
+            const normalize = (instance as unknown as { normalizeString: (str: string) => string }).normalizeString;
+            expect(normalize('　ＲＩＣＥ　ＡＮＤ　ＢＥＡＮＳ　１２３　')).toBe('riceandbeans123');
+            expect(normalize('リンゴ（ふじ）')).toBe('りんご(ふじ)');
+        });
+    });
+
+    describe('normalizeForSearch', () => {
+        // プライベートメソッドのテスト (必要であれば)
+        test('検索用に文字列を正規化 (小文字化、全角->半角、スペース無視) する', () => {
+            const instance = BasicFoodRepository.getInstance();
+            const normalizeSearch = (instance as unknown as { normalizeForSearch: (str: string) => string }).normalizeForSearch;
+            expect(normalizeSearch('　ＲＩＣＥ　ＡＮＤ　ＢＥＡＮＳ　１２３　')).toBe('rice and beans 123'); // スペースは保持
+            expect(normalizeSearch('リンゴ（ふじ）')).toBe('りんご(ふじ)');
+        });
+    });
+
 }); 

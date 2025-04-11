@@ -1,6 +1,7 @@
 //src\lib\ai\prompts\prompt-service.ts
 import { TemplateEngine } from './template-engine';
 import { PromptVersionManager } from './version-manager';
+import { AppError, ErrorCode } from '@/lib/error';
 
 // 静的インポートを追加
 import * as foodAnalysisV1 from './templates/food-analysis/v1';
@@ -115,7 +116,12 @@ export class PromptService {
         const template = this.versionManager.getPromptTemplate(type, version);
 
         if (!template) {
-            throw new Error(`プロンプトテンプレートが見つかりません: ${type}, バージョン: ${version || 'デフォルト'}`);
+            throw new AppError({
+                code: ErrorCode.Base.DATA_NOT_FOUND,
+                message: `Prompt template not found: ${type}, version: ${version || 'default'}`,
+                userMessage: 'プロンプトテンプレートの読み込みに失敗しました。システム設定を確認してください。',
+                details: { type, version }
+            });
         }
 
         // テンプレートレンダリング

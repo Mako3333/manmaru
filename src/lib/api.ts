@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { AppError, ErrorCode } from '@/lib/error';
 
 // APIクライアント関数
 export async function getRecipes(userId = 'current-user-id') {
@@ -13,7 +14,11 @@ export async function getRecipes(userId = 'current-user-id') {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to fetch recipes');
+        throw new AppError({
+            code: ErrorCode.Base.API_ERROR,
+            message: `レシピ取得APIリクエスト失敗: ${response.status}`,
+            userMessage: 'レシピの取得に失敗しました。時間をおいて再度お試しください。'
+        });
     }
 
     return response.json();
@@ -71,7 +76,11 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
         // 画像データのバリデーション
         if (!base64Image) {
             console.error('画像データが空です');
-            throw new Error('画像データが含まれていません');
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: '画像データが空です',
+                userMessage: '画像が選択されていません。'
+            });
         }
 
         console.log('APIエンドポイント呼び出し: 新システム使用');
@@ -98,7 +107,12 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
                 errorData = { error: errorText || '不明なエラー' };
             }
             console.error('APIレスポンスエラー:', errorData);
-            throw new Error(errorData.error || '画像の分析に失敗しました');
+            throw new AppError({
+                code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
+                message: errorData.error || '画像の分析に失敗しました',
+                userMessage: errorData.userMessage || '画像の分析中にエラーが発生しました。別の画像で試すか、テキスト入力をご利用ください。',
+                details: errorData
+            });
         }
 
         const result = await response.json();
@@ -106,17 +120,33 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
 
         // 結果の検証
         if (!validateApiResponse(result)) {
-            throw new Error('APIからの応答形式が不正です');
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: '画像解析APIの応答形式が不正です',
+                userMessage: 'サーバーからの応答形式が正しくありませんでした。',
+                details: result
+            });
         }
 
         return result;
     } catch (error) {
         console.error('画像解析エラー:', error instanceof Error ? error.message : String(error));
         // エラーオブジェクトを適切に文字列化して投げる
-        if (error instanceof Error) {
+        if (error instanceof AppError) {
             throw error;
+        } else if (error instanceof Error) {
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: error.message,
+                userMessage: '画像解析中に予期せぬエラーが発生しました。',
+                originalError: error
+            });
         } else {
-            throw new Error(String(error));
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: String(error),
+                userMessage: '画像解析中に予期せぬエラーが発生しました。'
+            });
         }
     }
 }
@@ -133,7 +163,11 @@ export async function analyzeTextInput(text: string) {
         // テキストデータのバリデーション
         if (!text || text.trim() === '') {
             console.error('テキストデータが空です');
-            throw new Error('テキストデータが含まれていません');
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'テキストデータが空です',
+                userMessage: 'テキストが入力されていません。'
+            });
         }
 
         // 栄養計算を含むv2エンドポイントを使用
@@ -156,7 +190,12 @@ export async function analyzeTextInput(text: string) {
                 errorData = { error: errorText || '不明なエラー' };
             }
             console.error('APIレスポンスエラー:', errorData);
-            throw new Error(errorData.error || 'テキストの分析に失敗しました');
+            throw new AppError({
+                code: ErrorCode.AI.ANALYSIS_ERROR,
+                message: errorData.error || 'テキストの分析に失敗しました',
+                userMessage: errorData.userMessage || 'テキストの分析中にエラーが発生しました。',
+                details: errorData
+            });
         }
 
         const result = await response.json();
@@ -164,16 +203,32 @@ export async function analyzeTextInput(text: string) {
 
         // 結果の検証
         if (!validateApiResponse(result)) {
-            throw new Error('APIからの応答形式が不正です');
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: 'テキスト解析APIの応答形式が不正です',
+                userMessage: 'サーバーからの応答形式が正しくありませんでした。',
+                details: result
+            });
         }
 
         return result;
     } catch (error) {
         console.error('テキスト解析エラー:', error instanceof Error ? error.message : String(error));
-        if (error instanceof Error) {
+        if (error instanceof AppError) {
             throw error;
+        } else if (error instanceof Error) {
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: error.message,
+                userMessage: 'テキスト解析中に予期せぬエラーが発生しました。',
+                originalError: error
+            });
         } else {
-            throw new Error(String(error));
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: String(error),
+                userMessage: 'テキスト解析中に予期せぬエラーが発生しました。'
+            });
         }
     }
 }
@@ -190,7 +245,11 @@ export async function analyzeRecipeUrl(url: string) {
         // URLのバリデーション
         if (!url || url.trim() === '') {
             console.error('URLが空です');
-            throw new Error('URLが含まれていません');
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'URLが空です',
+                userMessage: 'URLが入力されていません。'
+            });
         }
 
         // 新しいv2エンドポイントを使用
@@ -213,7 +272,12 @@ export async function analyzeRecipeUrl(url: string) {
                 errorData = { error: errorText || '不明なエラー' };
             }
             console.error('APIレスポンスエラー:', errorData);
-            throw new Error(errorData.error || 'レシピURLの解析に失敗しました');
+            throw new AppError({
+                code: ErrorCode.AI.PARSING_ERROR,
+                message: errorData.error || 'レシピURLの解析に失敗しました',
+                userMessage: errorData.userMessage || 'レシピURLの解析中にエラーが発生しました。',
+                details: errorData
+            });
         }
 
         const result = await response.json();
@@ -222,10 +286,21 @@ export async function analyzeRecipeUrl(url: string) {
         return result;
     } catch (error) {
         console.error('レシピURL解析エラー:', error instanceof Error ? error.message : String(error));
-        if (error instanceof Error) {
+        if (error instanceof AppError) {
             throw error;
+        } else if (error instanceof Error) {
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: error.message,
+                userMessage: 'レシピURL解析中に予期せぬエラーが発生しました。',
+                originalError: error
+            });
         } else {
-            throw new Error(String(error));
+            throw new AppError({
+                code: ErrorCode.Base.UNKNOWN_ERROR,
+                message: String(error),
+                userMessage: 'レシピURL解析中に予期せぬエラーが発生しました。'
+            });
         }
     }
 }
@@ -288,7 +363,12 @@ export async function fetchFromSupabase(
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Supabase URLまたは匿名キーが設定されていません。');
+        console.error('Supabase URL または Anon Key が未設定です。');
+        throw new AppError({
+            code: ErrorCode.Base.CONFIG_ERROR,
+            message: 'Supabase URL or Anon Key is not configured.',
+            userMessage: 'サーバー設定が不完全です。'
+        });
     }
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -310,7 +390,11 @@ export async function fetchFromSupabase(
             fetchOptions.body = JSON.stringify(data);
         } catch (error) {
             console.error('リクエストデータのJSON文字列化に失敗:', error);
-            throw new Error('リクエストデータの形式が無効です。');
+            throw new AppError({
+                code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                message: 'リクエストデータの形式が無効です。',
+                userMessage: 'リクエストの形式が正しくありません。'
+            });
         }
     }
 
@@ -318,15 +402,28 @@ export async function fetchFromSupabase(
         const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, fetchOptions);
 
         if (!response.ok) {
-            const errorText = await response.text();
-            let errorDetails;
+            let errorDetails = { message: 'Supabase APIリクエストエラー' };
             try {
-                errorDetails = JSON.parse(errorText);
-            } catch {
-                errorDetails = { message: errorText || '不明なSupabase APIエラー' };
+                errorDetails = await response.json();
+            } catch (e) {
+                console.error('Supabase API エラー応答の解析失敗', e);
             }
-            console.error('Supabase API エラー:', response.status, errorDetails);
-            throw new Error(errorDetails.message || `Supabase APIリクエスト失敗: ${response.status}`);
+
+            if (!errorDetails.message) {
+                throw new AppError({
+                    code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                    message: 'リクエストデータの形式が無効です。',
+                    userMessage: 'リクエストの形式が正しくありません。'
+                });
+            }
+
+            console.error('Supabase API リクエスト失敗:', errorDetails);
+            throw new AppError({
+                code: ErrorCode.Base.API_ERROR,
+                message: errorDetails.message || `Supabase API request failed: ${response.status}`,
+                userMessage: 'データの取得または更新に失敗しました。',
+                details: errorDetails
+            });
         }
 
         // Content-Type が application/json でない場合や、No Content (204) の場合がある
@@ -337,11 +434,12 @@ export async function fetchFromSupabase(
 
         return await response.json();
     } catch (error) {
-        console.error('Supabase API 呼び出し中にエラー:', error);
-        if (error instanceof Error) {
-            throw error;
-        } else {
-            throw new Error('Supabase API 呼び出し中に予期せぬエラーが発生しました。');
-        }
+        console.error('Supabase API 呼び出しエラー:', error);
+        throw new AppError({
+            code: ErrorCode.Base.UNKNOWN_ERROR,
+            message: error instanceof Error ? error.message : 'Supabase API call failed with an unknown error.',
+            userMessage: 'サーバーとの通信中に予期せぬエラーが発生しました。',
+            originalError: error instanceof Error ? error : undefined
+        });
     }
 } 

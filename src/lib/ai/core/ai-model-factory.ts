@@ -1,6 +1,7 @@
 //src\lib\ai\model-factory.ts
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createImageContent } from '@/lib/utils/image-utils';
+import { AppError, ErrorCode } from '@/lib/error';
 
 // モデル設定オプションの型定義
 export interface ModelOptions {
@@ -48,7 +49,11 @@ export class AIModelFactory {
         // APIキーの取得
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
-            throw new Error("GEMINI_API_KEY環境変数が設定されていません");
+            throw new AppError({
+                code: ErrorCode.Base.CONFIG_ERROR,
+                message: 'GEMINI_API_KEY environment variable is not set.',
+                userMessage: 'AIサービスの設定が不完全です。管理者にお問い合わせください。'
+            });
         }
 
         // Gemini APIクライアントの初期化

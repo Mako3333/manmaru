@@ -2,6 +2,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
 import { AuthChangeEvent, Session } from '@supabase/supabase-js'
+import { AppError, ErrorCode } from '@/lib/error'
 
 interface Profile {
     id: string
@@ -110,7 +111,11 @@ export const useAuth = () => {
             const currentSession = session || (await supabase.auth.getSession()).data.session
 
             if (!currentSession?.user) {
-                throw new Error('ユーザー情報が見つかりません')
+                throw new AppError({
+                    code: ErrorCode.Base.AUTH_ERROR,
+                    message: 'User information not found in session.',
+                    userMessage: '認証情報が見つかりません。再度ログインしてください。'
+                });
             }
 
             const profile = await checkProfile(currentSession.user.id)

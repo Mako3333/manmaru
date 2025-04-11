@@ -9,6 +9,32 @@ import { StandardApiResponse } from '@/types/api-interfaces';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Define types needed for the response data
+interface AnalyzedFoodItem {
+    foodName: string;
+    quantityText: string;
+    confidence?: number; // Based on AI mock
+}
+
+interface NutritionAnalysisResult {
+    nutrition: StandardizedMealNutrition;
+    legacyNutrition: NutritionData; // Based on assertions
+    reliability: { // Based on mocks and assertions
+        confidence: number;
+        balanceScore?: number; // Optional based on different mocks
+        completeness?: number; // Optional based on different mocks
+    };
+    matchResults?: { // Based on mock, might be optional
+        foodName: string;
+        matchedFood: { id: string; name: string };
+    }[];
+}
+
+interface AnalyzeImageResponseData {
+    foods: AnalyzedFoodItem[];
+    nutritionResult: NutritionAnalysisResult;
+}
+
 // モックの設定
 jest.mock('@/lib/ai/ai-service-factory');
 jest.mock('@/lib/nutrition/nutrition-service-factory');
@@ -107,24 +133,28 @@ describe('画像分析API v2のテスト', () => {
         });
 
         // APIの実行
-        const response = await POST(mockRequest, { params: {} } as any);
-        const responseData: StandardApiResponse<any> = await response.json();
+        const response = await POST(mockRequest, { params: {} });
+        const responseData: StandardApiResponse<AnalyzeImageResponseData> = await response.json();
 
         // レスポンスの検証
         expect(response.status).toBe(200);
         expect(responseData.success).toBe(true);
         expect(responseData.data).toBeDefined();
-        expect(responseData.data.foods).toBeDefined(); // Check parsed foods from AI
-        expect(responseData.data.foods).toHaveLength(2);
-        expect(responseData.data.foods[0].foodName).toBe('解析された食品1');
+        if (responseData.data) {
+            expect(responseData.data.foods).toBeDefined(); // Check parsed foods from AI
+            expect(responseData.data.foods).toHaveLength(2);
+            if (responseData.data.foods && responseData.data.foods.length > 0) {
+                expect(responseData.data?.foods[0]?.foodName).toBe('解析された食品1'); // Use Optional Chaining
+            }
 
-        // 栄養データの検証
-        expect(responseData.data.nutritionResult).toBeDefined();
-        expect(responseData.data.nutritionResult.nutrition).toBeDefined(); // Standardized nutrition
-        expect(responseData.data.nutritionResult.nutrition.totalCalories).toBe(320);
-        expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined(); // Legacy nutrition
-        expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
-        expect(responseData.data.nutritionResult.reliability).toBeDefined();
+            // 栄養データの検証
+            expect(responseData.data.nutritionResult).toBeDefined();
+            expect(responseData.data.nutritionResult.nutrition).toBeDefined(); // Standardized nutrition
+            expect(responseData.data.nutritionResult.nutrition.totalCalories).toBe(320);
+            expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined(); // Legacy nutrition
+            expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
+            expect(responseData.data.nutritionResult.reliability).toBeDefined();
+        }
     });
 
     it('後方互換性のためのlegacyNutritionフィールドが含まれていること', async () => {
@@ -164,17 +194,19 @@ describe('画像分析API v2のテスト', () => {
             headers: { 'Content-Type': 'application/json' }
         });
 
-        const response = await POST(mockRequest, { params: {} } as any);
-        const responseData: StandardApiResponse<any> = await response.json();
+        const response = await POST(mockRequest, { params: {} });
+        const responseData: StandardApiResponse<AnalyzeImageResponseData> = await response.json();
 
         // レスポンスの検証
         expect(response.status).toBe(200);
         expect(responseData.success).toBe(true);
         expect(responseData.data).toBeDefined();
-        expect(responseData.data.nutritionResult).toBeDefined();
-        expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined();
-        expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
-        expect(responseData.data.nutritionResult.legacyNutrition.protein).toBe(15);
+        if (responseData.data) {
+            expect(responseData.data.nutritionResult).toBeDefined();
+            expect(responseData.data.nutritionResult.legacyNutrition).toBeDefined();
+            expect(responseData.data.nutritionResult.legacyNutrition.calories).toBe(320);
+            expect(responseData.data.nutritionResult.legacyNutrition.protein).toBe(15);
+        }
     });
 
     it('無効な画像データの場合、適切なエラーレスポンスを返すこと', async () => {
@@ -189,7 +221,7 @@ describe('画像分析API v2のテスト', () => {
         });
 
         // APIの実行
-        const response = await POST(mockRequest, { params: {} } as any);
+        const response = await POST(mockRequest, { params: {} });
         const responseData: StandardApiResponse<null> = await response.json();
 
         // エラーレスポンスの検証
@@ -214,7 +246,7 @@ describe('画像分析API v2のテスト', () => {
         });
 
         // APIの実行
-        const response = await POST(mockRequest, { params: {} } as any);
+        const response = await POST(mockRequest, { params: {} });
         const responseData: StandardApiResponse<null> = await response.json();
 
         // エラーレスポンスの検証 (Zod Validation Error)
@@ -263,7 +295,7 @@ describe('画像分析API v2のテスト', () => {
         });
 
         // APIの実行
-        const response = await POST(mockRequest, { params: {} } as any);
+        const response = await POST(mockRequest, { params: {} });
         const responseData: StandardApiResponse<null> = await response.json();
 
         // エラーレスポンスの検証

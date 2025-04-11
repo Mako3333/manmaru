@@ -5,7 +5,7 @@ import {
     getNutrientValueByName,
     sortNutrients
 } from '../../../src/lib/nutrition/nutrition-display-utils';
-import { StandardizedMealNutrition, Nutrient, NutritionProgress, NutrientUnit } from '../../../src/types/nutrition';
+import { StandardizedMealNutrition, Nutrient, NutritionProgress/*, NutrientUnit*/ } from '../../../src/types/nutrition';
 
 describe('栄養表示ユーティリティ', () => {
     // 栄養スコア計算のテスト
@@ -36,7 +36,6 @@ describe('栄養表示ユーティリティ', () => {
         test('栄養素が不足している（50%未満）場合、低いスコアを返す', () => {
             const deficientNutrition: NutritionProgress = {
                 user_id: '1',
-                trimester: 1,
                 meal_date: '2023-01-01',
                 target_calories: 2000,
                 target_protein: 60,
@@ -65,7 +64,6 @@ describe('栄養表示ユーティリティ', () => {
         test('栄養素が混在している場合、適切なスコアを返す', () => {
             const mixedNutrition: NutritionProgress = {
                 user_id: '1',
-                trimester: 1,
                 meal_date: '2023-01-01',
                 target_calories: 2000,
                 target_protein: 60,

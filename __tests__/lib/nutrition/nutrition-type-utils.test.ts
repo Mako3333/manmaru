@@ -1,10 +1,10 @@
 import {
     parseNutritionFromJson,
-    serializeNutritionToJson,
+    // serializeNutritionToJson, // Comment out unused import
     convertToNutrientDisplayData,
-    createEmptyNutritionData,
+    // createEmptyNutritionData, // Comment out unused import
     createStandardizedMealNutrition,
-    convertToStandardizedNutrition,
+    // convertToStandardizedNutrition, // Comment out unused import
     convertToLegacyNutrition,
     convertToDbNutritionFormat
 } from '../../../src/lib/nutrition/nutrition-type-utils';
@@ -99,7 +99,7 @@ describe('栄養データ型ユーティリティのテスト', () => {
         });
 
         it('エラー時には空のNutritionDataを返すこと', () => {
-            const result = parseNutritionFromJson(null);
+            const result = parseNutritionFromJson({});
 
             expect(result.calories).toBe(0);
             expect(result.protein).toBe(0);

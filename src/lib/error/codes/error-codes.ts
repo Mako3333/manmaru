@@ -12,6 +12,8 @@ export const ErrorCode = {
         DATA_VALIDATION_ERROR: 'data_validation_error',
         DATA_PROCESSING_ERROR: 'data_processing_error',
         DATA_NOT_FOUND: 'data_not_found',
+        NOT_IMPLEMENTED: 'not_implemented',
+        CONFIG_ERROR: 'config_error',
     },
 
     // 栄養計算関連
@@ -98,6 +100,8 @@ export const DEFAULT_ERROR_MESSAGES: Record<AnyErrorCode, string> = {
     data_validation_error: '入力データが無効です。入力内容を確認してください。',
     data_processing_error: 'データの処理中にエラーが発生しました。',
     data_not_found: '指定されたデータが見つかりませんでした。',
+    not_implemented: '現在この機能は利用できません。',
+    config_error: 'システムの設定が正しくありません。管理者にお問い合わせください。',
 
     // Nutrition
     food_not_found: '食品が見つかりませんでした。',
