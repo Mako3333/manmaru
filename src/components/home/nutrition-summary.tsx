@@ -5,7 +5,13 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ChevronRight } from 'lucide-react';
 import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
-import { calculateNutritionScore, calculatePercentage, DEFAULT_NUTRITION_TARGETS, getNutrientBarColor } from '@/lib/nutrition/nutrition-display-utils';
+import {
+    calculateNutritionScore,
+    calculatePercentage,
+    DEFAULT_NUTRITION_TARGETS,
+    getNutrientBarColor,
+    getTargetKeyFromName
+} from '@/lib/nutrition/nutrition-display-utils';
 import { calculatePregnancyWeek, getTrimesterNumber, getTrimesterName } from '@/lib/date-utils';
 
 // NutritionTargets 型定義 (home-client.tsx と合わせる)
@@ -22,10 +28,10 @@ interface NutritionSummaryProps {
     targets: NutritionTargets;
     isMorningWithNoMeals?: boolean;
     profile?: UserProfile;
-    showScore?: boolean;
+    showDetails?: boolean;
 }
 
-export function NutritionSummary({ dailyNutrition, targets, isMorningWithNoMeals = false, profile, showScore = true }: NutritionSummaryProps) {
+export function NutritionSummary({ dailyNutrition, targets, isMorningWithNoMeals = false, profile, showDetails = false }: NutritionSummaryProps) {
     const router = useRouter();
 
     // 栄養データがない場合は朝の表示を行う
@@ -44,100 +50,52 @@ export function NutritionSummary({ dailyNutrition, targets, isMorningWithNoMeals
         if (score < 60) return "バランスよく食べています！";
         return "栄養バランスは良好です！";
     };
-
-    // 表示するメッセージを取得 (不足している栄養素がある場合のメッセージ)
-    // ここで props.targets を使うように修正
-    const getNutritionMessage = (dailyNutrition: StandardizedMealNutrition | null, currentTargets: NutritionTargets): string => {
-        if (!dailyNutrition) return "栄養バランスが良好です！";
-
-        const deficientNutrients: string[] = [];
-
-        // 不足している栄養素を特定
-        const items = [
-            { key: 'calories' as keyof NutritionTargets, name: 'カロリー' },
-            { key: 'protein' as keyof NutritionTargets, name: 'タンパク質' },
-            { key: 'iron' as keyof NutritionTargets, name: '鉄分' },
-            { key: 'folic_acid' as keyof NutritionTargets, name: '葉酸' },
-            { key: 'calcium' as keyof NutritionTargets, name: 'カルシウム' },
-            { key: 'vitamin_d' as keyof NutritionTargets, name: 'ビタミンD' }
-        ];
-
-        items.forEach(item => {
-            const nutrientKey = item.key;
-            // props から渡された targets を使用
-            const target = currentTargets[nutrientKey];
-            let value = 0;
-
-            if (nutrientKey === 'calories') {
-                value = dailyNutrition.totalCalories;
-            } else {
-                // totalNutrients の検索ロジック改善: name と key を直接比較
-                const nutrient = dailyNutrition.totalNutrients.find(
-                    n => n.name.toLowerCase() === item.key
-                );
-                value = nutrient ? nutrient.value : 0;
-            }
-
-            const percentValue = calculatePercentage(value, target);
-
-            // 70%未満の栄養素を不足としてマーク
-            if (percentValue < 70) {
-                deficientNutrients.push(item.name);
-            }
-        });
-
-        if (deficientNutrients.length === 0) {
-            return "素晴らしい栄養バランスです！";
-        } else {
-            return `栄養バランスの改善が必要です\n特に ${deficientNutrients.join('・')} が不足気味です。`;
-        }
-    };
+    const message = getMessage(nutritionScore);
 
     return (
         <Card className="mb-4">
             <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
-                    <CardTitle className="text-lg">栄養バランス</CardTitle>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-sm font-normal text-gray-500 h-auto p-1"
-                        onClick={() => router.push('/dashboard')}
-                    >
-                        詳細を見る
-                    </Button>
+                    <CardTitle className="text-lg">{showDetails ? '栄養バランス詳細' : '今日の栄養'}</CardTitle>
+                    {!showDetails && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-sm font-normal text-gray-500 h-auto p-1"
+                            onClick={() => router.push('/dashboard')}
+                        >
+                            詳細を見る
+                        </Button>
+                    )}
                 </div>
             </CardHeader>
             <CardContent>
-                {showScore && (
-                    <div className="flex items-center mb-4">
-                        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mr-4 relative">
-                            {nutritionScore > 0 && (
-                                <div
-                                    className="absolute inset-0 rounded-full border-4 border-green-500"
-                                    style={{
-                                        clipPath: `polygon(0 0, 100% 0, 100% ${nutritionScore}%, 0% ${nutritionScore}%`,
-                                        opacity: 0.7
-                                    }}
-                                ></div>
-                            )}
-                            <span className="text-2xl font-bold">{nutritionScore}</span>
-                        </div>
-                        <p className="text-gray-600">{getNutritionMessage(dailyNutrition, targets)}</p>
+                <div className="flex items-center mb-4">
+                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mr-4 relative">
+                        {nutritionScore > 0 && (
+                            <div
+                                className="absolute inset-0 rounded-full border-4 border-green-500"
+                                style={{
+                                    clipPath: `polygon(0 0, 100% 0, 100% ${nutritionScore}%, 0% ${nutritionScore}%`,
+                                    opacity: 0.7
+                                }}
+                            ></div>
+                        )}
+                        <span className="text-2xl font-bold">{nutritionScore}</span>
+                    </div>
+                    <p className="text-gray-600 flex-1">{message}</p>
+                </div>
+
+                {showDetails && (
+                    <div className="grid grid-cols-3 gap-2">
+                        {renderNutritionItems(dailyNutrition, targets)}
                     </div>
                 )}
-
-                {/* 栄養素グリッド表示 */}
-                <div className="grid grid-cols-3 gap-2">
-                    {renderNutritionItems(dailyNutrition, targets)}
-                </div>
             </CardContent>
         </Card>
     );
 }
 
-// 栄養素アイテム表示
-// targets を props として受け取る
 function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null, targets: NutritionTargets) {
     const items = [
         { key: 'calories' as keyof NutritionTargets, name: 'カロリー', icon: '🔥', color: 'orange' },
@@ -150,7 +108,6 @@ function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null, 
 
     const filteredItems = items.map(item => {
         const nutrientKey = item.key;
-        // props から渡された targets を使用
         const target = targets[nutrientKey];
         let value = 0;
 
@@ -158,9 +115,8 @@ function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null, 
             if (nutrientKey === 'calories') {
                 value = dailyNutrition.totalCalories;
             } else {
-                // totalNutrients の検索ロジック改善: name と key を直接比較
                 const nutrient = dailyNutrition.totalNutrients.find(
-                    n => n.name.toLowerCase() === item.key
+                    n => getTargetKeyFromName(n.name) === nutrientKey
                 );
                 value = nutrient ? nutrient.value : 0;
             }
@@ -177,12 +133,10 @@ function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null, 
         };
     });
 
-    // filteredItemsからfilterを削除し、すべての栄養素を表示
-
     if (filteredItems.length === 0) {
         return (
             <div className="col-span-3 text-center py-4 text-gray-500">
-                すべての栄養素が十分に摂取されています！
+                記録された栄養データがありません。
             </div>
         );
     }
@@ -193,12 +147,14 @@ function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null, 
         return (
             <div key={item.key} className="bg-gray-50 rounded p-2 flex items-center">
                 <div className={`w-6 h-6 rounded-full ${getBackgroundColor(item.color)} flex items-center justify-center mr-2`}>
-                    <span className={`${getTextColor(item.color)} text-xs`}>{item.icon}</span>
+                    <span className={`${getTextColor(item.color)} text-xs ${item.key === 'iron' ? 'font-semibold' : ''}`}>
+                        {item.icon}
+                    </span>
                 </div>
                 <div className="flex-1">
                     <div className="flex justify-between">
                         <span className="text-sm">{item.name}</span>
-                        <span className={`text-sm font-medium ${item.percentValue < 50 ? 'text-red-500' : 'text-orange-500'}`}>
+                        <span className={`text-sm font-medium ${getNutrientTextColor(item.percentValue)}`}>
                             {item.percentValue}%
                         </span>
                     </div>
@@ -209,7 +165,12 @@ function renderNutritionItems(dailyNutrition: StandardizedMealNutrition | null, 
     });
 }
 
-// アイコン背景色の取得
+function getNutrientTextColor(percent: number): string {
+    if (percent < 50) return 'text-red-500';
+    if (percent < 80) return 'text-orange-500';
+    return 'text-gray-600';
+}
+
 function getBackgroundColor(color: string): string {
     const colorMap: Record<string, string> = {
         'orange': 'bg-orange-100',
@@ -219,11 +180,9 @@ function getBackgroundColor(color: string): string {
         'purple': 'bg-purple-100',
         'yellow': 'bg-yellow-100'
     };
-
     return colorMap[color] || 'bg-gray-100';
 }
 
-// アイコンテキスト色の取得
 function getTextColor(color: string): string {
     const colorMap: Record<string, string> = {
         'orange': 'text-orange-600',
@@ -233,7 +192,6 @@ function getTextColor(color: string): string {
         'purple': 'text-purple-600',
         'yellow': 'text-yellow-600'
     };
-
     return colorMap[color] || 'text-gray-600';
 }
 

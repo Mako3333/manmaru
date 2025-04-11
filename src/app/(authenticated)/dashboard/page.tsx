@@ -39,6 +39,8 @@ import {
 } from '@/lib/nutrition/nutrition-display-utils';
 import { StandardizedMealNutrition, NutritionProgress, Nutrient } from '@/types/nutrition';
 import { Progress } from '@/components/ui/progress';
+import useSWR from 'swr';
+import { targetsFetcher } from '@/lib/fetchers/home-fetchers';
 
 // 新しいダッシュボードコンポーネントをインポート
 import { DetailedNutritionAdvice } from '@/components/dashboard/nutrition-advice';
@@ -115,16 +117,48 @@ export default function DashboardPage() {
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loadingProfile, setLoadingProfile] = useState(true)
     const [currentDate, setCurrentDate] = useState(getJapanDate())
-    const [activeTab, setActiveTab] = useState('today')
     const [nutritionData, setNutritionData] = useState<StandardizedMealNutrition | null>(null);
-    const [nutritionProgress, setNutritionProgress] = useState<NutritionProgress | null>(null)
-    const [nutritionTargets, setNutritionTargets] = useState<NutritionTargets>(DEFAULT_NUTRITION_TARGETS)
     const [nutritionScore, setNutritionScore] = useState(0)
     const router = useRouter()
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
+
+    // ★ 追加: SWR を使ってプロファイルを取得
+    const { data: swrProfile, error: profileError } = useSWR(
+        'userProfile', // キーは任意だが、ユーザーIDを使うのが一般的
+        async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return null;
+            const { data: profileData, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .single();
+            if (error) throw error;
+            return profileData as Profile | null;
+        },
+        {
+            onSuccess: (data) => {
+                setProfile(data); // 取得成功時に useState にも反映 (互換性のため)
+                setLoadingProfile(false);
+            },
+            onError: (error) => {
+                console.error('プロファイル取得エラー (SWR):', error);
+                setProfile(null);
+                setLoadingProfile(false);
+            }
+        }
+    );
+
+    // ★ 追加: SWR を使って目標値を取得
+    const { data: nutritionTargets, error: targetsError } = useSWR(
+        // プロファイルが取得でき、出産予定日があればそれをキーにする
+        swrProfile?.due_date ? ['targets', swrProfile.due_date] : null,
+        ([_, dueDate]) => targetsFetcher(dueDate),
+        { fallbackData: DEFAULT_NUTRITION_TARGETS } // フォールバックデータ設定
+    );
 
     // NutritionProgressからStandardizedMealNutritionへの変換関数
     const convertProgressToStandardized = (progress: NutritionProgress): StandardizedMealNutrition => {
@@ -150,85 +184,67 @@ export default function DashboardPage() {
     };
 
     useEffect(() => {
-        const fetchData = async () => {
-            setLoadingProfile(true); // データ取得開始時にローディング状態にする
+        // ★ 修正: useEffect 内のプロファイル取得ロジックを削除 (SWRに移行)
+        // ★ 修正: useEffect 内の目標値設定ロジックを削除 (SWRに移行)
+
+        // 栄養データの取得とスコア計算は useEffect 内で行う (currentDateに依存するため)
+        const fetchNutritionAndCalculateScore = async () => {
+            // SWRでプロファイル取得が完了しているか確認
+            if (loadingProfile) return;
+            // セッション確認 (SWR内でも確認しているが念のため)
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session || !profile) { // profile もチェック
+                // setLoadingProfile(false) は不要になるか、SWRのonErrorで処理
+                return; // ログインしていない、またはプロファイルがない場合は処理中断
+            }
+
             try {
-                const { data: { session } } = await supabase.auth.getSession()
-                if (!session) {
-                    router.push('/login'); // セッションがない場合はログインページへ
-                    return;
-                }
-
-                // プロファイル取得
-                const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .single()
-
-                const userTargets = { ...DEFAULT_NUTRITION_TARGETS }; // 先に初期化
-                if (profileError) {
-                    console.error('プロファイル取得エラー:', profileError);
-                    setProfile(null);
-                } else {
-                    setProfile(profileData);
-                    // --- 目標値設定 ---
-                    // TODO: ユーザーの妊娠週数や状態に応じて目標値を調整するロジック
-                    // 例: if (profileData.trimester === 1) { userTargets.folic_acid = 640; }
-                    setNutritionTargets(userTargets); // ここでセット
-                }
-
-
                 // 栄養データを取得 (nutrition_goal_prog から)
                 const { data: nutritionProgressData, error: nutritionError } = await supabase
-                    .from('nutrition_goal_prog') // nutrition_goal_progビューを参照
+                    .from('nutrition_goal_prog')
                     .select('*')
                     .eq('user_id', session.user.id)
                     .eq('meal_date', currentDate)
                     .single();
 
-                console.log("Fetched nutrition_goal_prog for date:", currentDate, "Data:", nutritionProgressData, "Error:", nutritionError);
-
-                if (nutritionError && nutritionError.code !== 'PGRST116') { // PGRST116 はデータなしエラー
+                if (nutritionError && nutritionError.code !== 'PGRST116') {
                     throw nutritionError;
                 }
 
                 if (nutritionProgressData) {
                     const progressData = nutritionProgressData as NutritionProgress;
-                    setNutritionProgress(progressData);
-
-                    // --- 栄養スコア計算 ---
-                    // NutritionProgress データと調整後の目標値 (`userTargets`) でスコア計算
-                    const score = calculateNutritionScore(progressData, userTargets);
-                    console.log("Calculated Nutrition Score:", score);
-                    setNutritionScore(score);
-
-                    // --- StandardizedMealNutrition への変換 ---
-                    // NutritionProgress から StandardizedMealNutrition に変換
+                    // setNutritionProgress(progressData); // state管理が不要なら削除
                     const standardizedNutrition = convertProgressToStandardized(progressData);
                     setNutritionData(standardizedNutrition);
-                    console.log("Converted to StandardizedMealNutrition:", standardizedNutrition);
+
+                    // --- 栄養スコア計算 (SWRで取得した nutritionTargets を使用) ---
+                    if (nutritionTargets) { // nutritionTargets が取得できているか確認
+                        const score = calculateNutritionScore(standardizedNutrition, nutritionTargets);
+                        console.log("Calculated Nutrition Score with SWR targets:", score, "Targets:", nutritionTargets);
+                        setNutritionScore(score);
+                    } else {
+                        // 目標値がまだ取得できていない場合の処理（例：デフォルト値で計算するか、スコアを0にする）
+                        console.warn("Nutrition targets not yet available for score calculation.");
+                        const score = calculateNutritionScore(standardizedNutrition, DEFAULT_NUTRITION_TARGETS);
+                        setNutritionScore(score);
+                        // setNutritionScore(0);
+                    }
 
                 } else {
                     // データがない場合
-                    console.log("No nutrition data found for date:", currentDate);
-                    setNutritionProgress(null);
                     setNutritionData(null);
                     setNutritionScore(0);
                 }
             } catch (error) {
-                console.error('データ取得または処理エラー:', error)
-                // エラー状態をユーザーに通知するUIを追加検討
-                setNutritionProgress(null);
+                console.error('栄養データ取得またはスコア計算エラー:', error);
                 setNutritionData(null);
                 setNutritionScore(0);
-            } finally {
-                setLoadingProfile(false)
             }
-        }
+        };
 
-        fetchData()
-    }, [supabase, router, currentDate]);
+        fetchNutritionAndCalculateScore();
+        // ★ 修正: 依存配列に nutritionTargets と loadingProfile を追加
+    }, [supabase, router, currentDate, profile, nutritionTargets, loadingProfile]);
 
     // 日付を変更する関数 (変更なし)
     const changeDate = (direction: 'prev' | 'next') => {
@@ -323,9 +339,9 @@ export default function DashboardPage() {
                 <div className="mb-6">
                     <NutritionSummary
                         dailyNutrition={nutritionData}
-                        targets={nutritionTargets}
+                        targets={nutritionTargets || DEFAULT_NUTRITION_TARGETS}
                         isMorningWithNoMeals={!nutritionData || nutritionScore === 0}
-                        showScore={false}
+                        showDetails={true}
                     />
                 </div>
 
@@ -347,72 +363,10 @@ export default function DashboardPage() {
                     </Card>
                 </div>
 
-                {/* 栄養スコア */}
-                <div className="mb-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>栄養スコア</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center">
-                                <div className="relative w-24 h-24 flex items-center justify-center">
-                                    <svg className="absolute" width="100" height="100" viewBox="0 0 100 100">
-                                        <circle
-                                            cx="50"
-                                            cy="50"
-                                            r="45"
-                                            fill="none"
-                                            stroke="#e5e7eb"
-                                            strokeWidth="8"
-                                        />
-                                        <circle
-                                            cx="50"
-                                            cy="50"
-                                            r="45"
-                                            fill="none"
-                                            stroke={nutritionScore >= 80 ? "#22c55e" : nutritionScore >= 60 ? "#f59e0b" : "#ef4444"}
-                                            strokeWidth="8"
-                                            strokeDasharray={`${nutritionScore * 2.83} 283`}
-                                            strokeLinecap="round"
-                                            transform="rotate(-90 50 50)"
-                                        />
-                                    </svg>
-                                    <span className="text-3xl font-bold">
-                                        {nutritionScore}
-                                    </span>
-                                </div>
-                                <div className="ml-4">
-                                    {nutritionData ? (
-                                        <>
-                                            <p className="font-medium mb-1 text-xl">
-                                                {nutritionScore >= 80
-                                                    ? "素晴らしい栄養バランスです！"
-                                                    : nutritionScore >= 60
-                                                        ? "まずまずの栄養バランスです"
-                                                        : "栄養バランスの改善が必要です"}
-                                            </p>
-                                            <p className="text-gray-600">
-                                                {nutritionScore >= 80
-                                                    ? "今日のお食事はバランスが取れています。この調子を維持しましょう！"
-                                                    : nutritionScore >= 60
-                                                        ? "概ね良好ですが、一部の栄養素が不足しています。グラフで確認してみましょう。"
-                                                        : "いくつかの栄養素が大きく不足しています。グラフと栄養アドバイスを参考にしてください。"}
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <p className="text-gray-600">この日の食事記録がありません</p>
-                                    )}
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
                 {/* 栄養アドバイス (AIアドバイス) */}
                 <div className="mb-6">
                     <DetailedNutritionAdvice
                         selectedDate={currentDate}
-                        onDateSelect={(date) => setCurrentDate(date)}
                     />
                 </div>
             </div>

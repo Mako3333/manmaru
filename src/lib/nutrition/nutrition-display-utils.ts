@@ -138,15 +138,15 @@ export function getNutrientValueByName(nutrition: StandardizedMealNutrition, nut
  * 栄養バランススコアを計算する
  * 各栄養素の達成率から総合スコアを計算します
  *
- * @param nutrition 栄養データ (StandardizedMealNutrition or NutritionProgress)
+ * @param nutrition 栄養データ (StandardizedMealNutrition)
  * @param targets 目標値
  * @returns 0-100のスコア値
  */
 export function calculateNutritionScore(
-    nutrition: StandardizedMealNutrition | NutritionProgress | null, // 型を NutritionProgress に変更
+    nutrition: StandardizedMealNutrition | null,
     targets: NutritionTargets = DEFAULT_NUTRITION_TARGETS
 ): number {
-    if (!nutrition) return 0;
+    if (!nutrition || !nutrition.totalNutrients) return 0; // null と totalNutrients の存在チェック
 
     // 主要6栄養素の重み付け (合計1になるように調整)
     const weights: Partial<Record<keyof NutritionTargets, number>> = {
@@ -155,75 +155,47 @@ export function calculateNutritionScore(
         folic_acid: 0.25,
         calcium: 0.15,
         vitamin_d: 0.15,
+        // カロリーはスコア計算から除外する場合が多いが、必要なら追加
+        // calories: 0.10, 
     };
-    const totalWeight = Object.values(weights).reduce((sum: number, w: number | undefined) => sum + (w || 0), 0);
+    // 合計が1になるように正規化（現在はコメントアウト、手動調整前提）
+    // const totalWeight = Object.values(weights).reduce((sum, w) => sum + (w || 0), 0);
+    // if (totalWeight === 0) return 0;
+    // const normalizedWeights = Object.entries(weights).reduce((acc, [key, w]) => {
+    //     if (w !== undefined) acc[key as keyof NutritionTargets] = w / totalWeight;
+    //     return acc;
+    // }, {} as Partial<Record<keyof NutritionTargets, number>>);
 
     let weightedScoreSum = 0;
 
-    // StandardizedMealNutrition型かどうかを判定
-    const isStandardized = nutrition && 'totalNutrients' in nutrition; // null チェックを追加
+    // ★ 削除: isStandardized の判定と NutritionProgress 用のロジック全体を削除
+    // const isStandardized = ...
+    // if (isStandardized) { ... } else if (nutrition) { ... }
 
-    if (isStandardized) {
-        const stdNutrition = nutrition as StandardizedMealNutrition;
+    // ★ 修正: StandardizedMealNutrition 用のロジックのみを残す
+    const stdNutrition = nutrition; // 型は StandardizedMealNutrition
 
-        for (const [targetKey, weight] of Object.entries(weights)) {
-            // weight が undefined でないことを確認
-            if (weight === undefined) continue;
+    for (const [targetKey, weight] of Object.entries(weights)) {
+        // weight が undefined でないことを確認
+        if (weight === undefined) continue;
 
-            // getNutrientValueByName を使用
-            const value = getNutrientValueByName(stdNutrition, targetKey);
-            const targetValue = targets[targetKey as keyof NutritionTargets];
+        // getNutrientValueByName を使用
+        const value = getNutrientValueByName(stdNutrition, targetKey);
+        const targetValue = targets[targetKey as keyof NutritionTargets];
 
-            if (targetValue !== undefined && targetValue > 0) {
-                const achievementRate = value / targetValue;
-                const score = Math.min(1.0, achievementRate) * (weight * 100);
-                weightedScoreSum += score;
-            }
+        if (targetValue !== undefined && targetValue > 0) {
+            const achievementRate = value / targetValue;
+            // 達成率は100%を上限としてスコアを計算 (100%超えは100%として扱う)
+            const score = Math.min(1.0, achievementRate) * (weight * 100);
+            weightedScoreSum += score;
+        } else {
+            // 目標値がない場合、ログを出力するなど検討
+            // console.warn(`Target value for ${targetKey} is missing or zero.`);
         }
-
-    } else if (nutrition) { // nutrition が null でないことを確認 (型は NutritionProgress)
-        // --- NutritionProgress 用のロジック ---
-        const progressData = nutrition as NutritionProgress; // 型アサーションを NutritionProgress に変更
-        // マップの型も keyof NutritionProgress を使うように変更
-        const legacyTargetsMap: Record<keyof NutritionTargets, { actual: keyof NutritionProgress, target: keyof NutritionProgress, percent?: keyof NutritionProgress }> = {
-            calories: { actual: 'actual_calories', target: 'target_calories', percent: 'calories_percent' },
-            protein: { actual: 'actual_protein', target: 'target_protein', percent: 'protein_percent' },
-            iron: { actual: 'actual_iron', target: 'target_iron', percent: 'iron_percent' },
-            folic_acid: { actual: 'actual_folic_acid', target: 'target_folic_acid', percent: 'folic_acid_percent' },
-            calcium: { actual: 'actual_calcium', target: 'target_calcium', percent: 'calcium_percent' },
-            vitamin_d: { actual: 'actual_vitamin_d', target: 'target_vitamin_d', percent: 'vitamin_d_percent' },
-        };
-
-        for (const [targetKey, weight] of Object.entries(weights)) {
-            if (weight === undefined) continue; // weight チェック
-
-            const keys = legacyTargetsMap[targetKey as keyof NutritionTargets];
-            if (!keys) continue; // 対応するキーがない場合はスキップ
-
-            const actualValue = progressData[keys.actual];
-            const targetValue = progressData[keys.target];
-            const percentValue = keys.percent ? progressData[keys.percent] : undefined; // percent値を取得
-
-            let achievementRate = 0;
-            // percentValue の型が number | null の可能性があるのでチェック強化
-            if (typeof percentValue === 'number' && percentValue > 0) {
-                achievementRate = percentValue / 100;
-                // actualValue/targetValue も number | null の可能性があるのでチェック強化
-            } else if (typeof actualValue === 'number' && typeof targetValue === 'number' && targetValue > 0) {
-                achievementRate = actualValue / targetValue;
-            }
-
-
-            if (achievementRate > 0) { // 達成率が計算できた場合のみスコア加算
-                const score = Math.min(1.0, achievementRate) * (weight * 100); // 達成率は 1.0 (100%) を上限
-                weightedScoreSum += score;
-            }
-        }
-        // --- NutritionProgress 用のロジックここまで ---
     }
 
-    const normalizedScore = weightedScoreSum; // 重み合計が1になる前提なら正規化不要
-    return Math.max(0, Math.min(100, Math.round(normalizedScore))); // 0-100 の範囲に収める
+    // const normalizedScore = weightedScoreSum; // 重み合計が1になる前提なら正規化不要
+    return Math.max(0, Math.min(100, Math.round(weightedScoreSum))); // 0-100 の範囲に収める
 }
 
 /**

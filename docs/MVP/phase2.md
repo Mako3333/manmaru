@@ -80,15 +80,15 @@
 
 ### タスク 2.4: 設定編集ページの実装
 
-*   **目的:** ユーザーが自身のプロフィール情報（年齢、身長、体重、出産予定日など）を編集・保存できるページを作成する。
+*   **目的:** ユーザーが自身のプロフィール情報（年齢、身長、体重、出産予定日など）を編集・保存できるページを作成する。`profile/edit/page.tsx`
 *   **担当範囲:**
-    *   `src/app/(authenticated)/settings/page.tsx` (表示用)
-    *   `src/app/(authenticated)/profile/page.tsx` (編集用 - 新規作成 or 既存修正)
+    *   `src/app/(authenticated)/profile/edit/page.tsx` (新規作成)
+    *   `src/app/(authenticated)/profile/page.tsx` (このページを参考にする)
     *   `src/app/api/profile/route.ts` (または `/api/settings/profile`) - APIエンドポイント (新規作成 or 既存修正)
     *   `src/lib/supabase/client.ts` (`getUserProfile`, `updateUserProfile` - 既存利用 or 新規作成)
     *   `src/types/user.ts` (`UserProfile`, `ProfileUpdateData`)
 *   **詳細指示:**
-    1.  **UI作成:** `/settings/edit` (または `/profile/edit`) ルートに、プロフィール編集フォームを持つページコンポーネントを作成する。既存の `/profile/page.tsx` を流用・修正しても良い。
+    1.  **UI作成:**  `/profile/edit`ルートに、プロフィール編集フォームを持つページコンポーネントを作成する。既存の `/profile/page.tsx` を流用・修正しても良い。
         *   フォームには、年齢、身長、体重（妊娠前）、出産予定日、食事制限などの入力フィールドを含める。
         *   現在のプロフィール情報をフォームの初期値として表示する (`getUserProfile` を使用)。
     2.  **APIエンドポイント実装:**
@@ -97,7 +97,6 @@
         *   `updateUserProfile` (または直接 Supabase クライアント) を使用して `profiles` テーブルを更新する。
         *   認証ミドルウェア (`withAuthAndErrorHandling`) を適用する。
     3.  **フォーム送信処理:** 編集ページのフォームから、入力されたデータをAPIエンドポイントに送信し、プロフィールを更新するロジックを実装する。成功時・エラー時のフィードバック（トースト通知など）を表示する。
-    4.  **設定ページ連携:** `/settings/page.tsx` から編集ページへのリンクを追加する。
 *   **完了条件:** ユーザーが設定編集ページでプロフィール情報を変更し、保存できること。変更内容がDBに反映され、再度表示した際に更新されていること。
 
 ---
