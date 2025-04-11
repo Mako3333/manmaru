@@ -102,16 +102,14 @@ export function createRecipeSuggestionContext(
     deficientNutrients: string[],
     mealHistory?: Record<string, StandardizedMealNutrition>
 ): Record<string, unknown> {
-    let pregnancyWeek: number | undefined;
-    let trimester: number | undefined;
-
-    if (profile.due_date) {
-        try {
-            pregnancyWeek = calculatePregnancyWeek(profile.due_date);
-            trimester = getTrimesterNumber(pregnancyWeek);
-        } catch (error) {
-            console.error('Error calculating pregnancy week/trimester:', error);
-        }
+    let pregnancyWeek = 0;
+    let trimester = 1;
+    if (profile?.due_date) {
+        // calculatePregnancyWeek の戻り値から .week を取得
+        const weekInfo = calculatePregnancyWeek(profile.due_date);
+        pregnancyWeek = weekInfo.week;
+        // getTrimesterNumber に週数を渡す
+        trimester = getTrimesterNumber(pregnancyWeek);
     }
 
     const context: Record<string, unknown> = {

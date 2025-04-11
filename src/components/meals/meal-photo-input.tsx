@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Camera, Image as ImageIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { encodeImageToBase64 } from "@/lib/utils/image-utils";
+import { CameraIcon, TrashIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 
 interface MealPhotoInputProps {
     onPhotoCapture: (file: File, base64: string) => void;
@@ -90,26 +92,26 @@ export function MealPhotoInput({
 
                 {/* 画像プレビュー */}
                 {previewUrl ? (
-                    <div className="relative w-full">
-                        <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted">
-                            <img
-                                src={previewUrl}
-                                alt="食事のプレビュー"
-                                className="h-full w-full object-cover"
-                            />
-                            {!isLoading && (
-                                <Button
-                                    type="button"
-                                    variant="destructive"
-                                    size="icon"
-                                    className="absolute right-2 top-2 h-8 w-8 rounded-full"
-                                    onClick={clearImage}
-                                    aria-label="画像を削除"
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
-                            )}
-                        </div>
+                    <div className="relative w-full aspect-video overflow-hidden rounded-lg">
+                        <Image
+                            src={previewUrl}
+                            alt="アップロードされた食事の写真プレビュー"
+                            layout="fill"
+                            objectFit="cover"
+                            className="rounded-lg"
+                        />
+                        {!isLoading && (
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute right-2 top-2 h-8 w-8 rounded-full"
+                                onClick={clearImage}
+                                aria-label="画像を削除"
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
                 ) : (
                     <div className="flex flex-col space-y-3 sm:flex-row sm:space-x-3 sm:space-y-0">

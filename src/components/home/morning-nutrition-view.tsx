@@ -2,6 +2,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
+import { useState } from 'react';
+import { format } from 'date-fns';
+import type { User } from '@supabase/supabase-js';
 
 interface UserProfile {
     name?: string;
@@ -10,19 +13,23 @@ interface UserProfile {
 }
 
 interface MorningNutritionViewProps {
-    profile: UserProfile;
+    user: User | null;
+    profile: UserProfile | null;
+    pregnancyWeek: number | undefined;
 }
 
-export function MorningNutritionView({ profile }: MorningNutritionViewProps) {
+export function MorningNutritionView({ user, profile, pregnancyWeek }: MorningNutritionViewProps) {
     const router = useRouter();
+    const [currentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+    // getTrimesterNumber に週数を渡す (undefined チェック追加)
+    const trimester = pregnancyWeek !== undefined ? getTrimesterNumber(pregnancyWeek) : 1; // デフォルトを1に
+    const trimesterMessage = getTrimesterMessage(trimester);
 
     // 妊娠週数の計算（pregnancy-week-info.tsxと同じロジックを使用）
-    const pregnancyWeek = profile.due_date
+    const pregnancyWeekCalculated = profile?.due_date
         ? calculatePregnancyWeek(profile.due_date)
-        : profile.pregnancy_week || 0;
-
-    // トライメスターの取得（アイコン表示のみに使用）
-    const trimester = getTrimesterNumber(pregnancyWeek);
+        : profile?.pregnancy_week || 0;
 
     return (
         <Card className="mb-4 overflow-hidden border-none shadow-md relative">
@@ -34,7 +41,7 @@ export function MorningNutritionView({ profile }: MorningNutritionViewProps) {
                     <CardTitle className="text-lg flex items-center">
                         <span className="mr-2">今日の健康</span>
                         <span className="text-sm bg-[#E3F3ED] text-[#2E9E6C] px-2 py-0.5 rounded-full font-normal">
-                            妊娠{pregnancyWeek}週目
+                            妊娠{pregnancyWeek ?? '??'}週目
                         </span>
                     </CardTitle>
                     <Button
@@ -58,11 +65,12 @@ export function MorningNutritionView({ profile }: MorningNutritionViewProps) {
                         </div>
                         <div>
                             <p className="font-medium text-[#2E9E6C]">
-                                こんにちは{profile.name ? `、${profile.name}さん` : ''}
+                                こんにちは{profile?.name ? `、${profile.name}さん` : ''}
                             </p>
                             <p className="text-sm text-[#3B7E64] opacity-90 mt-1 leading-relaxed">
                                 今日も健やかな一日をお過ごしください。
-                                {pregnancyWeek > 0 && `妊娠${pregnancyWeek}週目は赤ちゃんの${getTrimesterMessage(pregnancyWeek)}時期です。`}
+                                {pregnancyWeek !== undefined && pregnancyWeek > 0 &&
+                                    `妊娠${pregnancyWeek}週目は赤ちゃんの${getTrimesterMessage(pregnancyWeek)}時期です。`}
                             </p>
                         </div>
                     </div>
@@ -77,7 +85,16 @@ export function MorningNutritionView({ profile }: MorningNutritionViewProps) {
                         <div>
                             <h4 className="font-medium text-[#2C3F37] mb-1">今日のポイント</h4>
                             <p className="text-sm text-[#4B5D54] leading-relaxed">
-                                {getFocusNutrient(pregnancyWeek)}を含む食品を意識して摂るとよいでしょう。バランスの取れた食事が大切です。
+                                {pregnancyWeek !== undefined ? (
+                                    <span className="text-sm">
+                                        特に葉酸、鉄分、カルシウムが重要です。
+                                    </span>
+                                ) : (
+                                    <span className="text-sm">
+                                        {getFocusNutrient(pregnancyWeek ?? 0)}を含む食品を意識して摂るとよいでしょう。
+                                        バランスの取れた食事が大切です。
+                                    </span>
+                                )}
                             </p>
                         </div>
                     </div>

@@ -4,21 +4,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { format } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { NutritionSummary } from './nutrition-summary';
 import { ActionCard } from './action-card';
 import { AdviceCard } from './advice-card';
 import { BottomNavigation } from '../layout/bottom-navigation';
 import PregnancyWeekInfo from './pregnancy-week-info';
 import { RecommendedRecipes } from './recommended-recipes';
-import { useRouter } from 'next/navigation';
-import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Calendar, Utensils, LineChart, Baby, ExternalLink, Book, X, Loader2, AlertTriangle } from 'lucide-react';
-import { StandardizedMealNutrition, NutritionTarget, NutritionProgress } from '@/types/nutrition';
+import { Utensils, Loader2, AlertTriangle, Book } from 'lucide-react';
+import { StandardizedMealNutrition, NutritionProgress } from '@/types/nutrition';
 import { calculateNutritionScore, DEFAULT_NUTRITION_TARGETS } from '@/lib/nutrition/nutrition-display-utils';
-import { getJapanDate, calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
+import { getJapanDate, calculatePregnancyWeek } from '@/lib/date-utils';
 import { OnboardingMessage } from './onboarding-message';
 import type { User } from '@supabase/supabase-js';
 import { UserProfile } from '@/types/user';
@@ -35,23 +31,11 @@ interface HomeClientProps {
     user: User | null;
 }
 
-interface GreetingMessageProps {
-    week?: number;
-}
-
-interface AdviceCardProps {
-    date?: string;
-    forceUpdate?: boolean;
-    profile?: UserProfile | null | undefined;
-}
-
-export default function HomeClient({ user }: HomeClientProps) {
-    console.log('[HomeClient] Initial render. User:', user);
-    const router = useRouter();
+export default function HomeClient({ user, initialData }: HomeClientProps) {
+    console.log('[HomeClient] Initial render. User:', user, 'InitialData:', initialData);
 
     const [currentDate] = useState(getJapanDate());
     console.log('[HomeClient] Current Date:', currentDate);
-    const [isFirstTimeUser, setIsFirstTimeUser] = useState<boolean>(false);
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
 
     console.log('[HomeClient] SWR Key for profile:', user ? user.id : null);
@@ -63,12 +47,7 @@ export default function HomeClient({ user }: HomeClientProps) {
         user ? user.id : null,
         profileFetcher,
         {
-            onSuccess: (data, key, config) => {
-                console.log('[HomeClient] SWR onSuccess for profile. Data:', data);
-            },
-            onError: (err, key, config) => {
-                console.error('[HomeClient] SWR onError for profile. Error:', err);
-            }
+            fallbackData: initialData.profile,
         }
     );
 
@@ -85,7 +64,7 @@ export default function HomeClient({ user }: HomeClientProps) {
     } = useSWR(
         profile && profile.due_date ? profile.due_date : null,
         targetsFetcher,
-        { fallbackData: DEFAULT_NUTRITION_TARGETS }
+        { fallbackData: initialData.targets ?? DEFAULT_NUTRITION_TARGETS }
     );
 
     console.log('[HomeClient] SWR Key for progress:', user ? [user.id, currentDate] as const : null);
@@ -95,7 +74,8 @@ export default function HomeClient({ user }: HomeClientProps) {
         isLoading: isLoadingProgress
     } = useSWR(
         user ? [user.id, currentDate] as const : null,
-        (key) => key ? progressFetcher(key[0], key[1]) : Promise.reject("No user ID or date")
+        (key) => key ? progressFetcher(key[0], key[1]) : Promise.reject("No user ID or date"),
+        { fallbackData: initialData.progress }
     );
 
     const standardizedNutrition = useMemo(() => {
@@ -149,7 +129,6 @@ export default function HomeClient({ user }: HomeClientProps) {
         const checkOnboarding = () => {
             const hasSeen = localStorage.getItem('hasSeenOnboarding');
             if (!hasSeen) {
-                setIsFirstTimeUser(true);
                 setShowOnboarding(true);
             }
         };
@@ -159,7 +138,6 @@ export default function HomeClient({ user }: HomeClientProps) {
     const dismissOnboarding = () => {
         setShowOnboarding(false);
         localStorage.setItem('hasSeenOnboarding', 'true');
-        setIsFirstTimeUser(false);
     };
 
     const isLoading = isLoadingProfile || isLoadingTargets || isLoadingProgress;
@@ -167,29 +145,8 @@ export default function HomeClient({ user }: HomeClientProps) {
 
     const pregnancyInfo = useMemo<{ week: number | undefined; days: number | undefined }>(() => {
         if (!profile?.due_date) return { week: undefined, days: undefined };
-        let calculatePregnancyWeekFunc: Function = () => ({ week: undefined, days: undefined });
-        try {
-            const dateUtils = require('@/lib/date-utils');
-            if (dateUtils && typeof dateUtils.calculatePregnancyWeek === 'function') {
-                calculatePregnancyWeekFunc = dateUtils.calculatePregnancyWeek;
-            } else {
-                console.error('calculatePregnancyWeek function not found in @/lib/date-utils');
-                return { week: undefined, days: undefined };
-            }
-        } catch (e) {
-            console.error('Failed to load dateUtils:', e);
-            return { week: undefined, days: undefined };
-        }
-        return calculatePregnancyWeekFunc(profile.due_date) as { week: number | undefined, days: number | undefined };
+        return calculatePregnancyWeek(profile.due_date);
     }, [profile?.due_date]);
-
-    const pregnancyWeek = pregnancyInfo.week;
-    const pregnancyDays = pregnancyInfo.days;
-
-    // GreetingMessage definition is MOVED from here...
-
-    // Log profile value on every render, right before returning JSX
-    console.log('[HomeClient] Value of profile just before render:', profile);
 
     if (showOnboarding) {
         return <OnboardingMessage onDismiss={dismissOnboarding} />;
@@ -219,17 +176,6 @@ export default function HomeClient({ user }: HomeClientProps) {
             </div>
         );
     }
-
-    // ... Define GreetingMessage locally inside the render logic ...
-    const GreetingMessage: React.FC<GreetingMessageProps> = ({ week }) => {
-        const timeOfDay = new Date().getHours() < 12 ? 'おはようございます' : 'こんにちは';
-        let message = `${timeOfDay}！`;
-        if (week !== undefined) {
-            message += ` 妊娠${week}週ですね。`;
-        }
-        // Ensure it returns JSX
-        return <h1 className="text-xl font-medium">{message}</h1>;
-    };
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">

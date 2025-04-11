@@ -359,7 +359,7 @@ describe('FoodMatchingServiceImpl', () => {
             mockSearchFoodsByFuzzyMatch.mockResolvedValue([{ food: null, similarity: 0.9 } as unknown as { food: Food; similarity: number }[]]); // Replaced any
 
             // Act
-            let result = await foodMatchingService.matchFood(inputName);
+            const result = await foodMatchingService.matchFood(inputName);
 
             // Assert
             expect(result).toBeNull();

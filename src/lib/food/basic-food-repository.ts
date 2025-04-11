@@ -1,6 +1,8 @@
 import { Food, FoodMatchResult } from '@/types/food';
 import { FoodRepository } from './food-repository';
 import { normalizeText, calculateSimilarity } from '@/lib/utils/string-utils';
+import fs from 'fs/promises';
+import path from 'path';
 
 /**
  * 基本食品リストを使用したリポジトリ実装
@@ -36,10 +38,8 @@ export class BasicFoodRepository implements FoodRepository {
             let url: string;
             if (typeof window === 'undefined') {
                 // サーバーサイド: Node.jsのfsモジュールを使用
-                const fs = require('fs');
-                const path = require('path');
                 const filePath = path.join(process.cwd(), 'public/data/food_nutrition_database.json');
-                const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
 
                 // データを直接ロード
                 this.initializeCache(data);

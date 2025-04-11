@@ -59,6 +59,8 @@ export function useApi<T>() {
 
                 // エラーレスポンスの解析
                 if (errorData?.error) {
+                    // 型アサーション: APIエラーレスポンスの error オブジェクトが期待する構造を持つことを前提とする。
+                    // 本来は hasProperty などで各プロパティの存在と型をチェックすべき。
                     const errDetails = errorData.error as {
                         code?: AnyErrorCode;
                         message?: string;
@@ -66,6 +68,8 @@ export function useApi<T>() {
                         details?: unknown;
                     };
                     throw new AppError({
+                        // 型アサーション: errDetails.code が AnyErrorCode に含まれる文字列であることを前提とする。
+                        // ErrorCode の値として有効かチェックする関数が望ましい。
                         code: (errDetails.code && Object.values(ErrorCode.Base).includes(errDetails.code as BaseErrorCode))
                             || (errDetails.code && Object.values(ErrorCode.AI).includes(errDetails.code as AIErrorCode))
                             ? errDetails.code as AnyErrorCode
@@ -86,6 +90,7 @@ export function useApi<T>() {
             const result = await response.json();
 
             // 標準APIレスポンス形式かどうかを判定
+            // 型アサーション: APIレスポンスが StandardApiResponse<R> 形式に近いことを期待するが、完全な検証は行われていない。
             const typedResult = result as StandardApiResponse<R>;
 
             if (!legacyFormat) {
@@ -103,6 +108,7 @@ export function useApi<T>() {
                 // 型Tとして状態を更新（同じ型の場合のみ）
                 if (typedResult.data !== undefined) {
                     setState({
+                        // 型アサーション: APIレスポンスの型Rをフックの状態型Tにキャスト。型安全ではないため注意。
                         data: typedResult.data as unknown as T,
                         loading: false
                     });
@@ -136,6 +142,7 @@ export function useApi<T>() {
                 // 型Tとして状態を更新（同じ型の場合のみ）
                 if (legacyData !== undefined) {
                     setState({
+                        // 型アサーション: APIレスポンスの型Rをフックの状態型Tにキャスト。型安全ではないため注意。
                         data: legacyData as unknown as T,
                         loading: false
                     });
@@ -145,6 +152,7 @@ export function useApi<T>() {
                 // このフックの戻り値型は StandardApiResponse<R> | null のため、適合させる
                 // return legacyData as R; // これは型エラーになる
                 // 成功時は data のみを含む StandardApiResponse を返す
+                // 型アサーション: APIレスポンスの型Rをフックの戻り値型Rにキャスト。型安全ではないため注意。
                 return { success: true, data: legacyData as R };
             }
 

@@ -1,4 +1,6 @@
 import type { Config } from "tailwindcss";
+import { fontFamily } from "tailwindcss/defaultTheme";
+import plugin from 'tailwindcss/plugin';
 
 export default {
 	darkMode: ["class"],
@@ -60,6 +62,8 @@ export default {
 	},
 	plugins: [
 		require("tailwindcss-animate"),
-		require("@tailwindcss/typography")
+		require("@tailwindcss/typography"),
+		require('tailwind-scrollbar-hide'),
+		require('tailwindcss-radix')
 	],
 } satisfies Config;

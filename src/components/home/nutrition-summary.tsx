@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { ChevronRight } from 'lucide-react';
 import { StandardizedMealNutrition, Nutrient } from '@/types/nutrition';
 import { calculateNutritionScore, calculatePercentage, DEFAULT_NUTRITION_TARGETS, getNutrientBarColor } from '@/lib/nutrition/nutrition-display-utils';
-import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
+import { calculatePregnancyWeek, getTrimesterNumber, getTrimesterName } from '@/lib/date-utils';
 
 // NutritionTargets 型定義 (home-client.tsx と合わせる)
 type NutritionTargets = typeof DEFAULT_NUTRITION_TARGETS;
@@ -239,12 +239,27 @@ function MorningNutritionView({ profile }: { profile: UserProfile }) {
     const router = useRouter();
 
     // 妊娠週数の計算
-    const pregnancyWeek = profile.due_date
-        ? calculatePregnancyWeek(profile.due_date)
-        : profile.pregnancy_week || 0;
+    const pregnancyWeekInfo = profile.due_date ? calculatePregnancyWeek(profile.due_date) : { week: profile.pregnancy_week || 0, days: 0 };
+    const currentWeek = pregnancyWeekInfo.week;
 
     // トライメスターの取得
-    const trimester = getTrimesterNumber(pregnancyWeek);
+    const trimester = getTrimesterNumber(currentWeek);
+    const trimesterName = getTrimesterName(currentWeek);
+
+    // トライメスターに応じた色を返すヘルパー関数
+    const getTrimesterColorLocal = (trimester: number): string => {
+        if (trimester === 1) return 'bg-blue-100 text-blue-800';
+        if (trimester === 2) return 'bg-green-100 text-green-800';
+        return 'bg-purple-100 text-purple-800';
+    };
+
+    // トライメスターに応じたメッセージを返すヘルパー関数（getTrimesterNameを使用）
+    const getTrimesterMessageLocal = (week: number): string => {
+        if (week <= 0) return '';
+        if (week <= 15) return "赤ちゃんの体が作られる大切な時期";
+        if (week <= 27) return "安定期に入り、赤ちゃんの成長が著しい時期";
+        return "出産に向けて体が変化する時期";
+    };
 
     return (
         <Card className="mb-4 overflow-hidden border-none shadow-md relative">
@@ -256,7 +271,7 @@ function MorningNutritionView({ profile }: { profile: UserProfile }) {
                     <CardTitle className="text-lg flex items-center">
                         <span className="mr-2">今日の健康</span>
                         <span className="text-sm bg-[#E3F3ED] text-[#2E9E6C] px-2 py-0.5 rounded-full font-normal">
-                            妊娠{pregnancyWeek}週目
+                            妊娠{currentWeek ?? '??'}週目
                         </span>
                     </CardTitle>
                     <Button
@@ -284,7 +299,7 @@ function MorningNutritionView({ profile }: { profile: UserProfile }) {
                             </p>
                             <p className="text-sm text-[#3B7E64] opacity-90 mt-1 leading-relaxed">
                                 今日も健やかな一日をお過ごしください。
-                                {pregnancyWeek > 0 && `妊娠${pregnancyWeek}週目は赤ちゃんの${getTrimesterMessage(pregnancyWeek)}時期です。`}
+                                {currentWeek > 0 && `妊娠${currentWeek}週目は${getTrimesterMessageLocal(currentWeek)}です。`}
                             </p>
                         </div>
                     </div>
@@ -299,7 +314,7 @@ function MorningNutritionView({ profile }: { profile: UserProfile }) {
                         <div>
                             <h4 className="font-medium text-[#2C3F37] mb-1">今日のポイント</h4>
                             <p className="text-sm text-[#4B5D54] leading-relaxed">
-                                {getFocusNutrient(pregnancyWeek)}を含む食品を意識して摂るとよいでしょう。バランスの取れた食事が大切です。
+                                {getFocusNutrient(currentWeek)}を含む食品を意識して摂るとよいでしょう。バランスの取れた食事が大切です。
                             </p>
                         </div>
                     </div>
@@ -330,16 +345,5 @@ function getFocusNutrient(pregnancyWeek: number): string {
     // 第3トライメスター
     else {
         return "鉄分とビタミンD";
-    }
-}
-
-// 妊娠週数に応じたメッセージ
-function getTrimesterMessage(pregnancyWeek: number): string {
-    if (pregnancyWeek <= 13) {
-        return "重要な器官が形成される";
-    } else if (pregnancyWeek <= 27) {
-        return "成長が加速する";
-    } else {
-        return "出産に向けて準備が進む";
     }
 } 

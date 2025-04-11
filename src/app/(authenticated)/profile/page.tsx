@@ -59,7 +59,7 @@ export default function ProfilePage() {
     // 出産予定日から妊娠週数を計算する表示用関数
     const getCurrentPregnancyWeek = (): number => {
         if (!formData.due_date) return 0;
-        return calculatePregnancyWeek(formData.due_date);
+        return calculatePregnancyWeek(formData.due_date).week;
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

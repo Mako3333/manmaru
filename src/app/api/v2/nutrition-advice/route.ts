@@ -182,7 +182,13 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     console.log(`[API Logic] Proceeding to generate new advice via AI for type: ${type}`);
 
     // ユーザー情報と過去の栄養データを準備
-    const pregnancyWeek = calculatePregnancyWeek(profile.due_date);
+    let pregnancyWeek = 0;
+    if (profile && profile.due_date) {
+        // calculatePregnancyWeek の戻り値から .week を取得
+        pregnancyWeek = calculatePregnancyWeek(profile.due_date).week;
+    }
+
+    // getTrimesterNumber に週数を渡す
     const trimester = getTrimesterNumber(pregnancyWeek);
     const season = getCurrentSeason();
     const pastNutrition = await getPastNutritionData(supabase, user.id);

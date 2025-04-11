@@ -29,7 +29,7 @@ export function calculateAgeFromBirthdate(birthdate: string): number {
  * より正確に週数と日数を考慮した計算
  * 日本の習慣に合わせて「〜週目」という表現を使用（例: 19週4日は「20週目」）
  */
-export function calculatePregnancyWeek(dueDate: string): number {
+export function calculatePregnancyWeek(dueDate: string): { week: number; days: number } {
     const dueDateObj = new Date(dueDate);
     const today = new Date();
 
@@ -38,26 +38,30 @@ export function calculatePregnancyWeek(dueDate: string): number {
     today.setHours(0, 0, 0, 0);
 
     // 出産予定日は妊娠40週目
-    const totalPregnancyWeeks = 40;
+    const totalPregnancyDays = 40 * 7;
 
     // 妊娠開始日を計算（出産予定日の40週前）
-    const conceptionDate = addWeeks(dueDateObj, -totalPregnancyWeeks);
+    // const conceptionDate = addWeeks(dueDateObj, -totalPregnancyWeeks);
+    const conceptionDate = new Date(dueDateObj.getTime() - totalPregnancyDays * 24 * 60 * 60 * 1000);
 
     // 妊娠開始日から今日までの日数を計算
     const daysPregnant = differenceInDays(today, conceptionDate);
 
     // 日数を週数に変換（端数切り捨て）
-    const completedWeeks = Math.floor(daysPregnant / 7);
+    const completedWeeks = Math.max(0, Math.floor(daysPregnant / 7)); // 負の日数にならないように
 
     // 端数の日数を計算
-    const remainingDays = daysPregnant % 7;
+    const remainingDays = Math.max(0, daysPregnant % 7); // 負の日数にならないように
 
-    // 日本の習慣に合わせて「〜週目」表現に調整（1日以上経過していれば次の週目と数える）
-    // 例: 19週4日 → 「20週目」
-    const japaneseStyleWeek = remainingDays > 0 ? completedWeeks + 1 : completedWeeks;
+    // 日本の習慣に合わせた「〜週目」表現ではなく、完了した週数と日数を使用する
+    // const japaneseStyleWeek = remainingDays > 0 ? completedWeeks + 1 : completedWeeks;
 
     // 妊娠週数を適切な範囲（0〜40週）に制限
-    return Math.max(0, Math.min(totalPregnancyWeeks, japaneseStyleWeek));
+    // return Math.max(0, Math.min(totalPregnancyWeeks, japaneseStyleWeek));
+    const currentWeek = Math.min(40, completedWeeks);
+    const currentDays = currentWeek === 40 ? 0 : remainingDays; // 40週になったら日は0
+
+    return { week: currentWeek, days: currentDays };
 }
 
 /**

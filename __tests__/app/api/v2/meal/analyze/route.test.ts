@@ -146,7 +146,10 @@ describe('食事分析API v2のテスト', () => {
         expect(response.status).toBe(200);
         expect(responseData.success).toBe(true);
         expect(responseData.data).toBeDefined();
-        expect(responseData.data.nutritionResult).toBeDefined();
+        if (responseData.data) {
+            expect(responseData.data.nutritionResult).toBeDefined();
+            expect(Array.isArray(responseData.data.foodItems)).toBe(true);
+        }
 
         // 標準化されたフォーマットの検証
         if (responseData.data) {

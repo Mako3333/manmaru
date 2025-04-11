@@ -55,9 +55,7 @@ async function fetchData(supabase: SupabaseClient, user: User): Promise<FetchDat
 }
 
 export default async function HomePage() {
-    // Get cookie store first (await needed for Next.js 15+)
-    const cookieStore = await cookies();
-
+    const cookieStore = await cookies(); // await を追加して Promise を解決
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

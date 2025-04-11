@@ -76,7 +76,7 @@ export const useAuth = () => {
         return () => {
             subscription.unsubscribe()
         }
-    }, [])
+    }, [handleAuthStateChange])
 
     const checkProfile = async (userId: string): Promise<Profile | null> => {
         try {

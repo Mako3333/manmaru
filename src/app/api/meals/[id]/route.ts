@@ -44,6 +44,7 @@ export const DELETE = withErrorHandling(async (
     }
 
     const userId = session.user.id;
+    // TODO: context.params の型問題を根本解決する
     const mealId = context.params.id as string;
 
     if (!mealId) {

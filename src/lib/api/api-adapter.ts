@@ -68,6 +68,8 @@ export class ApiAdapter {
                     suggestions = legacyResponse.suggestions.filter(isString);
                 }
             }
+            // 型アサーション: ErrorCode に存在しない文字列の場合は UNKNOWN_ERROR にフォールバックされる前提。
+            // より厳密にするには、ErrorCode の値として有効かチェックする関数を用意する。
             const code = codeStr as AnyErrorCode;
             return { code, message, details, suggestions };
         };
@@ -106,7 +108,9 @@ export class ApiAdapter {
 
         return {
             success: true,
-            data: data as T, // キャストは必要だが、型安全ではない点に注意
+            // 型アサーション: legacyResponse の型が不明なため、型 T である保証はない。
+            // 呼び出し元で型安全性を担保する必要がある。
+            data: data as T,
             meta: {
                 processingTimeMs: Math.round(performance.now() - startTime),
                 ...(warning ? { warning } : {})
@@ -156,6 +160,7 @@ export class ApiAdapter {
         codeStr: string = ErrorCode.Base.UNKNOWN_ERROR,
         details?: unknown
     ): StandardApiResponse<null> {
+        // 型アサーション: ErrorCode に存在しない文字列の場合は UNKNOWN_ERROR にフォールバックされる前提。
         const code = codeStr as AnyErrorCode;
         return {
             success: false,
@@ -191,6 +196,7 @@ export class ApiAdapter {
 
         // ここで response を StandardizedMealNutrition として扱うが、内部配列の要素も検証が必要
         // foodItems や totalNutrients の各要素が期待する型かどうかのチェックは省略 (要改善)
+        // 型アサーション: ネストした配列/オブジェクトの内容は未検証。Zod等での検証が望ましい。
         return response as StandardizedMealNutrition;
     }
 
@@ -221,6 +227,7 @@ export class ApiAdapter {
                 });
             }
             // ここも安全ではないキャスト、要改善
+            // 型アサーション: ネストした配列/オブジェクトの内容は未検証。Zod等での検証が望ましい。
             return item as StandardizedMealNutrition;
         });
     }

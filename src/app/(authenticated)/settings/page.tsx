@@ -101,9 +101,9 @@ export default function SettingsPage() {
 
                         <div className="flex justify-between items-center py-2 border-t border-gray-100">
                             <span className="text-gray-700">妊娠週数（計算値）</span>
-                            <span className="text-gray-900">
-                                {profile.due_date ? calculatePregnancyWeek(profile.due_date) : '-'} 週
-                            </span>
+                            <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                {profile.due_date ? calculatePregnancyWeek(profile.due_date).week : '-'} 週
+                            </dd>
                         </div>
 
                         <div className="flex justify-between items-center py-2 border-t border-gray-100">

@@ -51,7 +51,7 @@ export const targetsFetcher = async (dueDate: string | null | undefined): Promis
         return DEFAULT_NUTRITION_TARGETS;
     }
     try {
-        const week = calculatePregnancyWeek(dueDate);
+        const week = calculatePregnancyWeek(dueDate).week;
         const currentTrimester = getTrimesterNumber(week);
         console.log(`[Fetcher] Fetching targets for trimester: ${currentTrimester}`);
 

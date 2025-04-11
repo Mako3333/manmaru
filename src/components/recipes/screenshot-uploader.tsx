@@ -47,12 +47,14 @@ export const ScreenshotUploader: React.FC<ScreenshotUploaderProps> = ({
     return (
         <div className="screenshot-uploader">
             {previewImage ? (
-                <div className="relative w-full aspect-video rounded overflow-hidden">
-                    <div className="w-full h-full">
-                        <img
+                <div className="relative w-full max-w-lg mx-auto">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-gray-300 bg-gray-50">
+                        <Image
                             src={previewImage}
-                            alt="レシピのスクリーンショット"
-                            className="w-full h-full object-cover"
+                            alt="レシピのスクリーンショットプレビュー"
+                            layout="fill"
+                            objectFit="contain"
+                            className="rounded-lg"
                         />
                     </div>
                     <Button

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { format, differenceInWeeks, addWeeks } from 'date-fns';
+import { format, differenceInWeeks, addWeeks, differenceInDays } from 'date-fns';
 import { motion } from 'framer-motion';
 import { calculatePregnancyWeek, getTrimesterNumber } from '@/lib/date-utils';
 
@@ -44,12 +44,18 @@ const WEEK_MARKERS = [
 
 const PregnancyWeekInfo: React.FC<PregnancyWeekInfoProps> = ({ className, dueDate }) => {
     const [pregnancyWeek, setPregnancyWeek] = useState<number | null>(null);
+    const [trimester, setTrimester] = useState<number | null>(null);
+    const [daysUntilDue, setDaysUntilDue] = useState<number | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
 
     useEffect(() => {
         if (dueDate) {
-            const week = calculatePregnancyWeek(dueDate);
-            setPregnancyWeek(week);
+            const dueDateObj = new Date(dueDate);
+            const today = new Date();
+            const weekInfo = calculatePregnancyWeek(dueDate);
+            setPregnancyWeek(weekInfo.week);
+            setTrimester(getTrimesterNumber(weekInfo.week));
+            setDaysUntilDue(differenceInDays(dueDateObj, today));
         } else {
             setPregnancyWeek(null);
         }
