@@ -51,3 +51,145 @@
 
 *   `npm run test` がエラーなく実行され、すべてのテストスイートが正常に完了（パスまたはフェイル）する。
 
+
+
+```javascript:jest.setup.js
+// jest.setup.js
+// Jest環境をセットアップする
+// @testing-library/jest-domはexpectをグローバルに拡張するためここでは直接requireしない
+
+// フェッチポリフィル
+require('whatwg-fetch');
+
+// Jest で TextEncoder/TextDecoder を利用可能にする
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
+// IntersectionObserver のモック
+class IntersectionObserver {
+  observe() { return null; }
+  disconnect() { return null; }
+  unobserve() { return null; }
+}
+
+global.IntersectionObserver = IntersectionObserver;
+```
+
+```javascript:jest.config.cjs
+module.exports = {
+    testEnvironment: 'jsdom',
+    roots: ['<rootDir>'],
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    transform: {
+        '^.+\\.(ts|tsx|js|jsx)$': ['ts-jest', {
+            useESM: true,
+        }],
+    },
+    moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+    },
+    transformIgnorePatterns: [
+        'node_modules/(?!(@testing-library/jest-dom|whatwg-fetch)/)'
+    ],
+    extensionsToTreatAsEsm: ['.ts', '.tsx'],
+    testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.tsx?$',
+    moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+};
+```
+
+```bash
+npm install --save-dev @types/testing-library__jest-dom
+```
+
+```json:package.json
+{
+  "name": "manmaru",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test-simple": "node test-prompt.js",
+    "migrate-food-data": "node --loader ts-node/esm scripts/migrate-food-data.ts"
+  },
+  // ... existing code ...
+}
+```
+
+```javascript:jest.config.cjs
+module.exports = {
+    testEnvironment: 'jsdom',
+    roots: ['<rootDir>'],
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    transform: {
+        '^.+\\.(ts|tsx|js|jsx)$': 'ts-jest'
+    },
+    moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+    },
+    transformIgnorePatterns: [
+        'node_modules/(?!(@testing-library/jest-dom|whatwg-fetch)/)'
+    ],
+    testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.tsx?$',
+    moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+    testEnvironmentOptions: {
+        customExportConditions: ['node', 'node-addons'],
+    },
+};
+```
+
+```json:package.json
+{
+  "name": "manmaru",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test-simple": "node test-prompt.js",
+    "migrate-food-data": "node --loader ts-node/esm scripts/migrate-food-data.ts"
+  },
+  // ... existing code ...
+}
+```
+
+```bash
+npm install --save-dev jest-environment-jsdom jest jest-transform-stub
+```
+
+```bash
+npx jest --no-cache
+```
+◤◢◤◢◤◢◤◢◤◢◤◢◤◢
+✅ 成功：
+Jestの設定問題が解決され、テストが実行できるようになりました。
+
+📝 詳細：
+1. モジュール形式の問題：
+   - package.jsonで`type: "module"`と設定されている一方、Jestは従来CommonJSを使用しており、この不一致が問題でした
+   - `jest.config.cjs`のファイル拡張子を使用してCommonJS形式で設定を明示
+   - `setupFilesAfterEnv`を使用して正しいタイミングでJestセットアップファイルを読み込むように変更
+
+2. 依存関係の問題：
+   - `@testing-library/jest-dom`と`whatwg-fetch`が不足していたため追加
+   - `jest-environment-jsdom`を追加してテスト環境を正しく設定
+
+3. 設定の修正：
+   - `testEnvironment: 'jsdom'`に変更してブラウザ環境をシミュレート
+   - `transformIgnorePatterns`を設定して特定のnode_modulesもトランスフォームするように変更
+   - `testEnvironmentOptions`を追加してNode.js環境の互換性を確保
+
+テストは実行できるようになりましたが、一部のテストは失敗しています。これらの失敗は主に以下の理由によるものです：
+- モックオブジェクトのプロパティアクセスの問題（NextRequestのURL設定など）
+- AbortSignal.timeoutのサポート問題
+- テスト内の期待値と実際の結果の不一致
+

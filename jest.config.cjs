@@ -1,13 +1,19 @@
 module.exports = {
-    testEnvironment: 'node',
+    testEnvironment: 'jsdom',
     roots: ['<rootDir>'],
-    setupFiles: ['<rootDir>/jest.setup.js'],
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
     transform: {
-        '^.+\\.tsx?$': 'ts-jest',
+        '^.+\\.(ts|tsx|js|jsx)$': 'ts-jest'
     },
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
     },
+    transformIgnorePatterns: [
+        'node_modules/(?!(@testing-library/jest-dom|whatwg-fetch)/)'
+    ],
     testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.tsx?$',
     moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+    testEnvironmentOptions: {
+        customExportConditions: ['node', 'node-addons'],
+    },
 }; 

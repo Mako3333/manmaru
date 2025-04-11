@@ -76,7 +76,19 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     let standardizedNutritionData: StandardizedMealNutrition | undefined = undefined;
     if (requestData.nutrition_data) {
         try {
-            standardizedNutritionData = convertToStandardizedNutrition(requestData.nutrition_data as NutritionData);
+            // requestData.nutrition_data がすでに StandardizedMealNutrition 型かをチェック
+            if (
+                typeof requestData.nutrition_data === 'object' &&
+                requestData.nutrition_data !== null &&
+                'totalCalories' in requestData.nutrition_data &&
+                'totalNutrients' in requestData.nutrition_data &&
+                'foodItems' in requestData.nutrition_data
+            ) {
+                standardizedNutritionData = requestData.nutrition_data as StandardizedMealNutrition;
+            } else {
+                // 旧形式から変換
+                standardizedNutritionData = convertToStandardizedNutrition(requestData.nutrition_data as NutritionData);
+            }
         } catch (conversionError) {
             console.error('POST /api/meals: 旧形式の栄養データをStandardizedに変換中にエラー:', conversionError);
             throw new AppError({
@@ -86,20 +98,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
                 details: { requestNutritionData: requestData.nutrition_data }
             });
         }
-    }
-
-    // 栄養データの構築（meal_nutrients テーブル用）
-    let nutritionDataForMealNutrients: SaveMealNutritionRequest | undefined;
-    if (requestData.nutrition) {
-        nutritionDataForMealNutrients = {
-            calories: parseFloat(requestData.nutrition.calories || '0'),
-            protein: parseFloat(requestData.nutrition.protein || '0'),
-            iron: parseFloat(requestData.nutrition.iron || '0'),
-            folic_acid: parseFloat(requestData.nutrition.folic_acid || '0'),
-            calcium: parseFloat(requestData.nutrition.calcium || '0'),
-            vitamin_d: parseFloat(requestData.nutrition.vitamin_d || '0'),
-            confidence_score: parseFloat(requestData.nutrition.confidence_score || '0.8')
-        };
     }
 
     // SaveMealRequest型に合わせる
@@ -115,8 +113,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     const result = await MealService.saveMealWithNutrition(
         supabase,
-        dataToSave,
-        nutritionDataForMealNutrients
+        dataToSave
     );
 
     // 成功レスポンスを返す (try...catch はミドルウェアが行う)

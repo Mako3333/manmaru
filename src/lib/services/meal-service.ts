@@ -62,7 +62,36 @@ export class MealService {
             // StandardizedMealNutritionをDB保存用のフォーマットに変換
             let dbNutritionData = null;
             if (mealData.nutrition_data) {
+                // nutrition_dataが存在することを確認
+                if (
+                    typeof mealData.nutrition_data !== 'object' ||
+                    !mealData.nutrition_data ||
+                    typeof mealData.nutrition_data.totalCalories !== 'number' ||
+                    !Array.isArray(mealData.nutrition_data.totalNutrients) ||
+                    !Array.isArray(mealData.nutrition_data.foodItems) ||
+                    typeof mealData.nutrition_data.reliability !== 'object' ||
+                    typeof mealData.nutrition_data.reliability.confidence !== 'number'
+                ) {
+                    throw new AppError({
+                        code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+                        message: 'nutrition_dataがStandardizedMealNutrition形式ではありません',
+                        userMessage: '栄養データの形式が正しくありません。',
+                        details: { providedData: mealData.nutrition_data }
+                    });
+                }
+
+                // DB保存用のフォーマットに変換
                 dbNutritionData = convertToDbNutritionFormat(mealData.nutrition_data);
+
+                // 変換結果の確認
+                if (!dbNutritionData) {
+                    throw new AppError({
+                        code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                        message: 'nutrition_dataのDB形式への変換に失敗しました',
+                        userMessage: '栄養データの処理中にエラーが発生しました。',
+                        details: { originalData: mealData.nutrition_data }
+                    });
+                }
             }
 
             // 食事データ保存

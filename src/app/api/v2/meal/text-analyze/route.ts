@@ -81,7 +81,23 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
             }
         })();
 
+        // StandardizedMealNutritionが正しい形式かチェック
         const standardizedNutrition = nutritionResult.nutrition;
+
+        if (!standardizedNutrition ||
+            typeof standardizedNutrition.totalCalories !== 'number' ||
+            !Array.isArray(standardizedNutrition.totalNutrients) ||
+            !Array.isArray(standardizedNutrition.foodItems) ||
+            !standardizedNutrition.reliability ||
+            typeof standardizedNutrition.reliability.confidence !== 'number') {
+
+            throw new AppError({
+                code: ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR,
+                message: '計算された栄養データが無効な形式です',
+                userMessage: '栄養計算の結果が不正です。別の食品を入力してください。',
+                details: { calculatedNutrition: standardizedNutrition }
+            });
+        }
 
         const warningMessage = (() => {
             if (nutritionResult.reliability.confidence < 0.7) {

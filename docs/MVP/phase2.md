@@ -102,28 +102,6 @@
 
 ---
 
-### タスク 2.5: 献立提案機能 (基本表示)
-
-*   **目的:** ホーム画面などで、不足栄養素に基づいた基本的なレシピ提案を表示する。
-*   **担当範囲:**
-    *   `src/app/api/recommend-recipes/route.ts` (または `/api/recipes/recommend`) - APIエンドポイント
-    *   `src/components/home/home-client.tsx` (提案表示箇所)
-    *   `src/components/home/RecommendedRecipes.tsx` (表示コンポーネント)
-    *   `src/lib/ai/prompts/templates/recipe-recommendation/v1.ts` (使用する場合)
-*   **詳細指示:**
-    1.  **API実装/修正:**
-        *   `/api/recommend-recipes` エンドポイントを実装または修正する。
-        *   リクエストからユーザーIDを受け取り、`nutrition_goal_prog` ビューなどから直近の不足栄養素を特定するロジックを実装する。
-        *   **シンプルなロジック:** 不足栄養素を含むレシピを `clipped_recipes` テーブルから検索し、数件返す（例: 鉄分不足なら `ingredients` JSONBカラムに "レバー" や "ほうれん草" を含むレシピを検索）。
-        *   **(オプション) AIロジック:** `PromptType.RECIPE_RECOMMENDATION` を使用してAIにレシピを提案させる。プロンプトを調整し、レシピIDやタイトル、画像URLなど、表示に必要な最低限の情報を返すようにする。
-        *   APIはレシピの基本情報（ID, タイトル, 画像URLなど）のリストを返すようにする。
-    2.  **UI実装:**
-        *   `RecommendedRecipes` コンポーネントで、上記APIを呼び出し、取得したレシピ情報を表示する。
-        *   各レシピは `RecipeCard` コンポーネント（または簡易版）を使用して表示し、クリックするとレシピ詳細ページ (`/recipes/[id]`) に遷移するようにする。
-        *   ローディング状態やレシピがない場合の表示も考慮する。
-*   **完了条件:** ホーム画面などで、不足栄養素に基づいて提案されたレシピ（最低限、タイトルと画像）が表示されること。
-
----
 
 ### タスク 2.6: AI連携部分の修正 (画像解析プロンプト)
 

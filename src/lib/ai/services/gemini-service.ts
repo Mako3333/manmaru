@@ -220,24 +220,41 @@ export class GeminiService implements IAIService {
             let fetchedHtml = '';
             if (!htmlContent) {
                 console.log(`[GeminiService] Fetching HTML from: ${url}`);
-                const response = await fetch(url, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-                    },
-                    signal: AbortSignal.timeout(15000)
-                });
-                if (!response.ok) {
-                    throw new AppError({
-                        code: ErrorCode.Base.NETWORK_ERROR,
-                        message: `URLの取得に失敗しました: ${url}, Status: ${response.status}`,
-                        userMessage: 'レシピ情報の取得に失敗しました。URLを確認するか、時間をおいて再度お試しください。',
-                        details: { url, status: response.status }
+                // AbortSignal.timeoutを使わずにタイムアウトを実装
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                try {
+                    const response = await fetch(url, {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+                        },
+                        signal: controller.signal
                     });
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new AppError({
+                            code: ErrorCode.Base.NETWORK_ERROR,
+                            message: `URLの取得に失敗しました: ${url}, Status: ${response.status}`,
+                            userMessage: 'レシピ情報の取得に失敗しました。URLを確認するか、時間をおいて再度お試しください。',
+                            details: { url, status: response.status }
+                        });
+                    }
+                    fetchedHtml = await response.text();
+                    console.log(`[GeminiService] Fetched HTML content (length: ${fetchedHtml.length}) from: ${url}`);
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    if (error instanceof DOMException && error.name === 'AbortError') {
+                        throw new AppError({
+                            code: ErrorCode.Base.NETWORK_ERROR,
+                            message: `URLの取得がタイムアウトしました: ${url}`,
+                            userMessage: 'レシピ情報の取得に時間がかかりすぎています。時間をおいて再度お試しください。',
+                            details: { url, timeout: true }
+                        });
+                    }
+                    throw error;
                 }
-                fetchedHtml = await response.text();
-                console.log(`[GeminiService] Fetched HTML content (length: ${fetchedHtml.length}) from: ${url}`);
             } else {
                 fetchedHtml = htmlContent;
                 console.log(`[GeminiService] Using provided HTML content (length: ${fetchedHtml.length})`);

@@ -141,7 +141,7 @@ export function EnhancedRecognitionEditor({
                 nutrition
             };
 
-            // saveMealWithNutrients APIを使用して、meals と meal_nutrients の両方に保存
+            // API送信用データを構築
             const response = await fetch('/api/meals', {
                 method: 'POST',
                 headers: {
@@ -159,21 +159,8 @@ export function EnhancedRecognitionEditor({
                             confidence: food.confidence
                         }))
                     },
-                    // StandardizedMealNutrition型をそのまま使用
-                    nutrition_data: {
-                        ...dataToSave.nutrition
-                    },
-                    // meal_nutrientsテーブル用のデータも含める
-                    nutrition: {
-                        calories: dataToSave.nutrition.totalCalories,
-                        protein: getNutrientValue(dataToSave.nutrition.totalNutrients, 'たんぱく質'),
-                        iron: getNutrientValue(dataToSave.nutrition.totalNutrients, '鉄分'),
-                        folic_acid: getNutrientValue(dataToSave.nutrition.totalNutrients, '葉酸'),
-                        calcium: getNutrientValue(dataToSave.nutrition.totalNutrients, 'カルシウム'),
-                        vitamin_d: getNutrientValue(dataToSave.nutrition.totalNutrients, 'ビタミンD'),
-                        confidence_score: 0.8 // 仮の値、実際には信頼度を計算すべき
-                    },
-                    servings: 1
+                    // StandardizedMealNutrition型をそのまま送信
+                    nutrition_data: dataToSave.nutrition
                 }),
             });
 

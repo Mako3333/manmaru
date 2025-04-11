@@ -130,8 +130,9 @@
 ## 注意事項
 
 * `data.foods` は、AIが直接認識した食品のリストであり、実際にUIに表示される食品リストの基になります。
-* `data.aiEstimatedNutrition` は、AIが直接推定した栄養価であり、表示される栄養情報の元データとして使用されます。
-* `data.nutritionResult.nutrition` は標準化された栄養情報を提供しますが、現在の実装では `aiEstimatedNutrition` の内容を整形して表示することが推奨されます。
+* `data.nutritionResult.nutrition` は標準化された栄養情報 (`StandardizedMealNutrition`) を提供し、アプリケーション内で使用する際はこのデータを使用してください。
+* `data.aiEstimatedNutrition` は、AIが直接推定した栄養価です。このフィールドは参考値として含まれていますが、栄養データの表示には `nutritionResult.nutrition` を使用してください。
+* `legacyNutrition` フィールドは後方互換性のために提供されていますが、新しい実装では `StandardizedMealNutrition` 型の `nutrition` を使用することを強く推奨します。
 * 画像品質、照明条件、角度などによって認識精度が変わる場合があります。可能な限り食品が明確に見える写真を提供することが望ましいです。
 
 # 技術的負債と改善点
@@ -152,16 +153,15 @@
 ## 2. 型定義の一貫性と複雑性
 
 ### 課題
-- `NutritionData` と `StandardizedMealNutrition` の二重管理
 - API応答の深いネスト構造（data.nutritionResult.nutrition など）
 - 型定義が複数ファイルに散在し、整合性維持が困難
 - `FoodItem` 型が複数の場所で微妙に異なる定義をされている
 
 ### 改善案
 - 型定義の一元管理と統一
-- レガシー互換性を保ちつつ、シンプルな型構造への段階的移行
 - API応答構造のフラット化
 - コンポーネント間でのデータ受け渡し時の型変換の最小化
+- アプリケーション全体で `StandardizedMealNutrition` 型に完全に移行する
 
 ## 3. エラーハンドリングの強化
 

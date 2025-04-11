@@ -152,35 +152,192 @@
 
 ## テキスト入力と画像入力の保存フロー
 
-1. **フロントエンド側の保存処理**:
-   - **画像入力の場合**: `src/app/(authenticated)/meals/log/page.tsx` の `handleSaveRecognition` 関数
-   - **テキスト入力の場合**: 同ファイル内の `handleSaveTextInput` 関数
+フェーズ2の実装により、テキスト入力と画像入力の保存フローが標準化され、一貫して`StandardizedMealNutrition`型を使用するようになりました。以下は、入力から保存までの詳細な流れです。
 
-2. **データの加工と送信**:
-   どちらの入力方法でも、最終的にはデータを標準形式 (`StandardizedMealData`) に変換し、`/api/meals` エンドポイントに POST リクエストを送信します：
+### 1. フロントエンド - ユーザー入力受付
 
-   ```typescript
-   // APIリクエスト用にデータを変換（レガシーシステムとの互換性のため）
-   const mealData = prepareForApiRequest(standardizedMealData);
+**テキスト入力の場合:**
+1. ユーザーが食事内容をテキストで入力（例: "ごはん 茶碗1杯、味噌汁、焼き鮭"）
+2. UIで食品リスト`FoodItem[]`として管理（`src/app/(authenticated)/meals/log/page.tsx`）
+3. ユーザーが「保存」ボタンを押すと`handleSaveTextInput`関数が呼び出される
 
-   // APIを使用してデータを保存
-   const response = await fetch('/api/meals', {
-       method: 'POST',
-       headers: {
-           'Content-Type': 'application/json',
-       },
-       body: JSON.stringify(mealData),
-   });
-   ```
+**写真入力の場合:**
+1. ユーザーが食事の写真をアップロード
+2. 写真データが自動的に解析され、食品リストを表示
+3. ユーザーが「保存」ボタンを押すと`handleSaveRecognition`関数が呼び出される
 
-3. **バックエンド側の処理**:
-   実際のデータベース保存処理は `src/app/api/meals/route.ts` で行われています。ここで:
-   - Supabase (PostgreSQL) への実際の保存処理
-   - `meals` テーブルと `meal_nutrients` テーブルへのデータ挿入
-   - 必要に応じて画像の保存処理
+### 2. フロントエンド - 入力データの処理とAPI呼び出し
 
-4. **データ構造**:
-   - `meals` テーブル: 食事の基本情報（日時、タイプ、画像URL等）
-   - `meal_nutrients` テーブル: 栄養素の詳細値
-   - `meal_items` テーブル: 食品アイテムの詳細（任意選択）
+**テキスト入力処理 (`handleSaveTextInput`関数):**
+```typescript
+// 1. 入力された食品リストのバリデーション
+if (foodItems.length === 0) {
+    toast.error('食品が入力されていません');
+    return;
+}
+
+// 2. AI解析による食品情報の強化
+const enhancedFoods = await enhanceFoodItems(foodItems);
+
+// 3. 強化された食品リストをテキスト形式に変換
+const foodText = enhancedFoods.map(food => `${food.name} ${food.quantity}`.trim()).join('、');
+
+// 4. テキスト解析APIを呼び出し
+const nutritionResult = await analyzeTextInput(foodText);
+
+// 5. 返された栄養データ（StandardizedMealNutrition型）を取得
+const standardizedNutrition = nutritionResult.data.nutritionResult.nutrition;
+
+// 6. 保存用データの準備
+const mealData = {
+    meal_type: mealType,
+    meal_date: formattedDate,
+    food_description: {
+        items: enhancedFoods.map(/*...食品データ変換...*/)
+    },
+    // StandardizedMealNutrition型のデータをそのまま使用
+    nutrition_data: standardizedNutrition
+};
+
+// 7. データのバリデーション
+validateMealData(mealData);
+
+// 8. /api/mealsエンドポイントに保存リクエスト送信
+const response = await fetch('/api/meals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mealData),
+});
+```
+
+### 3. バックエンド - API処理とデータベース保存
+
+**APIエンドポイント処理 (`src/app/api/meals/route.ts`):**
+```typescript
+// 1. リクエストデータの検証
+if (!requestData || typeof requestData !== 'object') {
+    throw new AppError({ /*...エラー詳細...*/ });
+}
+
+// 2. 認証ユーザーのIDを取得
+const userId = session.user.id;
+
+// 3. 食事データの構築
+const mealData = {
+    user_id: userId,
+    meal_type: requestData.meal_type,
+    meal_date: requestData.meal_date,
+    photo_url: requestData.photo_url,
+    food_description: requestData.food_description,
+    // ...その他の属性
+};
+
+// 4. nutrition_dataがStandardizedMealNutrition型かを確認
+let standardizedNutritionData: StandardizedMealNutrition | undefined = undefined;
+if (requestData.nutrition_data) {
+    // 型チェック: StandardizedMealNutrition型の場合は直接使用
+    if (
+        typeof requestData.nutrition_data === 'object' &&
+        'totalCalories' in requestData.nutrition_data &&
+        'totalNutrients' in requestData.nutrition_data &&
+        'foodItems' in requestData.nutrition_data
+    ) {
+        standardizedNutritionData = requestData.nutrition_data;
+    } else {
+        // 旧形式の場合は変換処理
+        standardizedNutritionData = convertToStandardizedNutrition(requestData.nutrition_data);
+    }
+}
+
+// 5. MealServiceを使用してデータベースに保存
+const result = await MealService.saveMealWithNutrition(supabase, {
+    // ...mealDataの各フィールド
+    ...(standardizedNutritionData && { nutrition_data: standardizedNutritionData }),
+});
+```
+
+**データベース保存処理 (`src/lib/services/meal-service.ts`):**
+```typescript
+// MealService.saveMealWithNutrition関数
+// 1. データのバリデーション
+const { isValid, errors } = this.validateData(mealData);
+if (!isValid) {
+    throw new AppError({ /*...エラー詳細...*/ });
+}
+
+// 2. 栄養データの検証（StandardizedMealNutrition型であることを確認）
+if (mealData.nutrition_data) {
+    if (!this.validateStandardizedNutrition(mealData.nutrition_data)) {
+        throw new AppError({ /*...エラー詳細...*/ });
+    }
+}
+
+// 3. データベースへの保存
+const { data, error } = await supabase
+    .from('meals')
+    .insert({
+        user_id: mealData.user_id,
+        meal_type: mealData.meal_type,
+        meal_date: mealData.meal_date,
+        photo_url: mealData.photo_url,
+        food_description: mealData.food_description,
+        // nutrition_dataカラムにStandardizedMealNutrition型のデータを直接保存
+        nutrition_data: mealData.nutrition_data,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    })
+    .select('id')
+    .single();
+
+// 4. 保存結果を返却
+return { id: data.id };
+```
+
+### 4. データフロー図: ユーザー入力からデータベース保存まで
+
+```
+ユーザー入力（テキスト/写真）
+       ↓
+フロントエンド処理
+ ┌───────────────────────────────────┐
+ │ 1. 入力データの検証                                │
+ │ 2. テキスト解析/画像解析API呼び出し                   │
+ │ 3. StandardizedMealNutrition型データ取得         │
+ │ 4. 保存用データの構築                               │
+ └───────────────────────────────────┘
+       ↓
+/api/meals POST API
+ ┌───────────────────────────────────┐
+ │ 1. リクエストデータの検証                           │
+ │ 2. ユーザー認証・セッション確認                       │
+ │ 3. StandardizedMealNutrition型の検証・変換      │
+ │ 4. MealServiceを使用した保存処理呼び出し            │
+ └───────────────────────────────────┘
+       ↓
+MealService.saveMealWithNutrition
+ ┌───────────────────────────────────┐
+ │ 1. データのバリデーション                           │
+ │ 2. StandardizedMealNutrition型の検証           │
+ │ 3. meals テーブルへの保存                         │
+ │   - nutrition_dataカラムに直接保存                │
+ └───────────────────────────────────┘
+       ↓
+データベース（Supabase）
+ ┌───────────────────────────────────┐
+ │ meals テーブル                                  │
+ │  - nutrition_data: StandardizedMealNutrition型 │
+ │  - food_description: テキスト入力/AIの解析結果         │
+ │  - その他のメタデータ                               │
+ └───────────────────────────────────┘
+```
+
+### 5. フェーズ2実装による主な改善点
+
+1. **型の一貫性**: 入力から保存までの全フローで`StandardizedMealNutrition`型を一貫して使用
+2. **エラーハンドリングの強化**: 各段階でのデータ検証とエラーハンドリングを追加
+3. **不要な変換処理の削減**: 旧形式への変換処理を削減し、処理の効率化
+4. **データベース保存の簡素化**: `meal_nutrients`テーブルへの書き込みを廃止し、すべての栄養データを`meals.nutrition_data`カラムに格納
+5. **型安全性の向上**: TypeScriptの型チェックを活用した安全なデータ処理
+
+これらの改善により、食事データの入力から保存までのフローが安定化し、エラーが発生するリスクが大幅に低減されました。
 
