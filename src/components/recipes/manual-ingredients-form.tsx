@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { RecipeIngredient } from '@/types/recipe';
 import { Plus, Trash2 } from 'lucide-react';
@@ -25,48 +25,48 @@ export const ManualIngredientsForm: React.FC<ManualIngredientsFormProps> = ({
     servings,
     onServingsChange
 }) => {
-    // 空の材料を追加する関数
-    const addIngredient = () => {
+    // 空の材料を追加する関数を useCallback でメモ化
+    const addIngredient = useCallback(() => {
         const newIngredients = [
             ...ingredients,
             { name: '', quantity: '' }
         ];
         onChange(newIngredients);
-    };
+        // ingredients と onChange に依存
+    }, [ingredients, onChange]);
 
-    // 材料を削除する関数
-    const removeIngredient = (index: number) => {
+    // 材料を削除する関数 (useCallback 追加)
+    const removeIngredient = useCallback((index: number) => {
         const newIngredients = ingredients.filter((_, i) => i !== index);
         onChange(newIngredients);
-    };
+    }, [ingredients, onChange]);
 
-    // 材料名の更新
-    const updateIngredientName = (index: number, name: string) => {
+    // 材料名の更新 (useCallback 追加)
+    const updateIngredientName = useCallback((index: number, name: string) => {
         const newIngredients = [...ingredients];
         newIngredients[index] = { ...newIngredients[index], name };
         onChange(newIngredients);
-    };
+    }, [ingredients, onChange]);
 
-    // 材料の量の更新
-    const updateIngredientQuantity = (index: number, quantity: string) => {
+    // 材料の量の更新 (useCallback 追加)
+    const updateIngredientQuantity = useCallback((index: number, quantity: string) => {
         const newIngredients = [...ingredients];
         const currentIngredient = newIngredients[index];
         if (currentIngredient) {
-            // nameプロパティは元の値を保持する。quantityだけ更新。
             newIngredients[index] = { ...currentIngredient, quantity };
             onChange(newIngredients);
         }
-    };
+    }, [ingredients, onChange]);
 
-    // 人数の変更
-    const handleServingsChange = (value: string) => {
+    // 人数の変更 (useCallback 追加)
+    const handleServingsChange = useCallback((value: string) => {
         onServingsChange(Number(value));
-    };
+    }, [onServingsChange]);
 
     // 初期状態が空の場合、一行追加
     React.useEffect(() => {
         if (ingredients.length === 0) {
-            addIngredient();
+            addIngredient(); // メモ化された関数を使用
         }
     }, [addIngredient, ingredients.length]);
 

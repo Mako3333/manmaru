@@ -119,23 +119,6 @@ create index IF not exists idx_food_items_name on public.food_items using gin (n
 
 create index IF not exists idx_food_items_category_id on public.food_items using btree (category_id) TABLESPACE pg_default;
 
-create table public.meal_nutrients (
-  id uuid not null default extensions.uuid_generate_v4 (),
-  meal_id uuid not null,
-  calories numeric null default 0,
-  protein numeric null default 0,
-  iron numeric null default 0,
-  folic_acid numeric null default 0,
-  calcium numeric null default 0,
-  vitamin_d numeric null default 0,
-  confidence_score numeric null,
-  created_at timestamp with time zone null default now(),
-  constraint meal_nutrients_pkey primary key (id),
-  constraint meal_nutrients_meal_id_fkey foreign KEY (meal_id) references meals (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_meal_nutrients_meal_id on public.meal_nutrients using btree (meal_id) TABLESPACE pg_default;
-
 create table public.meal_recipe_entries (
   id uuid not null default extensions.uuid_generate_v4 (),
   meal_id uuid not null,
@@ -149,14 +132,6 @@ create table public.meal_recipe_entries (
 ) TABLESPACE pg_default;
 
 create index IF not exists idx_meal_recipe_entries_meal_id on public.meal_recipe_entries using btree (meal_id) TABLESPACE pg_default;
-
-create index IF not exists idx_meal_recipe_entries_recipe_id on public.meal_recipe_entries using btree (clipped_recipe_id) TABLESPACE pg_default;
-
-create trigger update_meal_nutrition_after_recipe_entry
-after INSERT
-or
-update on meal_recipe_entries for EACH row
-execute FUNCTION update_meal_nutrition_from_recipe ();
 
 create table public.meals (
   id uuid not null default extensions.uuid_generate_v4 (),
@@ -181,15 +156,16 @@ with
     select
       m.user_id,
       m.meal_date,
-      COALESCE(sum(mn.calories), 0::numeric) as total_calories,
-      COALESCE(sum(mn.protein), 0::numeric) as total_protein,
-      COALESCE(sum(mn.iron), 0::numeric) as total_iron,
-      COALESCE(sum(mn.folic_acid), 0::numeric) as total_folic_acid,
-      COALESCE(sum(mn.calcium), 0::numeric) as total_calcium,
-      COALESCE(sum(mn.vitamin_d), 0::numeric) as total_vitamin_d
+      COALESCE(sum((m.nutrition_data->>'totalCalories')::numeric), 0::numeric) as total_calories,
+      COALESCE(sum((m.nutrition_data->>'protein')::numeric), 0::numeric) as total_protein,
+      COALESCE(sum((m.nutrition_data->>'iron')::numeric), 0::numeric) as total_iron,
+      COALESCE(sum((m.nutrition_data->>'folic_acid')::numeric), 0::numeric) as total_folic_acid,
+      COALESCE(sum((m.nutrition_data->>'calcium')::numeric), 0::numeric) as total_calcium,
+      COALESCE(sum((m.nutrition_data->>'vitamin_d')::numeric), 0::numeric) as total_vitamin_d
     from
       meals m
-      left join meal_nutrients mn on m.id = mn.meal_id
+    where
+      m.nutrition_data is not null
     group by
       m.user_id,
       m.meal_date

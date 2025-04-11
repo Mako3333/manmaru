@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { withErrorHandling } from '@/lib/api/middleware';
 import { AppError, ErrorCode } from '@/lib/error';
+import { convertDbFormatToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // 栄養素サマリーの型定義
 interface NutrientSummary {
@@ -44,26 +45,12 @@ interface DailySummary {
 // }
 
 // Supabase からの応答データに合わせた型定義
-interface SupabaseNutrient {
-    id: number;
-    name: string;
-    unit: string;
-    category: string;
-}
-
-interface SupabaseMealNutrient {
-    id: number;
-    nutrient_id: number;
-    amount: number;
-    nutrients: SupabaseNutrient | null; // null の可能性を考慮
-}
-
 interface SupabaseMeal {
-    id: number;
+    id: string;
     meal_type: string;
     meal_date: string;
     servings: number | null;
-    meal_nutrients: SupabaseMealNutrient[] | null; // null の可能性を考慮
+    nutrition_data: Record<string, any> | null;
 }
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
@@ -125,23 +112,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // 指定された日付の食事データを取得
         const { data: meals, error } = await supabase
             .from('meals')
-            .select(`
-        id,
-        meal_type,
-        meal_date,
-        servings,
-        meal_nutrients(
-          id,
-          nutrient_id,
-          amount,
-          nutrients(
-            id,
-            name,
-            unit,
-            category
-          )
-        )
-      `)
+            .select(`id, meal_type, meal_date, servings, nutrition_data`)
             .eq('user_id', session.user.id)
             .eq('meal_date', date);
 
@@ -156,44 +127,92 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         }
 
         // Supabase からの応答が null の場合のフォールバック
-        // Supabaseの型推論の問題を回避するため、明示的に型アサーションを使用
-        // unknown を経由して型アサーションを行う
-        const validMeals: SupabaseMeal[] = (meals as unknown as SupabaseMeal[] | null) || [];
+        const validMeals: SupabaseMeal[] = meals || [];
 
         // 日付ごとの栄養素合計を計算
         const summary: DailySummary = {
             date,
-            total_meals: validMeals.length, // meals の代わりに validMeals を使用
+            total_meals: validMeals.length,
             nutrients: {}
         };
 
+        // 主要栄養素の定義
+        const mainNutrients = [
+            { id: 1, name: 'calories', unit: 'kcal', category: '主要栄養素' },
+            { id: 2, name: 'protein', unit: 'g', category: '主要栄養素' },
+            { id: 3, name: 'iron', unit: 'mg', category: '主要栄養素' },
+            { id: 4, name: 'folic_acid', unit: 'μg', category: '主要栄養素' },
+            { id: 5, name: 'calcium', unit: 'mg', category: '主要栄養素' },
+            { id: 6, name: 'vitamin_d', unit: 'μg', category: '主要栄養素' }
+        ];
+
         // 各食事の栄養素を集計
-        // TODO: Supabaseからの戻り値の正確な型定義を行い、any型を置き換える -> 修正済み
-        validMeals.forEach((meal) => { // any を削除し、推論された型 (SupabaseMeal) を使用
+        validMeals.forEach((meal) => {
             const servings = meal.servings || 1;
 
-            meal.meal_nutrients?.forEach((mealNutrient) => { // any を削除し、推論された型 (SupabaseMealNutrient) を使用
-                const nutrient = mealNutrient.nutrients;
-                // nutrient が null の場合はスキップ
-                if (!nutrient) return;
+            if (meal.nutrition_data) {
+                // StandardizedMealNutrition形式に変換して利用
+                const standardizedNutrition = convertDbFormatToStandardizedNutrition(meal.nutrition_data);
 
-                const nutrientId = nutrient.id;
-                const nutrientName = nutrient.name;
-                // mealNutrient.amount が数値であることを保証 (必要なら型ガードを追加)
-                const amount = (mealNutrient.amount || 0) * servings;
+                if (standardizedNutrition) {
+                    // 主要栄養素の処理
+                    mainNutrients.forEach(nutrient => {
+                        const nutrientName = nutrient.name;
+                        let amount = 0;
 
-                if (!summary.nutrients[nutrientName]) {
-                    summary.nutrients[nutrientName] = {
-                        id: nutrientId,
-                        name: nutrientName,
-                        unit: nutrient.unit || '', // null/undefined の場合のフォールバック
-                        category: nutrient.category || 'その他', // null/undefined の場合のフォールバック
-                        total: 0
-                    };
+                        // totalCaloriesの特別処理
+                        if (nutrientName === 'calories' && standardizedNutrition.totalCalories) {
+                            amount = standardizedNutrition.totalCalories * servings;
+                        }
+                        // totalNutrientsから値を取得
+                        else if (standardizedNutrition.totalNutrients) {
+                            const foundNutrient = standardizedNutrition.totalNutrients.find(
+                                n => n.name.toLowerCase() === nutrientName
+                            );
+                            if (foundNutrient && foundNutrient.amount) {
+                                amount = foundNutrient.amount * servings;
+                            }
+                        }
+
+                        // 栄養素サマリーに追加
+                        if (!summary.nutrients[nutrientName]) {
+                            summary.nutrients[nutrientName] = {
+                                id: nutrient.id,
+                                name: nutrientName,
+                                unit: nutrient.unit,
+                                category: nutrient.category,
+                                total: 0
+                            };
+                        }
+
+                        summary.nutrients[nutrientName].total += amount;
+                    });
+
+                    // その他の栄養素の処理（該当する場合）
+                    if (standardizedNutrition.totalNutrients) {
+                        standardizedNutrition.totalNutrients.forEach(nutrient => {
+                            const nutrientName = nutrient.name.toLowerCase();
+
+                            // 主要栄養素以外を処理
+                            if (!mainNutrients.some(n => n.name === nutrientName) && nutrient.amount) {
+                                const amount = nutrient.amount * servings;
+
+                                if (!summary.nutrients[nutrientName]) {
+                                    summary.nutrients[nutrientName] = {
+                                        id: 100 + Object.keys(summary.nutrients).length, // 仮のID
+                                        name: nutrientName,
+                                        unit: nutrient.unit || '',
+                                        category: 'その他栄養素',
+                                        total: 0
+                                    };
+                                }
+
+                                summary.nutrients[nutrientName].total += amount;
+                            }
+                        });
+                    }
                 }
-
-                summary.nutrients[nutrientName].total += amount;
-            });
+            }
         });
 
         // カテゴリごとに栄養素をグループ化

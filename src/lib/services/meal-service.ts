@@ -4,7 +4,7 @@ import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
 import { validateMealData } from '@/lib/nutrition/nutrition-utils';
 import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
-import { convertToDbNutritionFormat, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { convertToDbNutritionFormat, convertDbFormatToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 /**
  * 食事データの保存リクエスト型
@@ -41,17 +41,15 @@ export class MealService {
      * 食事データと栄養データをトランザクション的に保存
      * @param supabase Supabaseクライアント
      * @param mealData 食事データ (nutrition_dataはStandardizedMealNutrition型)
-     * @param nutritionData 栄養データ（省略可）
      * @returns 保存された食事データのID
      */
     static async saveMealWithNutrition(
         supabase: SupabaseClient,
-        mealData: SaveMealRequest,
-        nutritionData?: SaveMealNutritionRequest
+        mealData: SaveMealRequest
     ): Promise<{ id: string }> {
         try {
             // データ検証
-            const { isValid, errors } = this.validateData(mealData, nutritionData);
+            const { isValid, errors } = this.validateData(mealData);
             if (!isValid) {
                 throw new AppError({
                     code: ErrorCode.Base.DATA_VALIDATION_ERROR,
@@ -92,37 +90,6 @@ export class MealService {
                 });
             }
 
-            // 栄養データ保存（データがある場合）
-            if (nutritionData && savedMeal) {
-                const { error: nutrientError } = await supabase
-                    .from('meal_nutrients')
-                    .insert({
-                        meal_id: savedMeal.id,
-                        calories: nutritionData.calories,
-                        protein: nutritionData.protein,
-                        iron: nutritionData.iron,
-                        folic_acid: nutritionData.folic_acid,
-                        calcium: nutritionData.calcium,
-                        vitamin_d: nutritionData.vitamin_d || 0,
-                        confidence_score: nutritionData.confidence_score || 0.8
-                    });
-
-                // 栄養データの保存に失敗した場合は、食事データも削除（ロールバック）
-                if (nutrientError) {
-                    console.error('栄養データ保存エラー:', nutrientError);
-                    // 食事データをロールバック
-                    await supabase.from('meals').delete().eq('id', savedMeal.id);
-
-                    throw new AppError({
-                        code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                        message: `栄養データの保存に失敗しました: ${nutrientError.message}`,
-                        userMessage: '栄養データの保存中にデータベースエラーが発生しました。関連する食事記録は削除されました。',
-                        originalError: nutrientError,
-                        details: { dbError: nutrientError }
-                    });
-                }
-            }
-
             return { id: savedMeal.id };
         } catch (error) {
             if (error instanceof AppError) {
@@ -145,12 +112,10 @@ export class MealService {
     /**
      * 入力データの検証
      * @param mealData 
-     * @param nutritionData 
      * @returns 検証結果
      */
     private static validateData(
-        mealData: SaveMealRequest,
-        nutritionData?: SaveMealNutritionRequest
+        mealData: SaveMealRequest
     ): { isValid: boolean; errors: string[] } {
         const errors: string[] = [];
 
@@ -158,25 +123,6 @@ export class MealService {
         if (!mealData.user_id) errors.push('ユーザーIDが必要です');
         if (!mealData.meal_date) errors.push('食事日時が必要です');
         if (!mealData.meal_type) errors.push('食事タイプが必要です');
-
-        // 栄養データの確認（存在する場合）
-        if (nutritionData) {
-            if (typeof nutritionData.calories !== 'number' || nutritionData.calories < 0) {
-                errors.push('カロリーは0以上の数値である必要があります');
-            }
-            if (typeof nutritionData.protein !== 'number' || nutritionData.protein < 0) {
-                errors.push('タンパク質は0以上の数値である必要があります');
-            }
-            if (typeof nutritionData.iron !== 'number' || nutritionData.iron < 0) {
-                errors.push('鉄分は0以上の数値である必要があります');
-            }
-            if (typeof nutritionData.folic_acid !== 'number' || nutritionData.folic_acid < 0) {
-                errors.push('葉酸は0以上の数値である必要があります');
-            }
-            if (typeof nutritionData.calcium !== 'number' || nutritionData.calcium < 0) {
-                errors.push('カルシウムは0以上の数値である必要があります');
-            }
-        }
 
         return {
             isValid: errors.length === 0,
@@ -200,10 +146,7 @@ export class MealService {
             // 指定日の食事データを取得
             const { data: meals, error: mealsError } = await supabase
                 .from('meals')
-                .select(`
-          *,
-          meal_nutrients(*)
-        `)
+                .select(`*`)
                 .eq('user_id', userId)
                 .eq('meal_date', date)
                 .order('created_at', { ascending: false });
@@ -223,7 +166,7 @@ export class MealService {
                 return meals.map(meal => {
                     if (meal.nutrition_data) {
                         // DB形式からStandardizedMealNutrition形式に変換
-                        const standardizedNutrition = convertToStandardizedNutrition(meal.nutrition_data);
+                        const standardizedNutrition = convertDbFormatToStandardizedNutrition(meal.nutrition_data);
                         return {
                             ...meal,
                             nutrition_data: standardizedNutrition

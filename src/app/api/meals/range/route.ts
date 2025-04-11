@@ -3,6 +3,8 @@ import { NextResponse, NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { withErrorHandling } from '@/lib/api/middleware';
 import { AppError, ErrorCode } from '@/lib/error';
+import { convertDbFormatToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { StandardizedMealNutrition } from '@/types/nutrition';
 
 interface NutrientData {
     id: number;
@@ -17,29 +19,16 @@ interface DailySummary {
     nutrients: Record<string, NutrientData>;
 }
 
-interface MealNutrient {
-    id: number;
-    meal_id: number;
-    nutrient_id: number;
-    amount: number;
-    nutrients?: {
-        id: number;
-        name: string;
-        unit: string;
-        category: string;
-    }[];
-}
-
 interface Meal {
-    id: number;
+    id: string;
     meal_type: string;
     meal_date: string;
     photo_url?: string;
     food_description?: string;
-    servings: number;
+    servings: number | null;
     created_at: string;
     updated_at: string;
-    meal_nutrients?: MealNutrient[];
+    nutrition_data: Record<string, any> | null;
 }
 
 // Supabaseから返されるデータ型
@@ -106,27 +95,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const { data: meals, error } = await supabase
         .from('meals')
         .select(`
-    id,
-    meal_type,
-    meal_date,
-    photo_url,
-    food_description,
-    servings,
-    created_at,
-    updated_at,
-    meal_nutrients(
-      id,
-      meal_id,
-      nutrient_id,
-      amount,
-      nutrients(
-        id,
-        name,
-        unit,
-        category
-      )
-    )
-  `)
+            id,
+            meal_type,
+            meal_date,
+            photo_url,
+            food_description,
+            servings,
+            created_at,
+            updated_at,
+            nutrition_data
+        `)
         .eq('user_id', session.user.id)
         .gte('meal_date', startDate)
         .lte('meal_date', endDate)
@@ -148,8 +126,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // 日付ごとの栄養素合計を計算
         const dailySummaries: Record<string, DailySummary> = {};
 
+        // 主要栄養素の定義
+        const mainNutrients = [
+            { id: 1, name: 'calories', unit: 'kcal' },
+            { id: 2, name: 'protein', unit: 'g' },
+            { id: 3, name: 'iron', unit: 'mg' },
+            { id: 4, name: 'folic_acid', unit: 'μg' },
+            { id: 5, name: 'calcium', unit: 'mg' },
+            { id: 6, name: 'vitamin_d', unit: 'μg' }
+        ];
+
         (meals as SupabaseMeal[]).forEach(meal => {
             const date = meal.meal_date;
+            const servings = meal.servings || 1;
 
             // そのmealDateに関するデータがなければ初期化
             if (!dailySummaries[date]) {
@@ -162,40 +151,44 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
             dailySummaries[date].meals += 1;
 
-            // 各食事の栄養素を集計
-            meal.meal_nutrients?.forEach((mealNutrient: MealNutrient) => {
-                const nutrientId = mealNutrient.nutrient_id;
-                const nutrientName = mealNutrient.nutrients?.[0]?.name || `nutrient_${nutrientId}`;
-                const amount = mealNutrient.amount * (meal.servings || 1);
+            // 栄養データがある場合の処理
+            if (meal.nutrition_data) {
+                const standardizedNutrition = convertDbFormatToStandardizedNutrition(meal.nutrition_data);
 
-                // そのmealDateに関するデータがなければ初期化
-                if (!dailySummaries[date]) {
-                    dailySummaries[date] = {
-                        date,
-                        meals: 0,
-                        nutrients: {}
-                    };
-                }
+                if (standardizedNutrition) {
+                    // 主要栄養素の処理
+                    mainNutrients.forEach(nutrient => {
+                        const nutrientName = nutrient.name;
+                        let amount = 0;
 
-                // 栄養素データがなければ初期化
-                if (!dailySummaries[date]?.nutrients) {
-                    dailySummaries[date]!.nutrients = {};
-                }
+                        // totalCaloriesの特別処理
+                        if (nutrientName === 'calories' && standardizedNutrition.totalCalories) {
+                            amount = standardizedNutrition.totalCalories * servings;
+                        }
+                        // totalNutrientsから値を取得
+                        else if (standardizedNutrition.totalNutrients) {
+                            const foundNutrient = standardizedNutrition.totalNutrients.find(
+                                n => n.name.toLowerCase() === nutrientName
+                            );
+                            if (foundNutrient && typeof foundNutrient.amount === 'number') {
+                                amount = foundNutrient.amount * servings;
+                            }
+                        }
 
-                if (!dailySummaries[date]?.nutrients[nutrientName]) {
-                    dailySummaries[date]!.nutrients[nutrientName] = {
-                        id: nutrientId,
-                        name: nutrientName,
-                        unit: mealNutrient.nutrients?.[0]?.unit || '',
-                        total: 0
-                    };
-                }
+                        // 栄養素サマリーに追加
+                        if (!dailySummaries[date].nutrients[nutrientName]) {
+                            dailySummaries[date].nutrients[nutrientName] = {
+                                id: nutrient.id,
+                                name: nutrientName,
+                                unit: nutrient.unit,
+                                total: 0
+                            };
+                        }
 
-                // 栄養素を合計に追加
-                if (dailySummaries[date]?.nutrients[nutrientName]) {
-                    dailySummaries[date]!.nutrients[nutrientName].total += amount;
+                        dailySummaries[date].nutrients[nutrientName].total += amount;
+                    });
                 }
-            });
+            }
         });
 
         return NextResponse.json({

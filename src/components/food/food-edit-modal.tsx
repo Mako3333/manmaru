@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { ConfidenceIndicator } from './confidence-indicator';
 import { FoodMatchingServiceFactory } from '@/lib/food/food-matching-service-factory';
@@ -49,31 +49,38 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
     const [searchResults, setSearchResults] = useState<FoodItem[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // debounce された検索関数 (useCallback の外で定義)
-    const debouncedSearch = useCallback(
-        debounce(async (query: string) => {
-            if (query.length < 2) {
-                setSearchResults([]);
-                return;
-            }
-            setIsSearching(true);
-            try {
-                const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
-                const results = await foodRepo.searchFoodsByFuzzyMatch(query, 5);
-                setSearchResults(results.map(result => ({
-                    id: result.food.id,
-                    name: result.food.name,
-                    confidence: result.similarity,
-                    category: result.food.category
-                })));
-            } catch (error) {
-                console.error('食品検索エラー:', error);
-            } finally {
-                setIsSearching(false);
-            }
-        }, 300),
-        [setSearchResults, setIsSearching] // state セッター関数に依存
-    );
+    // 検索ロジック関数 (メモ化不要、debouncedSearch内で使用)
+    const performSearch = async (query: string) => {
+        if (query.length < 2) {
+            setSearchResults([]);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
+            const results = await foodRepo.searchFoodsByFuzzyMatch(query, 5);
+            setSearchResults(results.map(result => ({
+                id: result.food.id,
+                name: result.food.name,
+                confidence: result.similarity,
+                category: result.food.category
+            })));
+        } catch (error) {
+            console.error('食品検索エラー:', error);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // debounce された検索関数を useMemo でメモ化
+    const debouncedSearch = useMemo(() => {
+        return debounce(performSearch, 300);
+        // performSearch はコンポーネント内で定義されているが、
+        // 依存する state setter (setSearchResults, setIsSearching) は
+        // 同一性が保証されるため、依存配列は空で良い場合が多い。
+        // ESLint が警告する場合は、 setter を追加する。
+        // ここでは一旦空にする。
+    }, []); // 依存配列を空にするか、[setSearchResults, setIsSearching] を試す
 
     // 検索結果のリセット
     useEffect(() => {
@@ -84,9 +91,14 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
         }
     }, [isOpen, food]);
 
-    // 食品名変更時の検索 (メモ化された debounce 関数を使用)
+    // 食品名変更時の検索
     useEffect(() => {
-        debouncedSearch(foodName);
+        // コンポーネントがアンマウントされる際に debounce をキャンセル
+        const currentDebouncedSearch = debouncedSearch;
+        currentDebouncedSearch(foodName);
+        return () => {
+            currentDebouncedSearch.cancel();
+        };
     }, [foodName, debouncedSearch]);
 
     // 更新ハンドラー
@@ -94,14 +106,12 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
         const updatedFood: FoodItem = {
             name: foodName,
             quantity: quantity || undefined,
-            // 元のfoodオブジェクトのプロパティを維持 (food.id などに依存)
             ...(food.id !== undefined && { id: food.id }),
             ...(food.category !== undefined && { category: food.category }),
             ...(food.confidence !== undefined && { confidence: food.confidence })
         };
         onUpdate(updatedFood);
         onClose();
-        // foodName, quantity, food, onUpdate, onClose に依存
     }, [foodName, quantity, food, onUpdate, onClose]);
 
     // 検索結果を選択
@@ -116,7 +126,6 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
         };
         onUpdate(updatedFood);
         onClose();
-        // quantity, onUpdate, onClose に依存 (setFoodName は不要)
     }, [quantity, onUpdate, onClose]);
 
     if (!isOpen) return null;

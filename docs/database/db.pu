@@ -81,20 +81,6 @@ entity "meals" as meals {
   updated_at : TIMESTAMPTZ
 }
 
-entity "meal_nutrients" as meal_nutrients {
-  * id : UUID <<PK>>
-  --
-  * meal_id : UUID <<FK>>
-  calories : NUMERIC
-  protein : NUMERIC
-  iron : NUMERIC
-  folic_acid : NUMERIC
-  calcium : NUMERIC
-  vitamin_d : NUMERIC
-  confidence_score : NUMERIC
-  created_at : TIMESTAMPTZ
-}
-
 entity "nutrition_targets" as nutrition_targets {
   * id : UUID <<PK>>
   --
@@ -235,7 +221,6 @@ auth_users ||--o{ clipped_recipes : "user_id"
 profiles |o--o{ nutrition_goal_prog : "user_id"
 profiles }o..|| nutrition_targets : "trimester"
 
-meals ||--o{ meal_nutrients : "meal_id"
 meals }o--o{ nutrition_goal_prog : "user_id, meal_date"
 meals ||--o{ meal_recipe_entries : "meal_id"
 
