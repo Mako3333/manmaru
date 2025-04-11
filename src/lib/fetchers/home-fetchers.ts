@@ -1,5 +1,4 @@
 import { createBrowserClient } from '@supabase/ssr';
-import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { UserProfile } from '@/types/user';
 import { NutritionTarget, NutritionProgress } from '@/types/nutrition';
 import { DEFAULT_NUTRITION_TARGETS } from '@/lib/nutrition/nutrition-display-utils';

@@ -1,6 +1,6 @@
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { AppError, ErrorCode } from '@/lib/error'
 
@@ -39,7 +39,39 @@ export const useAuth = () => {
         initializeSession()
     }, [])
 
-    const handleAuthStateChange = async (event: AuthChangeEvent, session: Session | null) => {
+    // handleAuthRedirect を useCallback でメモ化
+    const handleAuthRedirect = useCallback(async () => {
+        try {
+            setIsLoading(true)
+            // getSessionを呼び出す可能性があるため、sessionステートに依存
+            const currentSession = session || (await supabase.auth.getSession()).data.session
+
+            if (!currentSession?.user) {
+                throw new AppError({
+                    code: ErrorCode.Base.AUTH_ERROR,
+                    message: 'User information not found in session.',
+                    userMessage: '認証情報が見つかりません。再度ログインしてください。'
+                });
+            }
+
+            const profile = await checkProfile(currentSession.user.id)
+
+            if (profile) {
+                router.push('/dashboard')
+            } else {
+                router.push('/profile')
+            }
+        } catch (err) {
+            console.error('認証リダイレクトエラー:', err)
+            setError(err instanceof Error ? err.message : 'ログイン後の処理中にエラーが発生しました')
+        } finally {
+            setIsLoading(false)
+        }
+        // session, router, setIsLoading, setError, checkProfile に依存
+    }, [session, router]) // checkProfile はフック外の関数なので依存不要, setIsLoading, setError も通常不要だが念のため含めるかは検討
+
+    // handleAuthStateChange を useCallback でメモ化
+    const handleAuthStateChange = useCallback(async (event: AuthChangeEvent, session: Session | null) => {
         console.log('Auth state changed:', event)
         setSession(session)
 
@@ -48,7 +80,7 @@ export const useAuth = () => {
                 case 'SIGNED_IN':
                     if (session) {
                         console.log('ログイン状態を維持')
-                        await handleAuthRedirect()
+                        await handleAuthRedirect() // メモ化された関数を使用
                     }
                     break
                 case 'SIGNED_OUT':
@@ -67,15 +99,17 @@ export const useAuth = () => {
         } catch (err) {
             console.error('認証状態変更エラー:', err)
         }
-    }
+        // handleAuthRedirect, router, setSession に依存
+    }, [handleAuthRedirect, router]) // setSession は通常不要
 
     // 認証状態の監視を設定
     useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthStateChange)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthStateChange) // メモ化された関数を使用
 
         return () => {
             subscription.unsubscribe()
         }
+        // 依存配列を修正
     }, [handleAuthStateChange])
 
     const checkProfile = async (userId: string): Promise<Profile | null> => {
@@ -102,34 +136,6 @@ export const useAuth = () => {
                 console.error('予期せぬエラー:', err)
             }
             return null
-        }
-    }
-
-    const handleAuthRedirect = async () => {
-        try {
-            setIsLoading(true)
-            const currentSession = session || (await supabase.auth.getSession()).data.session
-
-            if (!currentSession?.user) {
-                throw new AppError({
-                    code: ErrorCode.Base.AUTH_ERROR,
-                    message: 'User information not found in session.',
-                    userMessage: '認証情報が見つかりません。再度ログインしてください。'
-                });
-            }
-
-            const profile = await checkProfile(currentSession.user.id)
-
-            if (profile) {
-                router.push('/dashboard')
-            } else {
-                router.push('/profile')
-            }
-        } catch (err) {
-            console.error('認証リダイレクトエラー:', err)
-            setError(err instanceof Error ? err.message : 'ログイン後の処理中にエラーが発生しました')
-        } finally {
-            setIsLoading(false)
         }
     }
 

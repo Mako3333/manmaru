@@ -24,7 +24,8 @@ import {
 } from '@/types/user';
 import {
     convertToStandardizedNutrition,
-    convertToDbNutritionFormat
+    convertToDbNutritionFormat,
+    convertDbFormatToStandardizedNutrition
 } from "@/lib/nutrition/nutrition-type-utils";
 import { AppError, ErrorCode } from '@/lib/error';
 
@@ -302,15 +303,12 @@ export const getMealSummaryByDateRange = async (
             return [];
         }
 
-        // DBの型 (NutritionData | null) から StandardizedMealNutrition | null へ変換し、Meal に追加
-        const mealsWithStandardizedNutrition: MealWithStandardizedNutrition[] = mealsData.map(meal => {
-            const dbNutritionData = meal.nutrition_data as NutritionData | null; // DBからのデータを型付け
-            const standardizedNutrition = dbNutritionData
-                ? convertToStandardizedNutrition(dbNutritionData) // DB型を変換
-                : null;
+        // DBの型 (JSONB) から StandardizedMealNutrition | null へ変換し、Meal に追加
+        const mealsWithStandardizedNutrition: MealWithStandardizedNutrition[] = mealsData.map((meal) => {
+            const standardizedNutrition = convertDbFormatToStandardizedNutrition(meal.nutrition_data);
             return {
-                ...(meal as Meal), // Meal 型にキャスト
-                nutrition: standardizedNutrition // nutrition プロパティを追加
+                ...meal,
+                nutrition: standardizedNutrition,
             };
         });
 

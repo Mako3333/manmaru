@@ -1,8 +1,6 @@
 import { Food, FoodMatchResult } from '@/types/food';
 import { FoodRepository } from './food-repository';
 import { normalizeText, calculateSimilarity } from '@/lib/utils/string-utils';
-import fs from 'fs/promises';
-import path from 'path';
 
 /**
  * 基本食品リストを使用したリポジトリ実装
@@ -34,29 +32,22 @@ export class BasicFoodRepository implements FoodRepository {
         if (this.isInitialized) return;
 
         try {
-            // 環境に応じたデータ読み込み方法
-            let url: string;
-            if (typeof window === 'undefined') {
-                // サーバーサイド: Node.jsのfsモジュールを使用
-                const filePath = path.join(process.cwd(), 'public/data/food_nutrition_database.json');
-                const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
-
-                // データを直接ロード
-                this.initializeCache(data);
-                this.isInitialized = true;
-                return;
-            } else {
-                // ブラウザサイド: fetch APIを使用
-                url = '/data/food_nutrition_database.json';
-                const response = await fetch(url);
-                const data = await response.json();
-                this.initializeCache(data);
+            // ブラウザサイド: fetch APIを使用
+            const url = '/data/food_nutrition_database.json';
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch food data: ${response.statusText}`);
             }
-
+            const data = await response.json();
+            this.initializeCache(data);
             this.isInitialized = true;
         } catch (error) {
             console.error('BasicFoodRepository: キャッシュ読み込みエラー', error);
-            throw error;
+            // エラー発生時も初期化済みとしてマークするかどうかは要検討
+            // ここでは初期化失敗として isInitialized は false のままにするか、
+            // あるいはエラー状態を示すフラグを別途設けるなどが考えられる
+            this.isInitialized = false; // または適切なエラーハンドリング
+            throw error; // エラーを再スローして呼び出し元に伝える
         }
     }
 

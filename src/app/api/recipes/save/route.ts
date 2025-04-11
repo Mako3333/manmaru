@@ -2,8 +2,10 @@ import { NextResponse, NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { RecipeUrlClipResponse } from '@/types/recipe';
+import { StandardizedMealNutrition } from '@/types/nutrition';
 import { withErrorHandling } from '@/lib/api/middleware';
 import { AppError, ErrorCode } from '@/lib/error';
+import { convertToDbNutritionFormat, convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 // リクエストボディの拡張型定義
 interface RecipeSaveRequest extends RecipeUrlClipResponse {
@@ -48,6 +50,23 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     // リクエストボディからレシピデータを取得
     // TODO: より安全な型検証（例: zod）を導入することを推奨
     const recipeData = await req.json() as RecipeSaveRequest;
+
+    // nutrition_per_serving を DB 保存形式に変換
+    let dbNutritionData = null;
+    if (recipeData.nutrition_per_serving) {
+        try {
+            // ここで StandardizedMealNutrition 型であることを想定
+            dbNutritionData = convertToDbNutritionFormat(recipeData.nutrition_per_serving as StandardizedMealNutrition);
+        } catch (conversionError) {
+            console.error('POST /api/recipes/save: 栄養データをDB形式に変換中にエラー:', conversionError);
+            throw new AppError({
+                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+                message: 'リクエスト内の栄養データの形式変換に失敗しました',
+                originalError: conversionError instanceof Error ? conversionError : undefined,
+                details: { requestNutritionData: recipeData.nutrition_per_serving }
+            });
+        }
+    }
 
     console.log('保存するレシピデータ:', JSON.stringify(recipeData, null, 2));
 
@@ -103,7 +122,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         content_id: recipeData.content_id,
         recipe_type: recipeData.recipe_type || 'main_dish',
         ingredients: recipeData.ingredients,
-        nutrition_per_serving: recipeData.nutrition_per_serving,
+        nutrition_per_serving: dbNutritionData,
         caution_foods: recipeData.caution_foods,
         caution_level: recipeData.caution_level,
     };

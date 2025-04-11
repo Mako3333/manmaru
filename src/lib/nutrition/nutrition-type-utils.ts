@@ -169,7 +169,8 @@ export function createEmptyStandardizedNutrition(): StandardizedMealNutrition {
         totalNutrients: [],
         foodItems: [],
         reliability: {
-            confidence: 0.8
+            confidence: 0.8,
+            completeness: 0.5,
         }
     };
 }
@@ -182,19 +183,20 @@ export function createEmptyStandardizedNutrition(): StandardizedMealNutrition {
 export function createStandardizedMealNutrition(
     data?: Partial<StandardizedMealNutrition> | NutritionData
 ): StandardizedMealNutrition {
-    // 基本構造を初期化
-    const defaultValue: StandardizedMealNutrition = {
+    // 基本構造を初期化 (balanceScore: undefined を削除)
+    const defaultValue: Omit<StandardizedMealNutrition, 'reliability'> & { reliability: Omit<StandardizedMealNutrition['reliability'], 'balanceScore'> } = {
         totalCalories: 0,
         totalNutrients: [],
         foodItems: [],
         reliability: {
-            confidence: 0.8
+            confidence: 0.8,
+            completeness: 0.5,
         }
     };
 
-    // dataが提供されない場合はデフォルト値を返す
+    // dataが提供されない場合は、defaultValue を StandardizedMealNutrition 型にキャストして返す
     if (!data) {
-        return defaultValue;
+        return defaultValue as StandardizedMealNutrition;
     }
 
     // NutritionData (旧型) が渡された場合、互換性のためにStandardizedMealNutritionに変換
@@ -205,12 +207,21 @@ export function createStandardizedMealNutrition(
     // 部分的なStandardizedMealNutritionが渡された場合はマージ
     const partialData = data as Partial<StandardizedMealNutrition>;
 
-    // 型エラーを避けるための結果オブジェクト
+    // 型エラーを避けるための結果オブジェクトの reliability 部分を修正
+    const reliabilityResult: StandardizedMealNutrition['reliability'] = {
+        confidence: partialData.reliability?.confidence ?? defaultValue.reliability.confidence,
+        completeness: partialData.reliability?.completeness ?? defaultValue.reliability.completeness,
+    };
+    // balanceScore が undefined でない場合のみプロパティを追加
+    if (partialData.reliability?.balanceScore !== undefined) {
+        reliabilityResult.balanceScore = partialData.reliability.balanceScore;
+    }
+
     const result: StandardizedMealNutrition = {
         totalCalories: partialData.totalCalories ?? defaultValue.totalCalories,
         totalNutrients: partialData.totalNutrients ?? defaultValue.totalNutrients,
         foodItems: partialData.foodItems ?? defaultValue.foodItems,
-        reliability: partialData.reliability ?? defaultValue.reliability
+        reliability: reliabilityResult
     };
 
     // pregnancySpecificプロパティが提供されていれば追加
@@ -288,11 +299,12 @@ export function convertToStandardizedNutrition(nutritionData: NutritionData): St
         // (必要に応じて別の変換ロジックや入力が必要)
         const foodItems: StandardizedMealNutrition['foodItems'] = [];
 
-        // reliability.confidence は NutritionData の confidence_score を使用
+        // Reliability の構築 (completeness を追加)
         const reliability: StandardizedMealNutrition['reliability'] = {
-            confidence: nutritionData.confidence_score ?? 0.8 // ない場合はデフォルト値
-            // balanceScore と completeness は NutritionData からは不明
+            confidence: nutritionData.confidence_score ?? 0.8, // 旧型の confidence_score を使用
+            completeness: 0.5, // とりあえずデフォルト値
         };
+        // balanceScore は NutritionData にないので含めない
 
         // pregnancySpecific の計算ロジック (ダミー実装)
         const pregnancySpecific: StandardizedMealNutrition['pregnancySpecific'] = {
@@ -407,87 +419,156 @@ export function convertToLegacyNutrition(standardizedData: StandardizedMealNutri
 }
 
 /**
- * StandardizedMealNutritionをデータベース保存用の形式に変換する
- * 
- * この関数は、アプリケーション内で使用する標準化された栄養データ形式から、
- * Supabaseのmealsテーブルのnutrition_data (JSONB) カラムに保存するための
- * 適切な形式に変換します。
- * 
- * @param standardizedData 標準化された栄養データ
- * @returns データベース保存用のNutritionData形式
+ * StandardizedMealNutrition をデータベース保存形式に変換
+ * @param standardizedData 変換するデータ
+ * @returns データベース形式のオブジェクト、または null
  */
-export function convertToDbNutritionFormat(standardizedData: StandardizedMealNutrition | undefined | null): NutritionData {
-    // 入力データのバリデーション
+export function convertToDbNutritionFormat(
+    standardizedData: StandardizedMealNutrition | undefined | null
+): Record<string, unknown> | null {
     if (!standardizedData) {
-        console.warn('convertToDbNutritionFormat: 栄養データがnullまたはundefinedです');
-        return createEmptyNutritionData();
+        return null;
     }
 
-    if (!standardizedData.totalNutrients || !Array.isArray(standardizedData.totalNutrients)) {
-        console.warn('convertToDbNutritionFormat: totalNutrientsが不正な形式です', standardizedData);
-        return createEmptyNutritionData();
-    }
+    // 基本的な栄養素を抽出
+    const dbData: Record<string, unknown> = {
+        totalCalories: standardizedData.totalCalories,
+        protein: standardizedData.totalNutrients.find(n => n.name === 'たんぱく質')?.value ?? 0,
+        iron: standardizedData.totalNutrients.find(n => n.name === '鉄')?.value ?? 0,
+        folic_acid: standardizedData.totalNutrients.find(n => n.name === '葉酸')?.value ?? 0,
+        calcium: standardizedData.totalNutrients.find(n => n.name === 'カルシウム')?.value ?? 0,
+        vitamin_d: standardizedData.totalNutrients.find(n => n.name === 'ビタミンD')?.value ?? 0,
 
-    // 特定の栄養素を探す (日本語名と英語名、大文字小文字区別なしで検索)
-    const findNutrientValue = (nameJP: string, nameEN: string): number => {
-        try {
-            const nutrient = standardizedData.totalNutrients.find(n => {
-                if (!n || !n.name) return false;
-                const lowerCaseName = n.name.toLowerCase();
-                return lowerCaseName === nameJP.toLowerCase() || lowerCaseName === nameEN.toLowerCase();
-            });
-            return nutrient?.value ?? 0;
-        } catch (error) {
-            console.error(`栄養素「${nameJP}/${nameEN}」の検索中にエラー:`, error);
-            return 0;
-        }
+        // 信頼性情報 (balanceScore は undefined の可能性あり)
+        confidence: standardizedData.reliability.confidence,
+        completeness: standardizedData.reliability.completeness,
+        balanceScore: standardizedData.reliability.balanceScore // undefined も許容されるはず
     };
 
-    // 信頼度スコアの設定 (0の場合はデフォルト値を設定)
-    const confidenceScore =
-        (standardizedData.reliability?.confidence !== undefined &&
-            standardizedData.reliability.confidence > 0) ?
-            standardizedData.reliability.confidence : 0.9;
+    // totalNutrients の詳細情報をJSON文字列として保存
+    try {
+        dbData.totalNutrientsJson = JSON.stringify(standardizedData.totalNutrients);
+    } catch (e) {
+        console.error('Error stringifying totalNutrients:', e);
+        dbData.totalNutrientsJson = '[]';
+    }
 
-    // 基本栄養素を設定
-    const result: NutritionData = {
-        calories: standardizedData.totalCalories || 0,
-        protein: findNutrientValue('タンパク質', 'protein'),
-        iron: findNutrientValue('鉄分', 'iron'),
-        folic_acid: findNutrientValue('葉酸', 'folic_acid'),
-        calcium: findNutrientValue('カルシウム', 'calcium'),
-        vitamin_d: findNutrientValue('ビタミンD', 'vitamin_d'),
-        confidence_score: confidenceScore,
-        extended_nutrients: {
-            // 追加の主要栄養素
-            fat: findNutrientValue('脂質', 'fat'),
-            carbohydrate: findNutrientValue('炭水化物', 'carbohydrate'),
-            dietary_fiber: findNutrientValue('食物繊維', 'dietary_fiber'),
-            sugars: findNutrientValue('糖質', 'sugars'),
-            salt: findNutrientValue('食塩相当量', 'salt'),
-
-            // ビタミン類
-            vitamins: {
-                vitamin_a: findNutrientValue('ビタミンA', 'vitamin_a'),
-                vitamin_c: findNutrientValue('ビタミンC', 'vitamin_c'),
-                vitamin_e: findNutrientValue('ビタミンE', 'vitamin_e'),
-                vitamin_k: findNutrientValue('ビタミンK', 'vitamin_k'),
-                vitamin_b1: findNutrientValue('ビタミンB1', 'vitamin_b1'),
-                vitamin_b2: findNutrientValue('ビタミンB2', 'vitamin_b2'),
-                vitamin_b6: findNutrientValue('ビタミンB6', 'vitamin_b6'),
-                vitamin_b12: findNutrientValue('ビタミンB12', 'vitamin_b12')
+    // foodItems をJSON文字列として保存 (FoodItemNutrition の構造に準拠)
+    try {
+        const itemsToStore = standardizedData.foodItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            // quantity/amount/unit は FoodItemNutrition のトップレベルにはないと仮定
+            // nutrition オブジェクト全体を保存する
+            nutrition: {
+                calories: item.nutrition?.calories,
+                nutrients: item.nutrition?.nutrients,
+                servingSize: item.nutrition?.servingSize
             },
+            confidence: item.confidence
+            // amount や unit をDBに保存したい場合は、別途追加する
+            // amount: item.amount, // FoodItemNutrition に amount があれば
+            // unit: item.unit,     // FoodItemNutrition に unit があれば
+        }));
+        dbData.foodItemsJson = JSON.stringify(itemsToStore);
+    } catch (e) {
+        console.error('Error stringifying foodItems:', e);
+        dbData.foodItemsJson = '[]';
+    }
 
-            // ミネラル類
-            minerals: {
-                sodium: findNutrientValue('ナトリウム', 'sodium'),
-                potassium: findNutrientValue('カリウム', 'potassium'),
-                magnesium: findNutrientValue('マグネシウム', 'magnesium'),
-                phosphorus: findNutrientValue('リン', 'phosphorus'),
-                zinc: findNutrientValue('亜鉛', 'zinc')
+    return dbData;
+}
+
+/**
+ * データベース形式から StandardizedMealNutrition に変換
+ * @param dbData データベースから取得したデータ
+ * @returns StandardizedMealNutrition オブジェクト、または null
+ */
+export function convertDbFormatToStandardizedNutrition(
+    dbData: Record<string, unknown> | null | undefined
+): StandardizedMealNutrition | null {
+    if (!dbData || typeof dbData !== 'object') {
+        return null;
+    }
+
+    // totalNutrients を復元
+    let totalNutrients: Nutrient[] = [];
+    if (typeof dbData.totalNutrientsJson === 'string') {
+        try {
+            const parsedNutrients = JSON.parse(dbData.totalNutrientsJson);
+            if (Array.isArray(parsedNutrients) && parsedNutrients.every(n => typeof n === 'object' && n !== null && 'name' in n && 'value' in n && 'unit' in n)) {
+                totalNutrients = parsedNutrients as Nutrient[];
             }
+        } catch (e) {
+            console.error('Error parsing totalNutrientsJson:', e);
+            totalNutrients = nutrientMapping
+                .map(mapping => {
+                    const directKey = Object.keys(dbData).find(k => k === mapping.key);
+                    if (directKey && typeof dbData[directKey] === 'number') {
+                        return { name: mapping.name, value: dbData[directKey] as number, unit: mapping.unit };
+                    }
+                    return null;
+                })
+                .filter((n): n is Nutrient => n !== null && typeof n === 'object' && 'value' in n);
         }
+    } else {
+        totalNutrients = nutrientMapping
+            .map(mapping => {
+                const directKey = Object.keys(dbData).find(k => k === mapping.key);
+                if (directKey && typeof dbData[directKey] === 'number') {
+                    return { name: mapping.name, value: dbData[directKey] as number, unit: mapping.unit };
+                }
+                return null;
+            })
+            .filter((n): n is Nutrient => n !== null && typeof n === 'object' && 'value' in n);
+    }
+
+    // foodItems を復元
+    let foodItems: StandardizedMealNutrition['foodItems'] = [];
+    if (typeof dbData.foodItemsJson === 'string') {
+        try {
+            const parsedItems = JSON.parse(dbData.foodItemsJson);
+            if (Array.isArray(parsedItems) && parsedItems.every(item => typeof item === 'object' && item !== null && 'name' in item)) {
+                foodItems = parsedItems.map((item: any) => {
+                    const itemNutrition: FoodItemNutrition = {
+                        calories: typeof item.nutrition?.calories === 'number' ? item.nutrition.calories : 0,
+                        nutrients: Array.isArray(item.nutrition?.nutrients) ? item.nutrition.nutrients.filter((n: any): n is Nutrient => typeof n === 'object' && n !== null && 'name' in n && 'value' in n && 'unit' in n) : [],
+                        servingSize: {
+                            value: typeof item.nutrition?.servingSize?.value === 'number' ? item.nutrition.servingSize.value : 0,
+                            unit: typeof item.nutrition?.servingSize?.unit === 'string' ? item.nutrition.servingSize.unit : 'g'
+                        }
+                    };
+                    return {
+                        id: typeof item.id === 'string' ? item.id : `unknown_${Math.random().toString(36).substring(7)}`,
+                        name: typeof item.name === 'string' ? item.name : '不明な食品',
+                        amount: typeof item.amount === 'number' ? item.amount : (itemNutrition.servingSize?.value ?? 0),
+                        unit: typeof item.unit === 'string' ? item.unit : (itemNutrition.servingSize?.unit ?? 'g'),
+                        nutrition: itemNutrition,
+                        confidence: typeof item.confidence === 'number' ? item.confidence : undefined
+                    };
+                });
+            }
+        } catch (e) {
+            console.error('Error parsing foodItemsJson:', e);
+        }
+    }
+
+    // 信頼性情報 (balanceScore は undefined の可能性あり)
+    const reliabilityResult: StandardizedMealNutrition['reliability'] = {
+        confidence: typeof dbData.confidence === 'number' ? dbData.confidence : 0.8,
+        completeness: typeof dbData.completeness === 'number' ? dbData.completeness : 0.5,
+    };
+    // balanceScore が number の場合のみ追加
+    if (typeof dbData.balanceScore === 'number') {
+        reliabilityResult.balanceScore = dbData.balanceScore;
+    }
+
+    const standardizedData: StandardizedMealNutrition = {
+        totalCalories: typeof dbData.totalCalories === 'number' ? dbData.totalCalories : 0,
+        totalNutrients: totalNutrients,
+        foodItems: foodItems,
+        reliability: reliabilityResult
     };
 
-    return result;
-} 
+    return standardizedData;
+}

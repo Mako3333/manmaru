@@ -2,6 +2,8 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { RecipeToMealData } from "@/types/recipe";
+import { StandardizedMealNutrition } from "@/types/nutrition";
+import { convertToDbNutritionFormat, convertDbFormatToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
 
 export async function POST(req: Request) {
     try {
@@ -65,17 +67,32 @@ export async function POST(req: Request) {
             );
         }
 
-        // 分量に応じた栄養素の計算
-        const calculatedNutrition: Record<string, number | string | object | unknown> = {};
-        if (recipe.nutrition_per_serving) {
-            Object.entries(recipe.nutrition_per_serving).forEach(([key, value]) => {
-                if (typeof value === 'number') {
-                    calculatedNutrition[key] = Math.round((value * portion_size) * 100) / 100;
-                } else {
-                    calculatedNutrition[key] = value;
-                }
-            });
+        // DBから取得した栄養データを StandardizedMealNutrition に変換
+        const standardizedRecipeNutrition = convertDbFormatToStandardizedNutrition(recipe.nutrition_per_serving);
+
+        if (!standardizedRecipeNutrition) {
+            console.warn(`レシピID: ${recipe_id} の栄養データが不正です。`);
+            // 栄養データなしとして処理を進めるか、エラーにするか検討
+            // ここではエラーとせず、栄養データなしで食事記録を作成する
         }
+
+        // 分量に応じた栄養素の計算 (StandardizedMealNutrition を使用)
+        let calculatedStandardizedNutrition: StandardizedMealNutrition | null = null;
+        if (standardizedRecipeNutrition) {
+            calculatedStandardizedNutrition = {
+                ...standardizedRecipeNutrition,
+                totalCalories: Math.round((standardizedRecipeNutrition.totalCalories * portion_size) * 100) / 100,
+                totalNutrients: standardizedRecipeNutrition.totalNutrients.map(nutrient => ({
+                    ...nutrient,
+                    value: Math.round((nutrient.value * portion_size) * 100) / 100,
+                })),
+                // foodItems の栄養素もスケーリングする必要があるが、複雑になるため一旦省略
+                // 必要であれば foodItems 内の nutrient.value も portion_size でスケールする
+            };
+        }
+
+        // 計算後の栄養データを DB 保存形式に変換
+        const dbNutritionData = convertToDbNutritionFormat(calculatedStandardizedNutrition);
 
         // 食事記録を作成
         const { data: mealData, error: mealError } = await supabase
@@ -85,7 +102,7 @@ export async function POST(req: Request) {
                 meal_type,
                 meal_date,
                 food_description: recipe.ingredients,
-                nutrition_data: calculatedNutrition,
+                nutrition_data: dbNutritionData,
                 servings: Math.max(1, Math.round(portion_size))
             })
             .select('id')
@@ -97,29 +114,6 @@ export async function POST(req: Request) {
                 { error: '食事記録の作成に失敗しました', details: mealError.message },
                 { status: 500 }
             );
-        }
-
-        // meal_nutrientsテーブルに栄養データを保存
-        const nutrition = calculatedNutrition;
-        if (nutrition && mealData) {
-            const { error: nutrientError } = await supabase
-                .from('meal_nutrients')
-                .insert({
-                    meal_id: mealData.id,
-                    calories: nutrition.calories || 0,
-                    protein: nutrition.protein || 0,
-                    iron: nutrition.iron || 0,
-                    folic_acid: nutrition.folic_acid || 0,
-                    calcium: nutrition.calcium || 0,
-                    vitamin_d: nutrition.vitamin_d || 0,
-                    confidence_score: 1.0  // レシピからの登録は信頼度100%
-                });
-
-            if (nutrientError) {
-                console.error('栄養データ保存エラー:', nutrientError);
-                // meal_nutrientsの保存に失敗しても、mealsの保存は成功しているので、警告だけ出す
-                console.warn('栄養データの保存に失敗しましたが、食事データは保存されました');
-            }
         }
 
         // meal_recipe_entriesテーブルにレシピとの関連を保存

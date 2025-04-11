@@ -68,7 +68,7 @@ export const ManualIngredientsForm: React.FC<ManualIngredientsFormProps> = ({
         if (ingredients.length === 0) {
             addIngredient();
         }
-    }, []);
+    }, [addIngredient, ingredients.length]);
 
     return (
         <div className="manual-ingredients-form space-y-4">

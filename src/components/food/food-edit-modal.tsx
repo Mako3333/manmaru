@@ -49,26 +49,15 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
     const [searchResults, setSearchResults] = useState<FoodItem[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // 検索結果のリセット
-    useEffect(() => {
-        if (isOpen) {
-            setFoodName(food.name);
-            setQuantity(food.quantity || '');
-            setSearchResults([]);
-        }
-    }, [isOpen, food]);
-
-    // 食品名検索
-    const searchFood = useCallback(
+    // debounce された検索関数 (useCallback の外で定義)
+    const debouncedSearch = useCallback(
         debounce(async (query: string) => {
             if (query.length < 2) {
                 setSearchResults([]);
                 return;
             }
-
             setIsSearching(true);
             try {
-                // 食品リポジトリを使用して検索
                 const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
                 const results = await foodRepo.searchFoodsByFuzzyMatch(query, 5);
                 setSearchResults(results.map(result => ({
@@ -83,31 +72,41 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
                 setIsSearching(false);
             }
         }, 300),
-        []
+        [setSearchResults, setIsSearching] // state セッター関数に依存
     );
 
-    // 食品名変更時の検索
+    // 検索結果のリセット
     useEffect(() => {
-        searchFood(foodName);
-    }, [foodName, searchFood]);
+        if (isOpen) {
+            setFoodName(food.name);
+            setQuantity(food.quantity || '');
+            setSearchResults([]);
+        }
+    }, [isOpen, food]);
+
+    // 食品名変更時の検索 (メモ化された debounce 関数を使用)
+    useEffect(() => {
+        debouncedSearch(foodName);
+    }, [foodName, debouncedSearch]);
 
     // 更新ハンドラー
-    const handleUpdate = () => {
+    const handleUpdate = useCallback(() => {
         const updatedFood: FoodItem = {
             name: foodName,
             quantity: quantity || undefined,
+            // 元のfoodオブジェクトのプロパティを維持 (food.id などに依存)
             ...(food.id !== undefined && { id: food.id }),
             ...(food.category !== undefined && { category: food.category }),
             ...(food.confidence !== undefined && { confidence: food.confidence })
         };
         onUpdate(updatedFood);
         onClose();
-    };
+        // foodName, quantity, food, onUpdate, onClose に依存
+    }, [foodName, quantity, food, onUpdate, onClose]);
 
     // 検索結果を選択
-    const selectSearchResult = (result: FoodItem) => {
+    const selectSearchResult = useCallback((result: FoodItem) => {
         setFoodName(result.name);
-        // 食品IDも更新するため、onUpdateを呼び出す前に更新対象の食品を作成
         const updatedFood: FoodItem = {
             name: result.name,
             quantity,
@@ -117,7 +116,8 @@ export const FoodEditModal: React.FC<FoodEditModalProps> = ({
         };
         onUpdate(updatedFood);
         onClose();
-    };
+        // quantity, onUpdate, onClose に依存 (setFoodName は不要)
+    }, [quantity, onUpdate, onClose]);
 
     if (!isOpen) return null;
 
