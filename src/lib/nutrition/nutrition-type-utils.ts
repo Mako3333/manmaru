@@ -334,11 +334,12 @@ export function convertToDbNutritionFormat(
     // 基本的な栄養素と信頼性をトップレベルに配置
     const dbData: Record<string, unknown> = {
         totalCalories: standardizedData.totalCalories,
-        protein: standardizedData.totalNutrients.find(n => n.name === 'たんぱく質')?.value ?? 0, // value
-        iron: standardizedData.totalNutrients.find(n => n.name === '鉄')?.value ?? 0, // value
-        folic_acid: standardizedData.totalNutrients.find(n => n.name === '葉酸')?.value ?? 0, // value
-        calcium: standardizedData.totalNutrients.find(n => n.name === 'カルシウム')?.value ?? 0, // value
-        vitamin_d: standardizedData.totalNutrients.find(n => n.name === 'ビタミンD')?.value ?? 0, // value
+        // 日本語名ではなく、英語のキーで検索するように修正
+        protein: standardizedData.totalNutrients.find(n => n.name === 'protein')?.value ?? 0,
+        iron: standardizedData.totalNutrients.find(n => n.name === 'iron')?.value ?? 0,
+        folic_acid: standardizedData.totalNutrients.find(n => n.name === 'folic_acid')?.value ?? 0,
+        calcium: standardizedData.totalNutrients.find(n => n.name === 'calcium')?.value ?? 0,
+        vitamin_d: standardizedData.totalNutrients.find(n => n.name === 'vitamin_d')?.value ?? 0,
         confidence: standardizedData.reliability.confidence,
         completeness: standardizedData.reliability.completeness,
         // balanceScore: standardizedData.reliability.balanceScore, // エラー回避のためコメントアウトされる可能性

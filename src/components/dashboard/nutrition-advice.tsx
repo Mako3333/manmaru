@@ -198,12 +198,30 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
     // Remove forceUpdate from dependencies, call fetch with force=false
     useEffect(() => {
         if (selectedDate) {
+            // 選択された日付があれば、その日付のアドバイスを取得
+            console.log('[DetailedNutritionAdvice] Selected date changed to:', selectedDate);
             setCurrentDate(selectedDate);
-            // Call fetchDetailedAdvice directly with the new date and force=false
             fetchDetailedAdvice(selectedDate, false);
         }
-        // Update dependencies
     }, [selectedDate, fetchDetailedAdvice]);
+
+    // ユーザーが日付変更したときのハンドラ
+    const handleDateChange = (date: string) => {
+        console.log('[DetailedNutritionAdvice] Date changed by user to:', date);
+        setCurrentDate(date);
+        // 親コンポーネントのハンドラが存在する場合は呼び出し
+        if (onDateSelect) {
+            onDateSelect(date);
+        }
+        // 変更された日付でアドバイスを再取得
+        fetchDetailedAdvice(date, false);
+    };
+
+    // 手動更新ボタンクリック時の処理
+    const handleRefresh = () => {
+        console.log('[DetailedNutritionAdvice] Manual refresh for date:', currentDate);
+        fetchDetailedAdvice(currentDate, true);
+    };
 
     // 5. 初回読み込み
     // Call fetch with force=false
@@ -225,15 +243,6 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
         // Update dependencies
     }, [currentDate, fetchDetailedAdvice]);
 
-    // 7. 日付選択ハンドラ (削除)
-    // const handleDateChange = (date: string) => {
-    //     setCurrentDate(date);
-    //     if (onDateSelect) {
-    //         onDateSelect(date);
-    //     }
-    //     fetchDetailedAdvice(date, false);
-    // };
-
     // 8. UI描画
     return (
         <Card className="w-full overflow-hidden">
@@ -250,7 +259,7 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                     <Button
                         variant="ghost"
                         size="sm"
-                        onClick={handleForceUpdate}
+                        onClick={handleRefresh}
                         disabled={state.loading}
                         className="h-8 w-8 p-0"
                         title="アドバイスを更新"
@@ -317,7 +326,7 @@ export function DetailedNutritionAdvice({ selectedDate, onDateSelect }: Detailed
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={handleForceUpdate}
+                            onClick={handleRefresh}
                             className="mt-2"
                         >
                             アドバイスを生成する

@@ -1,6 +1,7 @@
 import { Food, FoodMatchResult } from '@/types/food';
 import { FoodRepository } from './food-repository';
 import { normalizeText, calculateSimilarity } from '@/lib/utils/string-utils';
+import { AppError, ErrorCode } from '@/lib/error';
 
 /**
  * 基本食品リストを使用したリポジトリ実装
@@ -32,22 +33,65 @@ export class BasicFoodRepository implements FoodRepository {
         if (this.isInitialized) return;
 
         try {
-            // ブラウザサイド: fetch APIを使用
-            const url = '/data/food_nutrition_database.json';
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch food data: ${response.statusText}`);
+            if (typeof window === 'undefined') {
+                // --- サーバーサイド ---
+                console.log('[BasicFoodRepository] Running on server-side. Using fs.');
+                const fs = require('fs');
+                const path = require('path');
+                // process.cwd() がプロジェクトルートを指すことを確認
+                const filePath = path.join(process.cwd(), 'public/data/food_nutrition_database.json');
+                console.log(`[BasicFoodRepository] Attempting to read file from: ${filePath}`);
+
+                if (!fs.existsSync(filePath)) {
+                    // ファイルが存在しない場合は明確なエラーを投げる
+                    console.error(`[BasicFoodRepository] Food database file not found at: ${filePath}`);
+                    throw new AppError({
+                        code: ErrorCode.Base.CONFIG_ERROR, // 設定エラー用のコード
+                        message: `食品データベースファイルが見つかりません: ${filePath}`,
+                        userMessage: 'アプリケーションの設定エラーが発生しました。食品データが見つかりません。'
+                    });
+                }
+
+                const fileContent = fs.readFileSync(filePath, 'utf8');
+                const data = JSON.parse(fileContent);
+                this.initializeCache(data); // キャッシュ初期化
+                console.log('[BasicFoodRepository] Cache initialized from file system.');
+
+            } else {
+                // --- ブラウザサイド ---
+                console.log('[BasicFoodRepository] Running on client-side. Using fetch.');
+                // ブラウザでは相対パスでOK
+                const url = '/data/food_nutrition_database.json';
+                const response = await fetch(url);
+                if (!response.ok) {
+                    // fetch エラーの場合も AppError をスロー
+                    console.error(`[BasicFoodRepository] Failed to fetch food data: ${response.status} ${response.statusText}`);
+                    throw new AppError({
+                        code: ErrorCode.Base.NETWORK_ERROR, // ネットワークエラー用コード
+                        message: `食品データの取得に失敗しました(HTTP ${response.status}): ${response.statusText}`,
+                        userMessage: '食品情報の取得中にネットワークエラーが発生しました。'
+                    });
+                }
+                const data = await response.json();
+                this.initializeCache(data); // キャッシュ初期化
+                console.log('[BasicFoodRepository] Cache initialized via fetch.');
             }
-            const data = await response.json();
-            this.initializeCache(data);
-            this.isInitialized = true;
+
+            this.isInitialized = true; // 初期化完了フラグを立てる
+
         } catch (error) {
             console.error('BasicFoodRepository: キャッシュ読み込みエラー', error);
-            // エラー発生時も初期化済みとしてマークするかどうかは要検討
-            // ここでは初期化失敗として isInitialized は false のままにするか、
-            // あるいはエラー状態を示すフラグを別途設けるなどが考えられる
-            this.isInitialized = false; // または適切なエラーハンドリング
-            throw error; // エラーを再スローして呼び出し元に伝える
+            // エラーが AppError インスタンスでない場合はラップする
+            if (error instanceof AppError) {
+                throw error;
+            } else {
+                throw new AppError({
+                    code: ErrorCode.Nutrition.FOOD_REPOSITORY_ERROR,
+                    message: `食品データベースの読み込みに失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+                    userMessage: '食品情報の読み込み中に予期せぬエラーが発生しました。',
+                    originalError: error instanceof Error ? error : undefined
+                });
+            }
         }
     }
 

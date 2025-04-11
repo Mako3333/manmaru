@@ -220,7 +220,7 @@ export class GeminiService implements IAIService {
             let fetchedHtml = '';
             if (!htmlContent) {
                 console.log(`[GeminiService] Fetching HTML from: ${url}`);
-                // AbortSignal.timeoutを使わずにタイムアウトを実装
+                // AbortSignal.timeoutの代わりにAbortControllerを使用した実装
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 15000);
                 try {
@@ -386,6 +386,31 @@ export class GeminiService implements IAIService {
             // 例外を再スローするかを決定する必要がある。
             // ここではエラーメッセージを含む文字列を返す。
             return JSON.stringify({ error: true, message: errorMessage, code: errorCode });
+        }
+    }
+
+    // AbortSignal.timeoutの代わりにAbortControllerを使用した実装
+    private async fetchWithTimeout(url: string, options: any, timeout = 30000): Promise<Response> {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                throw new AppError({
+                    code: ErrorCode.Base.TIMEOUT_ERROR,
+                    message: `Request timed out after ${timeout}ms`,
+                    severity: 'error'
+                });
+            }
+            throw error;
         }
     }
 }

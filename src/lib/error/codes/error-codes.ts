@@ -14,6 +14,7 @@ export const ErrorCode = {
         DATA_NOT_FOUND: 'data_not_found',
         NOT_IMPLEMENTED: 'not_implemented',
         CONFIG_ERROR: 'config_error',
+        TIMEOUT_ERROR: 'timeout_error',
     },
 
     // 栄養計算関連
@@ -102,6 +103,7 @@ export const DEFAULT_ERROR_MESSAGES: Record<AnyErrorCode, string> = {
     data_not_found: '指定されたデータが見つかりませんでした。',
     not_implemented: '現在この機能は利用できません。',
     config_error: 'システムの設定が正しくありません。管理者にお問い合わせください。',
+    timeout_error: 'リクエストがタイムアウトしました。接続状態を確認して再度お試しください。',
 
     // Nutrition
     food_not_found: '食品が見つかりませんでした。',

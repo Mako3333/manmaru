@@ -210,6 +210,10 @@ export class NutritionServiceImpl implements NutritionService {
         const ratio = grams > 0 ? grams / 100 : 0;
         this.scaleNutrients(scaledNutrition, ratio);
 
+        // --- デバッグログ追加 ---
+        console.log(`[NutritionService] Scaled Nutrition for ${food.name} (Ratio: ${ratio}):`, JSON.stringify(scaledNutrition, null, 2));
+        // --- デバッグログここまで ---
+
         const foodConfidence = food.confidence ?? 0.8;
         const overallConfidence = Math.min(foodConfidence, quantityConfidence);
 

@@ -61,26 +61,51 @@ export const POST = withErrorHandling(async (req: NextRequest): Promise<NextResp
 
         // 1. HTML取得 & DOM構築
         console.log(`[API Route] Fetching HTML for: ${url}`);
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-            },
-            signal: AbortSignal.timeout(15000), // 15秒タイムアウト
-            redirect: 'follow' // リダイレクトに従う
-        });
-        if (!response.ok) {
-            throw new AppError({
-                code: ErrorCode.Base.NETWORK_ERROR, // より適切なエラーコードに変更
-                message: `URLの取得に失敗しました: ${response.status} ${response.statusText}`,
-                details: { url }
+
+        // AbortController を使用してタイムアウトを実装
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒でタイムアウト
+
+        let htmlContent = '';
+        let document: Document;
+
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+                },
+                signal: controller.signal,
+                redirect: 'follow' // リダイレクトに従う
             });
+
+            clearTimeout(timeoutId); // タイムアウトをクリア
+
+            if (!response.ok) {
+                throw new AppError({
+                    code: ErrorCode.Base.NETWORK_ERROR, // より適切なエラーコードに変更
+                    message: `URLの取得に失敗しました: ${response.status} ${response.statusText}`,
+                    details: { url }
+                });
+            }
+            htmlContent = await response.text();
+            const dom = new JSDOM(htmlContent);
+            document = dom.window.document;
+            console.log(`[API Route] HTML fetched and DOM created for: ${url}`);
+        } catch (error) {
+            clearTimeout(timeoutId); // エラー時もタイムアウトをクリア
+
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                throw new AppError({
+                    code: ErrorCode.Base.TIMEOUT_ERROR,
+                    message: 'URLの取得がタイムアウトしました',
+                    details: { url }
+                });
+            }
+            // その他のエラーは上位層に渡す
+            throw error;
         }
-        const htmlContent = await response.text();
-        const dom = new JSDOM(htmlContent);
-        const document = dom.window.document;
-        console.log(`[API Route] HTML fetched and DOM created for: ${url}`);
 
         // 2. パーサー取得
         const parser: RecipeParser = getRecipeParser(url);

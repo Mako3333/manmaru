@@ -24,6 +24,7 @@ const QuerySchema = z.object({
     // z.enum に AdviceType の値を使用 (as const でリテラル型の配列に変換)
     type: z.enum(['DAILY_INITIAL', 'AFTER_MEALS', 'MANUAL_REFRESH'] as const).optional().default('DAILY_INITIAL'),
     forceRegenerate: z.boolean().optional().default(false),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日付はYYYY-MM-DD形式である必要があります").optional(),
 });
 
 // Supabaseクライアント型 (仮) -> 削除 (インポートした SupabaseClient を使用)
@@ -105,18 +106,18 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     // クエリパラメータの解析
     const { searchParams } = new URL(req.url);
     const parsedQuery = QuerySchema.safeParse({
-        // type: searchParams.get('type') as AdviceType | undefined, // as AdviceType キャストを削除
-        type: searchParams.get('type'), // キャスト削除
-        forceRegenerate: searchParams.get('forceRegenerate') === 'true'
+        type: searchParams.get('type'),
+        forceRegenerate: searchParams.get('forceRegenerate') === 'true',
+        date: searchParams.get('date'),
     });
 
     if (!parsedQuery.success) {
         throw new AppError({ code: ErrorCode.Base.DATA_VALIDATION_ERROR, message: '無効なクエリパラメータです', details: parsedQuery.error.flatten() });
     }
     const { type, forceRegenerate } = parsedQuery.data;
-    const targetDate = format(getJapanDate(), 'yyyy-MM-dd'); // 今日日付
+    const requestDate = parsedQuery.data.date || format(getJapanDate(), 'yyyy-MM-dd');
 
-    console.log(`[API Request] GET /api/v2/nutrition-advice - Type: ${type}, Force: ${forceRegenerate}, Date: ${targetDate}`);
+    console.log(`[API Request] GET /api/v2/nutrition-advice - Type: ${type}, Force: ${forceRegenerate}, Date: ${requestDate}`);
 
     // ユーザープロファイル取得 (due_date)
     const { data: profile, error: profileError } = await supabase
@@ -152,18 +153,18 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
             .select('*')
             .eq('user_id', user.id)
             .eq('advice_type', type)
-            .eq('advice_date', targetDate)
+            .eq('advice_date', requestDate)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle(); // maybeSingleで結果がなくてもエラーにしない
 
         if (fetchError) {
-            console.error(`[API DB Fetch Error] Error fetching existing advice for type ${type}:`, fetchError);
+            console.error(`[API DB Fetch Error] Error fetching existing advice for type ${type} on date ${requestDate}:`, fetchError);
             throw new AppError({ code: ErrorCode.Base.API_ERROR, message: '既存アドバイスの取得中にエラーが発生しました', originalError: fetchError });
         }
 
         if (existingAdvice) {
-            console.log(`[API Logic] Found existing advice (ID: ${existingAdvice.id}). Returning it.`);
+            console.log(`[API Logic] Found existing advice (ID: ${existingAdvice.id}) for date ${requestDate}. Returning it.`);
             return createSuccessResponse({
                 id: existingAdvice.id,
                 advice_date: existingAdvice.advice_date,
@@ -177,13 +178,13 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
             }, {});
         } else {
             // 設計上、!shouldGenerate かつ DB にもない場合は通常発生しないはずだが、念のため
-            console.log(`[API Logic] Limit reached but no existing advice found for type ${type}. Generating new one.`);
+            console.log(`[API Logic] Limit reached but no existing advice found for type ${type} on date ${requestDate}. Generating new one.`);
             // この場合、フォールバックして AI 生成に進む（次のステップで実装）
         }
     }
 
     // --- AI生成ロジック --- 
-    console.log(`[API Logic] Proceeding to generate new advice via AI for type: ${type}`);
+    console.log(`[API Logic] Proceeding to generate new advice via AI for type: ${type} for date: ${requestDate}`);
 
     // ユーザー情報と過去の栄養データを準備
     let pregnancyWeek = 0;
@@ -234,7 +235,7 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     // Prepare data for DB upsert - Use description directly
     const dataToUpsert = {
         user_id: user.id,
-        advice_date: targetDate,
+        advice_date: requestDate,
         advice_type: type,
         advice_summary: adviceResult.summary,
         advice_detail: adviceResult.detailedAdvice,

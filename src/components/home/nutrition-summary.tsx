@@ -22,9 +22,10 @@ interface NutritionSummaryProps {
     targets: NutritionTargets;
     isMorningWithNoMeals?: boolean;
     profile?: UserProfile;
+    showScore?: boolean;
 }
 
-export function NutritionSummary({ dailyNutrition, targets, isMorningWithNoMeals = false, profile }: NutritionSummaryProps) {
+export function NutritionSummary({ dailyNutrition, targets, isMorningWithNoMeals = false, profile, showScore = true }: NutritionSummaryProps) {
     const router = useRouter();
 
     // 栄養データがない場合は朝の表示を行う
@@ -108,21 +109,23 @@ export function NutritionSummary({ dailyNutrition, targets, isMorningWithNoMeals
                 </div>
             </CardHeader>
             <CardContent>
-                <div className="flex items-center mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mr-4 relative">
-                        {nutritionScore > 0 && (
-                            <div
-                                className="absolute inset-0 rounded-full border-4 border-green-500"
-                                style={{
-                                    clipPath: `polygon(0 0, 100% 0, 100% ${nutritionScore}%, 0% ${nutritionScore}%)`,
-                                    opacity: 0.7
-                                }}
-                            ></div>
-                        )}
-                        <span className="text-2xl font-bold">{nutritionScore}</span>
+                {showScore && (
+                    <div className="flex items-center mb-4">
+                        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mr-4 relative">
+                            {nutritionScore > 0 && (
+                                <div
+                                    className="absolute inset-0 rounded-full border-4 border-green-500"
+                                    style={{
+                                        clipPath: `polygon(0 0, 100% 0, 100% ${nutritionScore}%, 0% ${nutritionScore}%`,
+                                        opacity: 0.7
+                                    }}
+                                ></div>
+                            )}
+                            <span className="text-2xl font-bold">{nutritionScore}</span>
+                        </div>
+                        <p className="text-gray-600">{getNutritionMessage(dailyNutrition, targets)}</p>
                     </div>
-                    <p className="text-gray-600">{getNutritionMessage(dailyNutrition, targets)}</p>
-                </div>
+                )}
 
                 {/* 栄養素グリッド表示 */}
                 <div className="grid grid-cols-3 gap-2">

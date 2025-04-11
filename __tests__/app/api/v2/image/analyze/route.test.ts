@@ -96,17 +96,14 @@ describe('画像分析API v2のテスト', () => {
     beforeEach(() => {
         jest.clearAllMocks();
 
-        // AIServiceFactory.getServiceをモック関数に置き換え
-        const mockGetService = jest.fn();
-        AIServiceFactory.getService = mockGetService;
+        // AIServiceFactoryのモック設定を修正
+        AIServiceFactory.getService = jest.fn();
 
-        // NutritionServiceFactory.getInstanceをモック関数に置き換え
-        const mockGetInstance = jest.fn();
-        NutritionServiceFactory.getInstance = mockGetInstance;
+        // NutritionServiceFactoryのモック設定を修正
+        NutritionServiceFactory.getInstance = jest.fn();
 
-        // FoodRepositoryFactory.getRepositoryをモック関数に置き換え
-        const mockGetRepository = jest.fn();
-        FoodRepositoryFactory.getRepository = mockGetRepository;
+        // FoodRepositoryFactoryのモック設定を修正
+        FoodRepositoryFactory.getRepository = jest.fn();
     });
 
     // テスト用の標準化された栄養データ
