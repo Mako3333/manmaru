@@ -84,8 +84,8 @@ export async function analyzeMealPhoto(base64Image: string, mealType: string) {
         }
 
         console.log('APIエンドポイント呼び出し: 新システム使用');
-        // 新しいv2エンドポイントを使用
-        const response = await fetch('/api/v2/image/analyze', {
+        // 修正: 正しいv2エンドポイントを使用
+        const response = await fetch('/api/v2/meal/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

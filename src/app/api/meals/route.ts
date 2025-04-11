@@ -1,24 +1,26 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { MealService, SaveMealRequest, SaveMealNutritionRequest } from '@/lib/services/meal-service';
+import { MealService, SaveMealRequest } from '@/lib/services/meal-service';
 import { AppError } from '@/lib/error/types/base-error';
 import { ErrorCode } from '@/lib/error/codes/error-codes';
-import { StandardizedMealNutrition, NutritionData } from '@/types/nutrition';
-import { convertToStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils';
+import { StandardizedMealNutrition } from '@/types/nutrition';
 import { withErrorHandling } from '@/lib/api/middleware';
+import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory';
+import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 
-// SaveMealRequest の型定義をオーバーライド（nutrition_dataをオプショナルに）
-interface UpdatedSaveMealRequest extends Omit<SaveMealRequest, 'nutrition_data'> {
-    nutrition_data?: StandardizedMealNutrition; // nutrition_dataをオプショナルに変更
+// ★ 編集された食品アイテムの型定義 (フロントエンドと合わせる)
+interface EditedFoodItem {
+    name: string;
+    quantity: string;
 }
 
 /**
- * 食事データを登録するAPI
+ * 食事データを登録するAPI (修正版)
  * POST /api/meals
  */
 export const POST = withErrorHandling(async (req: NextRequest) => {
-    const cookieStore = await cookies(); // await を追加して Promise を解決
+    const cookieStore = await cookies();
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -28,32 +30,27 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
                     return cookieStore.get(name)?.value;
                 },
                 set(name: string, value: string, options: CookieOptions) {
-                    // cookieStore.set({ name, value, ...options }); // 変更前: ガイドライン違反
-                    // Route Handler 内の cookieStore は読み取り専用のため no-op にする
+                    // No-op for Route Handlers
                 },
                 remove(name: string, options: CookieOptions) {
-                    // cookieStore.delete({ name, ...options }); // 変更前: ガイドライン違反
-                    // Route Handler 内の cookieStore は読み取り専用のため no-op にする
+                    // No-op for Route Handlers
                 },
             },
         }
     );
 
-    // セッション確認 (withErrorHandlingでは認証チェックがないため、ハンドラ内で行う)
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
         throw new AppError({
             code: ErrorCode.Base.AUTH_ERROR,
             message: 'ログインしていないか、セッションが無効です。',
             userMessage: '認証情報が無効です。再度ログインしてください。'
-            // ここで 401 を返したいが、ミドルウェアに任せる
         });
     }
 
     const userId = session.user.id;
     const requestData = await req.json();
 
-    // リクエストデータの基本検証
     if (!requestData || typeof requestData !== 'object') {
         throw new AppError({
             code: ErrorCode.Base.DATA_VALIDATION_ERROR,
@@ -61,62 +58,77 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         });
     }
 
-    // 食事データ構築 (UpdateSaveMealRequestを使用)
-    const mealData: UpdatedSaveMealRequest = {
+    // --- ★ 栄養計算ロジックの追加 ---
+    let calculatedNutrition: StandardizedMealNutrition | undefined = undefined;
+
+    // 1. リクエストから編集後の食品リストを取得・検証
+    const editedItems = requestData.editedFoodItems; // フロントエンドからのキー名に合わせる
+    if (!Array.isArray(editedItems) || editedItems.length === 0 || !editedItems.every(item =>
+        typeof item === 'object' && item !== null &&
+        typeof item.name === 'string' && item.name.trim() !== '' &&
+        typeof item.quantity === 'string' // quantity は空でも許容する場合あり
+    )) {
+        throw new AppError({
+            code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+            message: 'リクエストに有効な editedFoodItems が含まれていません。',
+            userMessage: '編集された食品リストの形式が正しくありません。',
+            details: { receivedItems: editedItems }
+        });
+    }
+
+    // 2. NutritionService の初期化
+    try {
+        const foodRepo = FoodRepositoryFactory.getRepository(FoodRepositoryType.BASIC);
+        const nutritionService = NutritionServiceFactory.getInstance().createService(foodRepo);
+
+        // 3. 栄養計算の実行
+        const nameQuantityPairs = editedItems.map((item: EditedFoodItem) => ({
+            name: item.name,
+            // quantity が存在する場合のみ quantity プロパティを追加
+            ...(item.quantity ? { quantity: item.quantity } : {})
+        }));
+        const nutritionResult = await nutritionService.calculateNutritionFromNameQuantities(nameQuantityPairs);
+        calculatedNutrition = nutritionResult.nutrition;
+
+    } catch (error) {
+        console.error('POST /api/meals: 栄養計算中にエラー:', error);
+        // AppError でラップして再スロー
+        if (error instanceof AppError) throw error;
+        // エラーコードを修正 (CALCULATION_ERROR -> DATA_PROCESSING_ERROR)
+        throw new AppError({
+            code: ErrorCode.Base.DATA_PROCESSING_ERROR,
+            message: `栄養計算中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+            userMessage: '栄養情報の計算処理で問題が発生しました。',
+            originalError: error instanceof Error ? error : undefined
+        });
+    }
+    // --- ★ 栄養計算ロジックここまで ---
+
+    // 4. DB保存データの準備 (SaveMealRequest型)
+    const dataToSave: SaveMealRequest = {
         user_id: userId,
         meal_type: requestData.meal_type,
         meal_date: requestData.meal_date,
-        photo_url: requestData.photo_url,
         food_description: requestData.food_description,
-        // nutrition_data は後で設定
-        servings: requestData.servings || 1
+        servings: requestData.servings || 1,
+        photo_url: requestData.photo_url,
+        nutrition_data: calculatedNutrition, // ★ 計算結果をセット
     };
 
-    // リクエストの nutrition_data (旧形式) を StandardizedMealNutrition に変換
-    let standardizedNutritionData: StandardizedMealNutrition | undefined = undefined;
-    if (requestData.nutrition_data) {
-        try {
-            // requestData.nutrition_data がすでに StandardizedMealNutrition 型かをチェック
-            if (
-                typeof requestData.nutrition_data === 'object' &&
-                requestData.nutrition_data !== null &&
-                'totalCalories' in requestData.nutrition_data &&
-                'totalNutrients' in requestData.nutrition_data &&
-                'foodItems' in requestData.nutrition_data
-            ) {
-                standardizedNutritionData = requestData.nutrition_data as StandardizedMealNutrition;
-            } else {
-                // 旧形式から変換
-                standardizedNutritionData = convertToStandardizedNutrition(requestData.nutrition_data as NutritionData);
-            }
-        } catch (conversionError) {
-            console.error('POST /api/meals: 旧形式の栄養データをStandardizedに変換中にエラー:', conversionError);
-            throw new AppError({
-                code: ErrorCode.Base.DATA_PROCESSING_ERROR,
-                message: 'リクエスト内の栄養データの形式変換に失敗しました',
-                originalError: conversionError instanceof Error ? conversionError : undefined,
-                details: { requestNutritionData: requestData.nutrition_data }
-            });
-        }
+    // 必須フィールドの追加バリデーション
+    if (!dataToSave.meal_type || !dataToSave.meal_date) {
+        throw new AppError({
+            code: ErrorCode.Base.DATA_VALIDATION_ERROR,
+            message: 'meal_type と meal_date は必須です。',
+        });
     }
 
-    // SaveMealRequest型に合わせる
-    const dataToSave: SaveMealRequest = {
-        user_id: mealData.user_id,
-        meal_type: mealData.meal_type,
-        meal_date: mealData.meal_date,
-        food_description: mealData.food_description ?? '',
-        servings: mealData.servings ?? 1,
-        ...(mealData.photo_url && { photo_url: mealData.photo_url }),
-        ...(standardizedNutritionData && { nutrition_data: standardizedNutritionData }),
-    };
-
+    // 5. DB保存
     const result = await MealService.saveMealWithNutrition(
         supabase,
-        dataToSave
+        dataToSave // SaveMealRequest 型のデータを渡す
     );
 
-    // 成功レスポンスを返す (try...catch はミドルウェアが行う)
     return NextResponse.json(
         {
             message: '食事データが正常に保存されました',

@@ -13,9 +13,10 @@ AI関連機能の主要コンポーネントとデータフローは以下の通
 ```mermaid
 flowchart TD
     subgraph "API Layer (route.ts)"
-        API_MEAL_IMAGE["/api/v2/meal/analyze (画像)"]
-        API_MEAL_TEXT["/api/v2/meal/text-analyze (テキスト)"]
-        API_RECIPE["/api/v2/recipe/parse (レシピ)"]
+        API_MEAL_IMAGE["/api/v2/meal/analyze (画像認識)"]
+        API_MEAL_SAVE["/api/meals (POST, 保存・栄養計算)"]
+        API_MEAL_TEXT["/api/v2/meal/text-analyze (テキスト認識・栄養計算)"]
+        API_RECIPE["/api/v2/recipe/parse (レシピ解析)"]
         %% 他の潜在的なAPI (将来)
         %% API_NUTRITION_ADVICE["/api/v2/nutrition/advice"]
         %% API_RECIPE_RECOMMEND["/api/v2/recipe/recommend"]
@@ -55,6 +56,14 @@ flowchart TD
         ERROR_HANDLER["統合エラーハンドラ<br>(middleware.ts)"]
     end
 
+    subgraph "Nutrition Service Layer (src/lib/nutrition)"
+        NUTRITION_SVC[NutritionService]
+    end
+
+    subgraph "Data Layer (src/lib/db)"
+        DB_MEALS[meals テーブル (nutrition_data)]
+    end
+
     %% Connections
     API_MEAL_IMAGE & API_MEAL_TEXT & API_RECIPE --> FACTORY
     FACTORY -- "getService(GEMINI)" --> GEMINI_SVC
@@ -80,12 +89,23 @@ flowchart TD
     PARSER -- "解析結果 (GeminiParseResult)" --> GEMINI_SVC
     GEMINI_SVC -- "処理結果 (GeminiProcessResult)" --> API_MEAL_IMAGE & API_MEAL_TEXT & API_RECIPE
 
+    %% Nutrition Calculation Flow (Text)
+    API_MEAL_TEXT -- "食品名・量リスト" --> NUTRITION_SVC
+    NUTRITION_SVC -- "計算結果 (StandardizedMealNutrition)" --> API_MEAL_TEXT
+
+    %% Nutrition Calculation Flow (Image -> Save)
+    API_MEAL_IMAGE -- "認識結果 (foods, aiEstimatedNutrition)" --> Client
+    Client -- "編集後食品リスト" --> API_MEAL_SAVE
+    API_MEAL_SAVE -- "編集後食品リスト" --> NUTRITION_SVC
+    NUTRITION_SVC -- "計算結果 (StandardizedMealNutrition)" --> API_MEAL_SAVE
+    API_MEAL_SAVE -- "nutrition_data" --> DB_MEALS
+
     %% Error Handling Connections
     MODEL_SVC -- "エラー発生" --> APP_ERROR
     GEMINI_SVC -- "エラー発生" --> APP_ERROR
     PARSER -- "エラー発生" --> APP_ERROR
     APP_ERROR -- "継承" --> AI_ERRORS
-    API_MEAL_IMAGE & API_MEAL_TEXT & API_RECIPE -- "エラー捕捉" --> ERROR_HANDLER
+    API_MEAL_IMAGE & API_MEAL_TEXT & API_RECIPE & API_MEAL_SAVE -- "エラー捕捉" --> ERROR_HANDLER
 
     classDef default fill:#f9f,stroke:#333,stroke-width:2px;
     classDef api fill:#ccf,stroke:#333,stroke-width:2px;
@@ -94,14 +114,17 @@ flowchart TD
     classDef prompt fill:#ffc,stroke:#333,stroke-width:2px;
     classDef external fill:#ccc,stroke:#333,stroke-width:2px;
     classDef error fill:#fcc,stroke:#333,stroke-width:2px;
+    classDef db fill:#ddf,stroke:#333,stroke-width:2px;
 
-    class API_MEAL_IMAGE,API_MEAL_TEXT,API_RECIPE api;
+    class API_MEAL_IMAGE,API_MEAL_TEXT,API_RECIPE,API_MEAL_SAVE api;
     class FACTORY,SERVICE_INTF,GEMINI_SVC service;
     class PROMPT_SVC,VERSION_MGR,TEMPLATE_ENGINE,TEMPLATES prompt;
     class MODEL_SVC,MODEL_FACTORY,MODEL_INTF core;
     class GEMINI_API external;
     class PARSER service;
     class AI_ERRORS,APP_ERROR,ERROR_HANDLER error;
+    class NUTRITION_SVC service;
+    class DB_MEALS db;
 ```
 
 ### 3. 主要コンポーネント詳細
@@ -116,6 +139,8 @@ flowchart TD
     *   各解析メソッド (`analyzeMealImage`, `analyzeMealText`, `parseRecipeFromUrl`) では、`PromptService` を使用して適切なプロンプトを生成します。
     *   `AIModelService` を呼び出して、生成したプロンプトと入力データ（画像、テキスト）を Gemini API に送信します。
     *   Gemini API からの生応答を `GeminiResponseParser` で解析し、構造化データ (`GeminiParseResult`) を取得します。
+    *   **`analyzeMealImage`**: 画像を解析し、食品リスト (`foods`) とAI推定栄養価 (`aiEstimatedNutrition` - 参考値) を含む `GeminiProcessResult` を返します。**栄養計算は行いません。**
+    *   **`analyzeMealText`**: テキストを解析し、食品リスト (`foods`) とAI推定栄養価 (`aiEstimatedNutrition` - 参考値) を含む `GeminiProcessResult` を返します。**（注意：このサービス自体は栄養計算を行いませんが、呼び出し元のAPIルート (`/api/v2/meal/text-analyze`) で続けて栄養計算が実行されます）**
     *   処理結果（解析結果、生応答、処理時間、エラー情報）を `GeminiProcessResult` 型にまとめて返します。
     *   `parseRecipeFromUrl` では、内部で `fetch` を使用して指定されたURLからHTMLコンテンツを取得し、簡単な前処理（script/styleタグ除去、文字数制限）を行った上でAIに渡します。
     *   `getNutritionAdvice` は現在未実装です（TODOコメントあり）。
@@ -162,14 +187,17 @@ flowchart TD
 *   **`codes/error-codes.ts`**: `ErrorCode.AI` ネームスペース以下に、AI関連のエラーコードが定義されています。
 *   **`core/ai-model-service.ts` (`handleAIError`)**: AIモデル呼び出し時の低レベルなエラー（ネットワークエラー、タイムアウト、APIキーエラーなど）を捕捉し、適切な `ErrorCode` を持つ `AppError` に変換します。
 *   **`services/gemini-service.ts`**: 各メソッド内で `try-catch` を使用し、`AIModelService` や `GeminiResponseParser` からスローされた `AppError` やその他のエラーを捕捉し、エラー情報を含む `GeminiProcessResult` を生成します。
-*   **API Route Handlers (`src/app/api/...`)**: `GeminiService` から返された `GeminiProcessResult` の `error` プロパティを確認し、エラーがあれば統合エラーハンドラ (`middleware.ts` 内の `withErrorHandling`) に処理を委譲するか、適切なエラーレスポンスを生成します。
+*   **API Route Handlers (`src/app/api/...`)**: `GeminiService` から返された `GeminiProcessResult` を処理します。
+    *   `/api/v2/meal/analyze` (画像): `GeminiProcessResult` の `foods` と `aiEstimatedNutrition` をクライアントに返します。
+    *   `/api/v2/meal/text-analyze` (テキスト): `GeminiProcessResult` の `foods` を元に、`NutritionService.calculateNutritionFromNameQuantities` を呼び出して栄養計算を行い、その結果 (`StandardizedMealNutrition`) と `aiEstimatedNutrition` をクライアントに返します。
+    *   エラーがあれば統合エラーハンドラ (`middleware.ts` 内の `withErrorHandling`) に処理を委譲するか、適切なエラーレスポンスを生成します。
 
 ### 4. プロンプトテンプレート解説
 
 `src/lib/ai/prompts/templates/` 以下に格納されている主要なプロンプトテンプレート (v1) の概要です。
 
-*   **食品分析 (画像) (`food-analysis/v1.ts`)**: 食事の写真から食品名、量の目安、信頼度を識別するプロンプト。フェーズ2の修正により、栄養素の推定要求部分が削除され、食品特定に集中するようになりました。JSON形式での出力を期待。
-    *   **最新状態**: 栄養計算は完全に `NutritionService` に任せることで、AIの役割が食品特定に集中し、結果の安定性が向上しました。
+*   **食品分析 (画像) (`food-analysis/v1.ts`)**: 食事の写真から食品名、量の目安、信頼度を識別するプロンプト。**栄養素の推定要求部分は削除され、食品特定に集中**しています。AIが栄養素を推定する可能性はありますが、主要な目的ではありません。JSON形式での出力を期待。
+    *   **最新状態**: 栄養計算は保存API (`/api/meals`) 側で行われるため、AIの役割は食品特定に集中しています。
 *   **テキスト入力分析 (`text-input-analysis/v1.ts`)**: ユーザーが入力した食事テキストから食品名、量、信頼度を識別するプロンプト。料理名を主要食材に分解する指示も含まれます。JSON形式での出力を期待。
     *   **最新状態**: `GeminiResponseParser` はこの形式に対応しています。
 *   **レシピURL分析 (`recipe-url-analysis/v1.ts`)**: ウェブページのHTMLコンテンツ（テキストとして渡される）からレシピのタイトル、何人分か、材料リスト（名前、分量）を抽出するプロンプト。JSON形式での出力を期待。
@@ -177,20 +205,18 @@ flowchart TD
 *   **栄養アドバイス (`nutrition-advice/v1.ts`)**: 妊娠週数、不足栄養素、過去データ、季節などを考慮して、栄養アドバイス（要約、詳細、推奨食品）を生成するプロンプト。JSON形式での出力を期待。
     *   **最新状態**: `GeminiService.getNutritionAdvice` が未実装のため、**このプロンプトは使用されていません。**
 
-
 ### 5. フェーズ2での改善内容
 
-フェーズ2の実装により、以下の改善が行われました：
+フェーズ2の実装（およびその後の修正）により、以下の改善が行われました：
 
-*   **画像解析プロンプトの最適化**: `food-analysis/v1.ts` のプロンプトテンプレートから `"nutrition": { ... }` の部分と、それに関する指示を削除しました。これにより：
-    1. AIの役割が食品特定に集中し、結果の安定性が向上
-    2. 栄養計算は完全に `NutritionService` に任せることで、より一貫性のある結果を提供
-    3. プロンプトとパーサーの間の不整合を解消
-
-*   **クライアント側の連携改善**: `analyzePhoto` 関数を修正し、API応答から返される `StandardizedMealNutrition` を直接使用するようになりました。これにより：
-    1. AIの推定栄養価 (`aiEstimatedNutrition`) から自前で構築せず、栄養計算結果 (`nutritionResult.nutrition`) を一貫して使用
-    2. データフローの簡素化と信頼性の向上
-    3. 型の一貫性の強化
+*   **画像解析と栄養計算の分離**: 画像解析API (`/api/v2/meal/analyze`) は食品認識とAI推定栄養価の返却に専念し、実際の栄養計算とDB保存は食事保存API (`/api/meals`) で行うように分離されました。
+*   **画像解析プロンプトの最適化**: `food-analysis/v1.ts` のプロンプトテンプレートから栄養素推定の要求を削除し、AIの役割を食品特定に集中させました。
+    1. AIの食品特定結果の安定性が向上。
+    2. 栄養計算は `NutritionService` に完全に委譲。
+*   **クライアント側の連携改善**: 画像入力フローにおいて、画像解析APIからは栄養計算結果を受け取らず、認識結果 (`foods`) を編集画面に表示し、保存時に編集後のリストを食事保存APIに送信するように変更されました。
+    1. AI推定栄養価 (`aiEstimatedNutrition`) を直接使用せず、DBベースの栄養計算結果 (`NutritionService` による) を一貫して使用。
+    2. データフローの簡素化と信頼性の向上。
+    3. 型の一貫性の強化。
 
 *   **レシピURL解析の改善**: HTML前処理の強化と、専用パーサーを優先的に使用するハイブリッドアプローチの確立：
     1. 既存の専用パーサー（`cookpad.ts`, `delishkitchen.ts` など）の更新

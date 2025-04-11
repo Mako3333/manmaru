@@ -13,9 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Trash2, Plus, Save } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { StandardizedMealNutrition, Nutrient } from "@/types/nutrition";
+import type { FoodInputParseResult } from "@/lib/food/food-input-parser";
 
 // 食品アイテムの型定義（内部状態用）
 interface FoodItem {
@@ -27,46 +26,37 @@ interface FoodItem {
 
 // コンポーネントのProps
 interface RecognitionEditorProps {
-    initialData: StandardizedMealNutrition;
-    onSave: (data: StandardizedMealNutrition) => void;
+    initialData: FoodInputParseResult[];
+    onSave: (editedData: FoodInputParseResult[]) => void;
+    saving: boolean;
+    aiEstimate?: unknown;
     className?: string;
-    mealType: string;
-    mealDate?: string | undefined;
-    photoUrl?: string | undefined;
 }
 
 export function RecognitionEditor({
     initialData,
     onSave,
+    saving,
+    aiEstimate,
     className,
-    mealType,
-    mealDate,
-    photoUrl,
 }: RecognitionEditorProps) {
     // 食品リストの状態
     const [foods, setFoods] = useState<FoodItem[]>([]);
-    // 栄養情報の状態
-    const [nutrition, setNutrition] = useState<StandardizedMealNutrition>(initialData);
     // バリデーションエラーの状態
     const [errors, setErrors] = useState<Record<string, string>>({});
-    // 保存中の状態
-    const [saving, setSaving] = useState(false);
     // エラーの状態
     const [error, setError] = useState<string | null>(null);
-    // ルーターの状態
-    const router = useRouter();
 
-    // initialDataが変更されたら状態を更新
+    // 修正: initialData (FoodInputParseResult[]) から内部状態 foods (FoodItem[]) を設定
     useEffect(() => {
-        // foodItemsから内部用のFoodItem形式に変換
-        const foodItemsWithIds = initialData.foodItems.map(foodItem => ({
-            id: foodItem.id || crypto.randomUUID(),
-            name: foodItem.name,
-            quantity: `${foodItem.amount} ${foodItem.unit}`,
-            confidence: 0.9 // デフォルト値（標準形式に信頼度情報がない場合）
+        const foodItemsWithIds = initialData.map((item, index) => ({
+            // API結果にIDがないため、常に一時的なIDを生成
+            id: crypto.randomUUID(), // 常に UUID を生成
+            name: item.foodName,
+            quantity: item.quantityText || '',
+            confidence: item.confidence || 0.8
         }));
         setFoods(foodItemsWithIds);
-        setNutrition(initialData);
         setErrors({});
     }, [initialData]);
 
@@ -119,18 +109,9 @@ export function RecognitionEditor({
         });
     };
 
-    // 特定の栄養素の値を取得する関数
-    const getNutrientValue = (name: string): number => {
-        const nutrient = nutrition.totalNutrients.find(n =>
-            n.name === name || n.name.toLowerCase() === name.toLowerCase()
-        );
-        return nutrient?.value || 0;
-    };
-
-    // 保存処理
+    // 修正: handleSave 関数
     const handleSave = async () => {
         console.log('RecognitionEditor: handleSave関数が呼び出されました');
-        setSaving(true);
         try {
             // バリデーションチェック
             let hasErrors = false;
@@ -147,42 +128,22 @@ export function RecognitionEditor({
 
             if (hasErrors) {
                 console.log('RecognitionEditor: バリデーションエラーがあります', newErrors);
-                setSaving(false);
                 return; // エラーがある場合は保存しない
             }
 
-            // 更新された食品アイテムを標準型に変換
-            const updatedFoodItems = foods.map(food => {
-                const [amountStr, unit] = food.quantity.split(' ');
-                return {
-                    id: food.id,
-                    name: food.name,
-                    amount: parseFloat(amountStr || '1'),
-                    unit: unit || '個',
-                    nutrition: {
-                        calories: nutrition.totalCalories / foods.length, // 単純な割り当て
-                        nutrients: nutrition.totalNutrients.map(n => ({ ...n, value: n.value / foods.length })),
-                        servingSize: {
-                            value: 1,
-                            unit: '人前'
-                        }
-                    }
-                };
-            });
+            // 修正: 内部状態 foods (FoodItem[]) を FoodInputParseResult[] 形式に変換して onSave に渡す
+            // foodId は含めない
+            const editedData: FoodInputParseResult[] = foods.map(food => ({
+                foodName: food.name,
+                quantityText: food.quantity,
+                confidence: food.confidence,
+            }));
 
-            // 更新された StandardizedMealNutrition を作成
-            const updatedNutrition: StandardizedMealNutrition = {
-                ...nutrition,
-                foodItems: updatedFoodItems
-            };
-
-            console.log('RecognitionEditor: 親コンポーネントのonSave関数を呼び出します', updatedNutrition);
-
-            // 保存開始を通知
+            console.log('RecognitionEditor: 親コンポーネントのonSave関数を呼び出します', editedData);
             toast.loading("保存中...", { id: "save-meal", description: "データを処理しています" });
 
-            // 親コンポーネントのonSave関数を呼び出す
-            onSave(updatedNutrition);
+            // 親コンポーネントの onSave 関数を呼び出す
+            onSave(editedData);
 
             // 注意: この時点ではまだ保存が完了していない可能性がある
             // 親コンポーネントが処理を完了するため、ここでsetSaving(false)は行わない
@@ -193,7 +154,6 @@ export function RecognitionEditor({
                 description: error instanceof Error ? error.message : '保存処理に失敗しました',
                 id: "save-meal"
             });
-            setSaving(false);
         }
     };
 
@@ -203,6 +163,19 @@ export function RecognitionEditor({
                 <CardTitle>食事内容の編集</CardTitle>
                 <CardDescription>
                     検出された食品を確認・編集してください
+                    {/* AI推定値の表示 (任意) - 型チェック強化 (IIFE使用) */}
+                    {(() => {
+                        if (aiEstimate && typeof aiEstimate === 'object' && aiEstimate !== null && 'calories' in aiEstimate && typeof aiEstimate.calories === 'number') {
+                            // このスコープ内では aiEstimate.calories は number 型として扱われるはず
+                            const estimatedCalories = aiEstimate.calories;
+                            return (
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    AIによる推定カロリー: {estimatedCalories.toFixed(0)} kcal
+                                </p>
+                            );
+                        }
+                        return null; // 条件に合わない場合は何もレンダリングしない
+                    })()}
                 </CardDescription>
             </CardHeader>
 
@@ -249,7 +222,7 @@ export function RecognitionEditor({
                                         id={`food-quantity-${food.id}`}
                                         value={food.quantity}
                                         onChange={(e) => updateFood(food.id, 'quantity', e.target.value)}
-                                        placeholder="量"
+                                        placeholder="量 (例: 100g, 1個)"
                                     />
                                 </div>
 
@@ -257,7 +230,7 @@ export function RecognitionEditor({
                                     variant="ghost"
                                     size="icon"
                                     onClick={() => removeFood(food.id)}
-                                    className="h-10 w-10 text-destructive hover:text-destructive/90"
+                                    className="text-muted-foreground hover:text-destructive"
                                     aria-label="食品を削除"
                                 >
                                     <Trash2 className="h-4 w-4" />
@@ -272,57 +245,15 @@ export function RecognitionEditor({
                         )}
                     </div>
                 </div>
-
-                {/* 栄養情報 */}
-                <div className="space-y-3">
-                    <h3 className="text-lg font-medium">栄養情報</h3>
-
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        <div className="rounded-lg border p-3">
-                            <p className="text-sm text-muted-foreground">カロリー</p>
-                            <p className="text-lg font-medium">{nutrition.totalCalories} kcal</p>
-                        </div>
-
-                        <div className="rounded-lg border p-3">
-                            <p className="text-sm text-muted-foreground">タンパク質</p>
-                            <p className="text-lg font-medium">{getNutrientValue('タンパク質')} g</p>
-                        </div>
-
-                        <div className="rounded-lg border p-3">
-                            <p className="text-sm text-muted-foreground">鉄分</p>
-                            <p className="text-lg font-medium">{getNutrientValue('鉄分')} mg</p>
-                        </div>
-
-                        <div className="rounded-lg border p-3">
-                            <p className="text-sm text-muted-foreground">葉酸</p>
-                            <p className="text-lg font-medium">{getNutrientValue('葉酸')} μg</p>
-                        </div>
-
-                        <div className="rounded-lg border p-3">
-                            <p className="text-sm text-muted-foreground">カルシウム</p>
-                            <p className="text-lg font-medium">{getNutrientValue('カルシウム')} mg</p>
-                        </div>
-
-                        <div className="rounded-lg border p-3">
-                            <p className="text-sm text-muted-foreground">信頼度</p>
-                            <p className="text-lg font-medium">{Math.round(nutrition.pregnancySpecific?.folatePercentage || 90)}%</p>
-                        </div>
-                    </div>
-
-                    <p className="text-sm text-muted-foreground">
-                        ※ 栄養情報は推定値です。食品の編集により実際の値と異なる場合があります。
-                    </p>
-                </div>
             </CardContent>
 
-            <CardFooter>
-                <Button
-                    onClick={handleSave}
-                    className="w-full sm:w-auto"
-                    disabled={Object.keys(errors).length > 0 || saving}
-                >
-                    <Save className="mr-2 h-4 w-4" />
-                    保存する
+            <CardFooter className="flex justify-end">
+                <Button onClick={handleSave} disabled={saving || Object.keys(errors).length > 0}>
+                    {saving ? (
+                        <><Save className="mr-2 h-4 w-4 animate-spin" /> 保存中...</>
+                    ) : (
+                        <><Save className="mr-2 h-4 w-4" /> 保存する</>
+                    )}
                 </Button>
             </CardFooter>
         </Card>

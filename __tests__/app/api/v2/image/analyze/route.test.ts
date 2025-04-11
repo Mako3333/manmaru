@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { POST } from '@/app/api/v2/image/analyze/route';
+import { POST } from '@/app/api/v2/meal/analyze/route';
 import { AIServiceFactory, AIServiceType } from '@/lib/ai/ai-service-factory';
 import { NutritionServiceFactory } from '@/lib/nutrition/nutrition-service-factory';
 import { FoodRepositoryFactory, FoodRepositoryType } from '@/lib/food/food-repository-factory'; // Import FoodRepositoryFactory and Type

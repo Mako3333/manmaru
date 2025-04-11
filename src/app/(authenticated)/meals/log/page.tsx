@@ -25,6 +25,7 @@ import {
 import { StandardizedMealData, StandardizedMealNutrition, NutritionData } from '@/types/nutrition'
 import { FoodInputParseResult } from '@/lib/food/food-input-parser'
 import type { Profile } from '@/lib/utils/profile'
+import { createEmptyStandardizedNutrition } from '@/lib/nutrition/nutrition-type-utils'
 
 
 // 入力モードの型定義
@@ -41,11 +42,6 @@ interface FoodItem {
 // 認識データの型定義 (RecognitionEditorコンポーネントと互換性のある形式)
 interface RecognitionData {
     foods: FoodInputParseResult[];
-    nutritionResult: {
-        nutrition: StandardizedMealNutrition;
-        matchResults: unknown[];
-        legacyNutrition: NutritionData;
-    };
     recognitionConfidence?: number;
     aiEstimatedNutrition?: unknown;
     originalImageProvided?: boolean;
@@ -156,52 +152,43 @@ export default function MealLogPage() {
 
             console.log('mealType:', mealType);
 
-            // 新APIを使用
+            // API呼び出し (修正後のAPIを想定)
             const result = await analyzeMealPhoto(base64Image, mealType);
 
-            console.log('API応答:', result);
+            console.log('API応答 (修正後):', result);
 
-            // データの存在を確認
+            // データの存在を確認 (foods のチェックのみ)
             if (!result.success || !result.data || !result.data.foods || !Array.isArray(result.data.foods)) {
                 throw new AppError({
                     code: ErrorCode.AI.IMAGE_PROCESSING_ERROR,
-                    message: 'AI応答データの形式が不正です',
+                    message: 'AI応答データの形式が不正です (foodsが見つかりません)',
                     userMessage: '解析結果が正しくありません',
                     details: { response: result },
                     suggestions: ['別の画像を試してください', '手動での食品入力も可能です']
                 });
             }
 
-            // 英語の食品名を検出して警告
+            // 英語名の警告は維持
             const hasEnglishFoodNames = result.data.foods.some((food: FoodInputParseResult) =>
                 /^[a-zA-Z]/.test(food.foodName) || (food.quantityText && typeof food.quantityText === 'string' && /^[0-9]+ [a-z]+/.test(food.quantityText))
             );
-
             if (hasEnglishFoodNames) {
                 console.warn('英語の食品名が検出されました:', result.data.foods);
-                // 警告トーストを表示
                 toast.warning('英語の食品名が検出されました', {
                     description: '手動で日本語に修正することをお勧めします',
                 });
             }
 
-            // APIレスポンスを認識データの形式に変換
+            // APIレスポンスを認識データの形式に変換 (nutritionResult なし)
             const formattedData: RecognitionData = {
                 foods: result.data.foods,
-                nutritionResult: {
-                    nutrition: result.data.nutritionResult.nutrition,
-                    matchResults: result.data.nutritionResult.matchResults || [],
-                    legacyNutrition: result.data.aiEstimatedNutrition || {}
-                },
                 recognitionConfidence: result.data.recognitionConfidence,
                 aiEstimatedNutrition: result.data.aiEstimatedNutrition,
-                originalImageProvided: result.data.originalImageProvided,
                 mealType: result.data.mealType
             };
 
             setRecognitionData(formattedData);
 
-            // 成功通知
             toast.success('食事画像の分析が完了しました', {
                 description: '認識結果を確認・編集してください',
             });
@@ -217,27 +204,23 @@ export default function MealLogPage() {
                     duration: 5000
                 }
             });
-
             console.error('画像解析エラー詳細:', error);
         } finally {
             console.log('analyzePhoto完了');
             setAnalyzing(false);
         }
-    }, [mealType]); // handleErrorを依存配列から削除（コールバック関数であり、変化しないため）
+    }, [mealType]); // handleErrorを依存配列から削除
 
     // 認識結果の保存処理
-    const handleSaveRecognition = async (nutritionData: StandardizedMealNutrition) => {
-        console.log('handleSaveRecognition: 関数が呼び出されました', nutritionData);
-        if (!recognitionData) {
-            console.error('handleSaveRecognition: recognitionDataがnullです');
-            return;
-        }
+    const handleSaveRecognition = async (editedFoods: FoodInputParseResult[]) => {
+        console.log('handleSaveRecognition: 編集後の食品リスト', editedFoods);
+        const toastId = "save-meal"; // トーストIDを定義
 
         try {
             setSaving(true);
             console.log('handleSaveRecognition: 保存処理開始');
+            toast.loading("保存中...", { id: toastId, description: "データを処理しています" }); // ローディング表示
 
-            // セッションチェック
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
                 throw new AppError({
@@ -248,67 +231,53 @@ export default function MealLogPage() {
                     suggestions: ['再度ログインしてください']
                 });
             }
-            console.log('handleSaveRecognition: セッション確認OK');
 
-            // 食事データの準備
-            const mealData = {
+            const dataToSave = {
+                user_id: session.user.id,
                 meal_type: mealType,
-                meal_date: (selectedDate ? selectedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
-                ...(base64Image ? { photo_url: base64Image } : {}),
-                food_description: {
-                    items: recognitionData.foods.map((food) => ({
-                        name: food.foodName,
-                        quantity: food.quantityText || '1個',
-                    }))
-                },
-                nutrition_data: nutritionData
+                meal_date: format(selectedDate, 'yyyy-MM-dd'),
+                photo_url: base64Image,
+                servings: 1,
+                editedFoodItems: editedFoods.map(food => ({
+                    name: food.foodName,
+                    quantity: food.quantityText || '',
+                }))
             };
-            console.log('handleSaveRecognition: 保存用データ準備完了', mealData);
 
-            // APIを使用してデータを保存（エラーハンドリング付き）
+            console.log('保存APIに送信するデータ:', dataToSave);
+
             const response = await fetch('/api/meals', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(mealData),
+                body: JSON.stringify(dataToSave),
             });
-            console.log('handleSaveRecognition: APIリクエスト送信完了', response.status);
 
-            // レスポンスのエラーチェック
-            await checkApiResponse(response, '食事データの保存に失敗しました');
+            await checkApiResponse(response, '食事データの保存');
 
-            // 成功時の処理
-            toast.success("食事を記録しました", {
-                description: "栄養情報が更新されました",
-                duration: 3000,
-            });
-            console.log('handleSaveRecognition: 保存成功');
+            // 成功した場合
+            toast.success('食事が記録されました！', { id: toastId }); // ★ ローディングトーストを成功表示で上書き
+            setRecognitionData(null);
+            setBase64Image(null);
 
-            // ホーム画面にリダイレクト
-            setTimeout(() => {
-                try {
-                    console.log('リダイレクト実行中...');
-                    router.refresh();
-                    router.push('/home');  // 元の '/home' に戻す
-                } catch (redirectError) {
-                    console.error('リダイレクトエラー:', redirectError);
-                    // リダイレクトに失敗した場合はブラウザのlocation APIを使用
-                    window.location.href = '/home';
-                }
-            }, 1500);
+            // ★ ホーム画面への遷移を追加
+            router.push('/home');
+
         } catch (error) {
-            // 標準化されたエラーハンドリング
+            // ★ エラートーストにもIDを指定
             handleError(error, {
                 showToast: true,
                 toastOptions: {
-                    title: "食事の保存に失敗しました",
+                    id: toastId, // ★ IDを追加
+                    title: '食事の保存に失敗しました',
+                    description: error instanceof AppError ? error.userMessage : '再度お試しください',
                 }
             });
-            console.error('保存エラー:', error);
+            console.error('保存エラー詳細:', error);
         } finally {
-            console.log('handleSaveRecognition: 処理完了');
             setSaving(false);
+            // ★ toast.dismiss(toastId) は toast.success/error で上書きされるので不要な場合が多い
         }
     };
 
@@ -626,16 +595,14 @@ export default function MealLogPage() {
                         )}
 
                         {/* 認識結果エディタ */}
-                        {!analyzing && recognitionData?.nutritionResult?.nutrition && (
+                        {!analyzing && recognitionData?.foods && (
                             <div>
                                 <p className="mb-2 text-sm text-green-600">解析結果が表示されています</p>
                                 <RecognitionEditor
-                                    initialData={recognitionData.nutritionResult.nutrition}
-                                    onSave={(nutritionData) => {
-                                        console.log('RecognitionEditor onSave呼び出し:', nutritionData);
-                                        handleSaveRecognition(nutritionData);
-                                    }}
-                                    mealType={mealType}
+                                    initialData={recognitionData.foods}
+                                    onSave={(editedData: FoodInputParseResult[]) => handleSaveRecognition(editedData)}
+                                    saving={saving}
+                                    aiEstimate={recognitionData.aiEstimatedNutrition}
                                 />
                             </div>
                         )}
@@ -786,10 +753,11 @@ const checkApiResponse = async (response: Response, errorMessage: string) => {
     return await response.json();
 };
 
-// エラーハンドリング関数
+// エラーハンドリング関数 (修正)
 const handleError = (error: unknown, options: {
     showToast: boolean,
     toastOptions?: {
+        id?: string; // ★ id を追加 (オプショナル)
         title: string;
         description?: string;
         duration?: number;
@@ -798,12 +766,17 @@ const handleError = (error: unknown, options: {
     console.error('エラー発生:', error);
 
     if (options.showToast) {
-        toast.error(options.toastOptions?.title || 'エラーが発生しました', {
+        const toastProps: { description: string; duration: number; id?: string | number } = { // 型を明示
             description: error instanceof AppError
                 ? error.userMessage
                 : options.toastOptions?.description || '操作を完了できませんでした',
             duration: options.toastOptions?.duration || 3000
-        });
+        };
+        // id が存在する場合のみ追加
+        if (options.toastOptions?.id !== undefined) {
+            toastProps.id = options.toastOptions.id;
+        }
+        toast.error(options.toastOptions?.title || 'エラーが発生しました', toastProps);
     }
 
     // エラー発生時の追加アクション

@@ -60,41 +60,69 @@ interface FoodItemNutrition {
 
 ## 栄養計算アルゴリズムのフロー
 
-現在の栄養計算は以下のステップで行われます：
+現在の食品特定、栄養計算、データ保存のフローは、入力方法（写真またはテキスト）によって異なります。
 
-### 1. 食品特定段階
+### 写真入力の場合
 
-**写真入力の場合：**
-1. ユーザーが食事の写真をアップロード
-2. `/api/v2/meal/analyze`エンドポイントを呼び出し
-3. `GeminiService.analyzeMealImage`を通じてAI（Gemini Vision）に画像を送信
-4. AIは写真に含まれる食品を特定し、リスト（`foods: [{ foodName, quantityText, confidence }]`）として返却
-5. **重要な変更点**：フェーズ2実装により、AIプロンプトから栄養素推定部分を削除し、食品特定に集中する形に修正
+1.  **食品特定段階:**
+    *   ユーザーが食事の写真をアップロードします。
+    *   フロントエンドは `/api/v2/meal/analyze` エンドポイントを呼び出します。
+    *   バックエンド (`GeminiService.analyzeMealImage`) はAI（Gemini Vision）に画像を送信します。
+    *   AIは写真に含まれる食品を特定し、食品リスト (`foods: [{ foodName, quantityText, confidence }]`) とAI推定栄養価 (`aiEstimatedNutrition` - 参考値) を返却します。
+    *   **APIはこの時点では栄養計算を行いません。**
+    *   APIは食品リストとAI推定栄養価をフロントエンドに返します。
 
-**テキスト入力の場合：**
-1. ユーザーが食事内容をテキストで入力
-2. `/api/v2/meal/text-analyze`エンドポイントを呼び出し
-3. `GeminiService.analyzeMealText`を通じてAI（Gemini）にテキストを送信
-4. AIはテキストから食品を特定し、リスト（`foods: [{ foodName, quantityText, confidence }]`）として返却
+2.  **編集段階:**
+    *   フロントエンドは受け取った食品リストを編集画面 (`RecognitionEditor`) に表示します。
+    *   ユーザーは必要に応じて食品リストを編集（追加、削除、修正）します。
 
-### 2. 栄養計算段階
+3.  **栄養計算・保存段階:**
+    *   ユーザーが「保存」ボタンをクリックします。
+    *   フロントエンドは**編集後の食品リスト** (`editedFoodItems`) と、参考情報として**AI推定栄養価** (`aiEstimatedNutrition`) を `/api/meals` (POST) エンドポイントに送信します。
+    *   バックエンド (`MealService.saveMealWithNutrition`) は、受け取った `editedFoodItems` を `NutritionService.calculateNutritionFromNameQuantities` に渡します。
+    *   `NutritionService` は各食品について食品データベース（FOODEX）とのマッチングを行い、量単位変換を適用し、**栄養計算を実行**します。
+    *   計算結果として `StandardizedMealNutrition` オブジェクトが生成されます。
+    *   バックエンドは生成された `StandardizedMealNutrition` データを `meals` テーブルの `nutrition_data` カラムにJSONB形式で保存します。
 
-1. 特定された食品リストを`NutritionService.calculateNutrition`に渡す
-2. 各食品に対して:
-   a. 食品データベース（FOODEX）とのマッチングを試行
-   b. AIによる直接解析結果と食品DBのマッチング結果を統合
-   c. 適切な量単位変換を適用
-3. 個別食品の栄養情報を基に`foodItems`配列を構築
-4. 全食品の栄養素を合計して`totalNutrients`と`totalCalories`を算出
-5. `StandardizedMealNutrition`オブジェクトを生成・返却
+### テキスト入力の場合
 
-### 3. データ保存段階
+1.  **食品特定・栄養計算段階:**
+    *   ユーザーが食事内容をテキストで入力します。
+    *   フロントエンドは `/api/v2/meal/text-analyze` エンドポイントに入力テキストを送信します。
+    *   バックエンド (`GeminiService.analyzeMealText`) はAI（Gemini）にテキストを送信し、食品リスト (`foods`) とAI推定栄養価 (`aiEstimatedNutrition` - 参考値) を取得します。
+    *   **続けて、同じAPIルート内で**、取得した食品リスト (`foods`) を `NutritionService.calculateNutritionFromNameQuantities` に渡します。
+    *   `NutritionService` は食品DBとのマッチング、量単位変換、**栄養計算を実行**します。
+    *   計算結果として `StandardizedMealNutrition` オブジェクトが生成されます。
+    *   APIは計算された `StandardizedMealNutrition` データと、参考情報として `aiEstimatedNutrition` をフロントエンドに返します。
 
-1. フロントエンドで、必要に応じて`EnhancedRecognitionEditor`で食品データを編集
-2. 保存時には`StandardizedMealNutrition`型のデータを直接APIに送信（フェーズ2実装による改善点）
-3. `/api/meals`エンドポイントで`MealService.saveMealWithNutrition`を呼び出し
-4. `meals`テーブルの`nutrition_data`カラムに`StandardizedMealNutrition`型のデータをJSONB形式で保存
-5. **重要な変更点**：フェーズ2実装により、`meal_nutrients`テーブルへの書き込みが廃止され、すべての栄養データは`meals.nutrition_data`カラムに格納されるようになった
+2.  **編集段階:**
+    *   フロントエンドは受け取った食品リスト（および計算済み栄養価）を編集画面 (`RecognitionEditor`) に表示します。
+    *   ユーザーは必要に応じて食品リストを編集します。
+
+3.  **保存段階:**
+    *   ユーザーが「保存」ボタンをクリックします。
+    *   フロントエンドは**編集後の食品リスト**と、**テキスト解析時に計算済みの栄養データ** (`StandardizedMealNutrition`) を `/api/meals` (POST) エンドポイントに送信します。
+    *   **注意:** 保存APIでは、テキスト入力の場合は原則としてフロントエンドから送られてきた計算済み栄養データをそのまま利用します。ただし、将来的に編集内容に応じて再計算するロジックが追加される可能性はあります。
+    *   バックエンドは受け取った `StandardizedMealNutrition` データを `meals` テーブルの `nutrition_data` カラムにJSONB形式で保存します。
+
+---
+
+### （共通）栄養計算の詳細 (`NutritionService.calculateNutritionFromNameQuantities`)
+
+栄養計算サービスは、食品リスト（名前と量のペア）を受け取ると以下の処理を行います：
+
+1.  各食品名に対して、食品データベース（FOODEX）とのマッチングを試行します。
+    *   前処理（料理名分解、同義語対応など）が適用される場合があります。
+2.  マッチングした食品DBの情報と、入力された量（単位変換を含む）に基づき、各食品の栄養価（カロリー、各種栄養素）を計算します。
+3.  **DBにマッチしなかった食品の扱いは、現状では栄養計算に含まれません。** (AI推定値のフォールバック利用はMVP後の課題)
+4.  計算された個々の食品の栄養情報を `foodItems` 配列に格納します。
+5.  全食品の栄養素を合計して、食事全体の `totalNutrients` と `totalCalories` を算出します。
+6.  マッチングの確度などを考慮して、計算結果の信頼性スコア (`reliability.confidence`) を設定します。
+7.  最終的な `StandardizedMealNutrition` オブジェクトを生成して返却します。
+
+### （共通）データ保存の詳細 (`MealService.saveMealWithNutrition`)
+
+食事保存サービスは、`StandardizedMealNutrition` データを受け取り、`meals` テーブルの `nutrition_data` カラムにJSONB形式で保存します。フェーズ2の改善により、`meal_nutrients` テーブルへの書き込みは廃止されました。
 
 ## 栄養計算の精度と妊婦向け栄養管理
 
@@ -121,7 +149,12 @@ manmaruアプリケーションの特性上、栄養計算は一般的な栄養�
 
 ### AI直接推定値と食品マッチングの統合アプローチ
 
-フェーズ2実装では、AIの栄養素直接推定機能をクライアント側で活用しつつも、サーバー側では食品データベースとのマッチングを主体とするハイブリッドアプローチを採用しています。
+現在のシステムでは、AIによる栄養素推定値 (`aiEstimatedNutrition`) は、食事解析API (`/api/v2/meal/analyze`, `/api/v2/meal/text-analyze`) から**参考情報として**返却されます。
+
+*   **現状の利用:** この値は直接的には最終的な栄養計算結果には使用されません。栄養計算は主に食品データベース（FOODEX）とのマッチングに基づいて行われます。
+*   **将来的な活用:** MVPリリース後の改善タスクとして、食品データベースにマッチしなかった食品に対して、このAI推定値を**フォールバックとして利用**する機能の実装が計画されています (`docs/MVP/after/assignment.md` 参照)。これにより、記録される栄養情報の網羅性を向上させることが期待されます。
+
+栄養計算の主体はあくまで `NutritionService` によるDBベースの計算であり、AI推定値の扱いは今後の改善課題です。
 
 1. **食品DBマッチングの優先度向上**:
    - 食品名のマッチング精度向上のための前処理（料理名分解、同義語対応など）の強化
@@ -133,51 +166,25 @@ manmaruアプリケーションの特性上、栄養計算は一般的な栄養�
 
 ## フェーズ2実装による主な改善点
 
-フェーズ2実装では、以下の重要な改善が行われました：
+フェーズ2実装およびその後の修正により、以下の重要な改善が行われました：
 
-1. **`StandardizedMealNutrition`型への一貫した移行**:
-   - 食事記録フロー全体（写真入力・テキスト入力）で一貫して`StandardizedMealNutrition`型を使用
-   - API応答から受け取った`StandardizedMealNutrition`型のデータを直接活用するよう修正
+1.  **画像解析と栄養計算の完全分離**: 画像入力フローにおいて、食品認識 (`/api/v2/meal/analyze`) と栄養計算・保存 (`/api/meals` POST) が明確に分離されました。
+2.  **`StandardizedMealNutrition`型への一貫した移行**: 食事記録フロー全体で一貫して`StandardizedMealNutrition`型を使用し、API間でのデータ形式を統一しました。
+3.  **AIプロンプトの最適化**: 画像解析AIプロンプトから栄養素推定の要求を削除し、食品特定に集中させ、AIの役割を明確化しました。
+4.  **データ保存プロセスの簡素化**: `meal_nutrients`テーブルを廃止し、すべての栄養データを`meals.nutrition_data`カラムに`StandardizedMealNutrition`形式で集約しました。
+5.  **型変換の削減と型安全性の向上**: 不要な型変換を削除し、データフローを簡素化。TypeScriptの型システムと実行時検証により、特にテキスト入力フローにおける安定性が向上しました。
 
-2. **AIプロンプトの最適化**:
-   - 食品分析AIプロンプトから栄養素推定部分を削除し、食品特定に集中
-   - AIの役割を明確化し、各コンポーネントの責任を整理
-
-3. **データ保存プロセスの簡素化**:
-   - `meal_nutrients`テーブルへの書き込みを削除
-   - すべての栄養データを`meals.nutrition_data`カラムに`StandardizedMealNutrition`形式で保存
-
-4. **型変換の削減**:
-   - 不要な型変換（`prepareForApiRequest`など）を削除
-   - データフローの簡素化によるバグリスクの低減
-
-5. **フェーズ2.2での安定化と改善（最新）**:
-   - テキスト入力フローにおける`StandardizedMealNutrition`型のバリデーション強化
-   - API応答の厳密な検証により、不正なデータ形式を早期検出
-   - 一連のフローにおけるエラーハンドリングの強化と改善
-   - 特に以下の検証が追加されました：
-     ```typescript
-     // StandardizedMealNutrition型の検証例（テキスト解析API）
-     if (!standardizedNutrition ||
-         typeof standardizedNutrition.totalCalories !== 'number' ||
-         !Array.isArray(standardizedNutrition.totalNutrients) ||
-         !Array.isArray(standardizedNutrition.foodItems) ||
-         !standardizedNutrition.reliability ||
-         typeof standardizedNutrition.reliability.confidence !== 'number') {
-         throw new AppError({/*...エラー詳細...*/});
-     }
-     ```
-
-これらの改善により、食事記録フローの安定性が向上し、栄養計算結果の一貫性が強化されました。特にフェーズ2.2での実装によって、テキスト入力から保存までの一連のデータフローにおける型の一貫性とエラー耐性が大幅に向上しました。
+これらの改善により、食事記録フローの信頼性と保守性が向上し、栄養計算結果の一貫性が強化されました。
 
 ## テキスト入力フローの最適化（フェーズ2.2）
 
-フェーズ2.2の主要な目標は、テキスト入力による食事記録フローの安定化でした。具体的には以下の改善が実施されました：
+フェーズ2.2では特にテキスト入力フローの安定化に注力しました：
 
 1. **テキスト入力フローの詳細化**:
    ```
-   ユーザーテキスト入力 → 食品リスト(FoodItem[]) → テキスト解析API 
-   → StandardizedMealNutrition取得 → 検証 → 保存API → DB保存
+   ユーザーテキスト入力 → テキスト解析・栄養計算API (/api/v2/meal/text-analyze)
+   → StandardizedMealNutrition取得 → フロントエンドで編集
+   → 保存API (/api/meals POST) → DB保存
    ```
 
 2. **厳密なデータ検証**:

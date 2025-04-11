@@ -1,16 +1,16 @@
-# API ドキュメント: 画像入力による食事解析・栄養計算
+# API ドキュメント: 画像入力による食事解析
 
-このドキュメントは、画像入力に基づいて食事内容を解析し、栄養価を計算する API エンドポイントについて説明します。
+このドキュメントは、画像入力に基づいて食事内容を解析する API エンドポイントについて説明します。**このAPIは食品の認識のみを行い、栄養計算は実行しません。**
 
 ## エンドポイント
 
-`POST /api/v2/image/analyze`
+`POST /api/v2/meal/analyze`
 
 ## 概要
 
-ユーザーが食事の写真をアップロードすると、AIが画像を解析して含まれる食品を特定し、それらの栄養価（カロリー、タンパク質、鉄など）を計算して返します。
+ユーザーが食事の写真をアップロードすると、AIが画像を解析して含まれる食品のリストと、AIが推定した栄養価（参考値）を返します。**栄養計算は行われません。** 実際の栄養計算とDBへの保存は、このAPIの結果を元にフロントエンドで編集された食品リストを使用して、`/api/meals` (POST) エンドポイントで行われます。
 
-内部的には、まずAI（Gemini Vision）を使用して食品を認識し、それに基づいて栄養素を直接推定します。また、食品データベースとの照合も行います。
+内部的には、AI（Gemini Vision）を使用して食品を認識し、可能であれば栄養素も推定します。
 
 ## リクエスト
 
@@ -49,40 +49,8 @@
     ],
     "originalImageProvided": true,
     "mealType": "string", // リクエストで送信された (またはデフォルトの) 食事タイプ
-    "nutritionResult": {
-      "nutrition": { // 計算された栄養情報 (StandardizedMealNutrition)
-        "totalCalories": "number", // 総カロリー (kcal)
-        "totalNutrients": [ // 総栄養素リスト (Nutrient[])
-          {
-            "name": "string", // 栄養素名 (例: "タンパク質", "鉄分")
-            "value": "number", // 量
-            "unit": "string" // 単位 (例: "g", "mg", "mcg")
-          }
-          // ... more nutrients
-        ],
-        "foodItems": [ // 各食品アイテムの栄養情報 (FoodItem[])
-          {
-            "id": "string", // 生成されたID
-            "name": "string", // マッチングされた食品名
-            "amount": "number", // 量
-            "unit": "string", // 単位 (例: "g", "個", "人前")
-            "nutrition": { // この食品アイテムの栄養価
-              "calories": "number",
-              "nutrients": "Nutrient[]",
-              "servingSize": { "value": "number", "unit": "string" }
-            }
-          }
-          // ... more food items
-        ],
-        "reliability": { // 栄養計算の信頼性情報
-          "confidence": "number" // 信頼度スコア (0-1)
-        }
-      },
-      "matchResults": [], // 食品マッチングの詳細結果リスト
-      "legacyNutrition": { ... } // 後方互換性のための旧形式 (NutritionData)
-    },
     "recognitionConfidence": "number", // 画像認識全体の信頼度
-    "aiEstimatedNutrition": { // AIが直接推定した栄養価
+    "aiEstimatedNutrition": { // AIが直接推定した栄養価 (参考値)
       "calories": "number",
       "protein": "number",
       "iron": "number",
@@ -123,16 +91,14 @@
 
 * `ErrorCode.Base.DATA_VALIDATION_ERROR`: リクエストデータが不正（例: 画像データが空）。
 * `ErrorCode.AI.IMAGE_PROCESSING_ERROR`: 画像の解析に失敗した。
-* `ErrorCode.Nutrition.NUTRITION_CALCULATION_ERROR`: 栄養計算中にエラーが発生した。
 * `ErrorCode.AI.API_REQUEST_ERROR`: AIサービスへの接続に失敗した。
 * `ErrorCode.Base.UNKNOWN_ERROR`: その他の予期せぬサーバーエラー。
 
 ## 注意事項
 
-* `data.foods` は、AIが直接認識した食品のリストであり、実際にUIに表示される食品リストの基になります。
-* `data.nutritionResult.nutrition` は標準化された栄養情報 (`StandardizedMealNutrition`) を提供し、アプリケーション内で使用する際はこのデータを使用してください。
-* `data.aiEstimatedNutrition` は、AIが直接推定した栄養価です。このフィールドは参考値として含まれていますが、栄養データの表示には `nutritionResult.nutrition` を使用してください。
-* `legacyNutrition` フィールドは後方互換性のために提供されていますが、新しい実装では `StandardizedMealNutrition` 型の `nutrition` を使用することを強く推奨します。
+* `data.foods` は、AIが直接認識した食品のリストであり、フロントエンドでの編集画面の初期値となります。
+* **このAPIは栄養計算を行いません。** 計算された最終的な栄養情報は、ユーザーが編集した食品リストを元に `/api/meals` (POST) で計算・保存されます。
+* `data.aiEstimatedNutrition` は、AIが直接推定した栄養価です。このフィールドは参考値として含まれています。MVP後の機能改善で、DBにマッチしない食品のフォールバックとして利用される可能性があります。
 * 画像品質、照明条件、角度などによって認識精度が変わる場合があります。可能な限り食品が明確に見える写真を提供することが望ましいです。
 
 # 技術的負債と改善点
@@ -153,13 +119,13 @@
 ## 2. 型定義の一貫性と複雑性
 
 ### 課題
-- API応答の深いネスト構造（data.nutritionResult.nutrition など）
+- API応答の深いネスト構造（~~data.nutritionResult.nutrition など~~） → 栄養計算結果を返さなくなったため、ネストは浅くなりました。
 - 型定義が複数ファイルに散在し、整合性維持が困難
 - `FoodItem` 型が複数の場所で微妙に異なる定義をされている
 
 ### 改善案
 - 型定義の一元管理と統一
-- API応答構造のフラット化
+- API応答構造のフラット化 → 一部実施済み
 - コンポーネント間でのデータ受け渡し時の型変換の最小化
 - アプリケーション全体で `StandardizedMealNutrition` 型に完全に移行する
 
